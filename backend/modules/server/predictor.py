@@ -1,0 +1,405 @@
+"""
+Prediction Engine for Server module.
+
+Migrated from pump-server/backend/app/prediction/engine.py and model_manager.py.
+Uses direct Python imports from training module instead of HTTP calls for model loading.
+"""
+
+import asyncio
+import io
+import logging
+import time
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+
+import joblib
+import numpy as np
+import pandas as pd
+
+from backend.config import settings
+from backend.database import get_pool
+from backend.modules.training.trainer import ModelCache, load_model_from_binary
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Model cache for server module
+# ============================================================
+
+# Local cache for loaded models (active_model_id -> model_obj)
+_SERVER_MODEL_CACHE: Dict[int, Any] = {}
+
+
+def get_cached_model(active_model_id: int) -> Optional[Any]:
+    """Get model from server cache."""
+    return _SERVER_MODEL_CACHE.get(active_model_id)
+
+
+def cache_model(active_model_id: int, model_obj: Any):
+    """Put model into server cache."""
+    _SERVER_MODEL_CACHE[active_model_id] = model_obj
+    logger.debug(f"Model cached: active_model_id={active_model_id}")
+
+
+def remove_from_cache(active_model_id: int):
+    """Remove model from server cache."""
+    _SERVER_MODEL_CACHE.pop(active_model_id, None)
+    logger.debug(f"Model removed from cache: active_model_id={active_model_id}")
+
+
+def clear_model_cache():
+    """Clear all cached models."""
+    _SERVER_MODEL_CACHE.clear()
+    logger.info("Server model cache cleared")
+
+
+# ============================================================
+# Model loading (from training module)
+# ============================================================
+
+async def load_model_for_prediction(model_id: int) -> Any:
+    """
+    Load model from training module.
+
+    This function replaces HTTP download with direct Python import.
+
+    Args:
+        model_id: ID of the model in ml_models
+
+    Returns:
+        Loaded model object
+
+    Raises:
+        ValueError: If model not found or cannot be loaded
+    """
+    from backend.modules.training.db_queries import get_model
+
+    # Check if model is in training module cache first
+    cached = ModelCache.get(model_id)
+    if cached:
+        logger.debug(f"Model {model_id} loaded from training module cache")
+        return cached
+
+    # Get model from training module database
+    model_record = await get_model(model_id)
+    if not model_record:
+        raise ValueError(f"Model {model_id} not found in training module")
+
+    # Load model binary if available
+    if model_record.get('model_binary'):
+        logger.debug(f"Loading model {model_id} from database binary")
+        model_obj = load_model_from_binary(model_record['model_binary'])
+        ModelCache.put(model_id, model_obj)
+        return model_obj
+
+    # Load from file path if available
+    model_file_path = model_record.get('model_file_path')
+    if model_file_path:
+        from backend.modules.training.trainer import load_model as load_model_from_file
+        logger.debug(f"Loading model {model_id} from file: {model_file_path}")
+        model_obj = load_model_from_file(model_file_path)
+        ModelCache.put(model_id, model_obj)
+        return model_obj
+
+    raise ValueError(f"Model {model_id} has no binary or file path")
+
+
+def get_model(model_config: Dict[str, Any]) -> Any:
+    """
+    Get model for prediction (from cache or load it).
+
+    Args:
+        model_config: Model configuration from prediction_active_models
+
+    Returns:
+        Loaded model object
+
+    Raises:
+        ValueError: If model cannot be loaded
+    """
+    active_model_id = model_config['id']
+    model_id = model_config['model_id']
+
+    # Check server cache first
+    cached = get_cached_model(active_model_id)
+    if cached:
+        return cached
+
+    # Check training module cache
+    cached = ModelCache.get(model_id)
+    if cached:
+        cache_model(active_model_id, cached)
+        return cached
+
+    # Need to load synchronously (will be called from async context via run_in_executor if needed)
+    raise ValueError(f"Model {model_id} not loaded. Call load_model_for_prediction first.")
+
+
+# ============================================================
+# Feature preparation
+# ============================================================
+
+async def prepare_features(
+    coin_id: str,
+    model_config: Dict[str, Any],
+    pool: Optional[Any] = None
+) -> pd.DataFrame:
+    """
+    Prepare features for prediction.
+
+    Args:
+        coin_id: Coin mint address
+        model_config: Model configuration
+        pool: Database pool (optional)
+
+    Returns:
+        DataFrame with features
+
+    Raises:
+        ValueError: If features cannot be prepared
+    """
+    if pool is None:
+        pool = get_pool()
+
+    # Get required features from model config
+    required_features = model_config.get('features', [])
+    if not required_features:
+        raise ValueError("Model has no features defined")
+
+    # Get latest coin metrics
+    row = await pool.fetchrow("""
+        SELECT *
+        FROM coin_metrics
+        WHERE mint = $1
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """, coin_id)
+
+    if not row:
+        raise ValueError(f"No metrics found for coin {coin_id}")
+
+    # Extract features from metrics
+    feature_values = []
+    for feature in required_features:
+        value = row.get(feature)
+        if value is None:
+            # Try to compute missing features if possible
+            if feature == 'price_vs_ath_pct' and row.get('price_close') and row.get('ath_price_sol'):
+                value = ((float(row['price_close']) - float(row['ath_price_sol'])) / float(row['ath_price_sol'])) * 100
+            elif feature == 'buy_pressure_ratio':
+                buy_vol = float(row.get('buy_volume_sol') or 0)
+                sell_vol = float(row.get('sell_volume_sol') or 0)
+                value = buy_vol / (buy_vol + sell_vol) if (buy_vol + sell_vol) > 0 else 0.5
+            else:
+                value = 0.0  # Default for missing features
+
+        feature_values.append(float(value))
+
+    # Create DataFrame
+    df = pd.DataFrame([feature_values], columns=required_features)
+    return df
+
+
+# ============================================================
+# Prediction
+# ============================================================
+
+async def predict_coin(
+    coin_id: str,
+    timestamp: datetime,
+    model_config: Dict[str, Any],
+    pool: Optional[Any] = None
+) -> Dict[str, Any]:
+    """
+    Make prediction for a coin with a model.
+
+    Args:
+        coin_id: Coin ID (mint)
+        timestamp: Timestamp of data
+        model_config: Model configuration (from prediction_active_models)
+        pool: Database pool (optional)
+
+    Returns:
+        Dict with 'prediction' (0 or 1) and 'probability' (0.0 - 1.0)
+
+    Raises:
+        ValueError: If features missing or model error
+    """
+    start_time = time.time()
+
+    try:
+        # Get model (from cache)
+        try:
+            model = get_model(model_config)
+        except ValueError:
+            # Model not loaded yet - load it first
+            model_id = model_config['model_id']
+            logger.info(f"Loading model {model_id} for first prediction")
+            model_obj = await load_model_for_prediction(model_id)
+            cache_model(model_config['id'], model_obj)
+            model = model_obj
+
+        # Prepare features
+        feature_start = time.time()
+        features_df = await prepare_features(
+            coin_id=coin_id,
+            model_config=model_config,
+            pool=pool
+        )
+        feature_duration = time.time() - feature_start
+
+        # Make prediction
+        X = features_df.values
+
+        # Model expects 2D array (n_samples, n_features)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        prediction = model.predict(X)
+        probability = model.predict_proba(X)[:, 1]  # Probability for class 1
+
+        # Last entry (newest prediction)
+        result = {
+            "prediction": int(prediction[-1]),
+            "probability": float(probability[-1])
+        }
+
+        prediction_duration = time.time() - start_time
+
+        model_name = model_config.get('custom_name') or model_config.get('name', 'Unknown')
+
+        logger.debug(
+            f"Prediction for coin {coin_id[:8]}... with model {model_config['model_id']}: "
+            f"prediction={result['prediction']}, probability={result['probability']:.4f} "
+            f"(duration: {prediction_duration:.3f}s)"
+        )
+
+        return result
+
+    except ValueError as e:
+        logger.warning(
+            f"Feature error for coin {coin_id[:8]}... with model {model_config.get('id', 'unknown')} "
+            f"(Model ID: {model_config['model_id']}): {e}"
+        )
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error in prediction for coin {coin_id[:8]}... with model {model_config.get('id', 'unknown')} "
+            f"(Model ID: {model_config['model_id']}): {e}",
+            exc_info=True
+        )
+        raise
+
+
+async def predict_coin_all_models(
+    coin_id: str,
+    timestamp: datetime,
+    active_models: List[Dict[str, Any]],
+    pool: Optional[Any] = None
+) -> List[Dict[str, Any]]:
+    """
+    Make predictions with ALL active models.
+
+    Optimized: Parallel processing - all models run simultaneously.
+
+    Args:
+        coin_id: Coin ID (mint)
+        timestamp: Timestamp of data
+        active_models: List of active model configurations
+        pool: Database pool (optional)
+
+    Returns:
+        List of predictions (one dict per model)
+    """
+
+    async def predict_single_model(model_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Helper function for parallel processing of a model"""
+        try:
+            result = await predict_coin(
+                coin_id=coin_id,
+                timestamp=timestamp,
+                model_config=model_config,
+                pool=pool
+            )
+
+            return {
+                "model_id": model_config['model_id'],
+                "active_model_id": model_config['id'],
+                "model_name": model_config.get('custom_name') or model_config.get('name', 'Unknown'),
+                "prediction": result['prediction'],
+                "probability": result['probability']
+            }
+
+        except ValueError as e:
+            logger.warning(
+                f"Feature error for model ID {model_config.get('id', 'unknown')} "
+                f"(Model ID: {model_config['model_id']}, Name: {model_config.get('custom_name') or model_config.get('name', 'Unknown')}) "
+                f"for coin {coin_id[:8]}...: {e}"
+            )
+            return None
+        except Exception as e:
+            logger.error(
+                f"Error for model ID {model_config.get('id', 'unknown')} "
+                f"(Model ID: {model_config['model_id']}, Name: {model_config.get('custom_name') or model_config.get('name', 'Unknown')}) "
+                f"for coin {coin_id[:8]}...: {e}",
+                exc_info=True
+            )
+            return None
+
+    # PARALLEL PROCESSING: All models run simultaneously
+    tasks = [predict_single_model(model_config) for model_config in active_models]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Filter out None and Exceptions
+    valid_results = [r for r in results if r is not None and not isinstance(r, Exception)]
+
+    if len(valid_results) == 0 and len(active_models) > 0:
+        logger.error(
+            f"CRITICAL: ALL {len(active_models)} models failed for coin {coin_id[:8]}... "
+            f"Probably feature mismatch or data problem."
+        )
+    elif len(valid_results) < len(active_models):
+        failed_count = len(active_models) - len(valid_results)
+        logger.warning(
+            f"Predictions for coin {coin_id[:8]}...: {len(valid_results)}/{len(active_models)} successful, {failed_count} failed"
+        )
+    else:
+        logger.info(f"Predictions for coin {coin_id[:8]}...: {len(valid_results)}/{len(active_models)} successful (parallel processed)")
+
+    return valid_results
+
+
+# ============================================================
+# Preload models at startup
+# ============================================================
+
+async def preload_all_models():
+    """
+    Preload all active models at startup.
+
+    This loads all models from the training module into memory
+    for faster predictions.
+    """
+    from backend.modules.server.db_queries import get_active_models
+
+    models = await get_active_models(include_inactive=False)
+    loaded_count = 0
+    failed_count = 0
+
+    for model_config in models:
+        try:
+            model_id = model_config['model_id']
+            active_model_id = model_config['id']
+
+            model_obj = await load_model_for_prediction(model_id)
+            cache_model(active_model_id, model_obj)
+            loaded_count += 1
+
+            logger.info(f"Preloaded model {model_id} (active_model_id: {active_model_id})")
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Failed to preload model {model_config.get('model_id')}: {e}")
+
+    logger.info(f"Preloaded {loaded_count} models ({failed_count} failed)")
+    return {"loaded": loaded_count, "failed": failed_count}
