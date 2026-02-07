@@ -134,9 +134,9 @@ app.include_router(server_router)    # /api/server/...
 app.include_router(buy_router)       # /api/buy/...
 
 # MCP integration - exposes all API endpoints as MCP tools
-from fastapi_mcp import FastApiMcp
+from fastapi_mcp import FastApiMCP
 
-mcp = FastApiMcp(
+mcp = FastApiMCP(
     app,
     name="pump-platform",
     description="Unified Crypto Trading Platform - Discovery, Training, Predictions, Trading",
