@@ -146,7 +146,7 @@ const Phases: React.FC = () => {
         return;
       }
 
-      const res = await findApi.updatePhase(phase.id, updateData);
+      const res = await findApi.updatePhase(phase.id, updateData as Record<string, unknown>);
       const result = res.data;
 
       setSuccessMessage(`Phase "${result.phase.name}" updated. ${result.updated_streams} streams adjusted.`);

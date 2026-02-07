@@ -22,7 +22,6 @@ import {
   Link as MuiLink,
   CircularProgress,
   Snackbar,
-  Divider,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,

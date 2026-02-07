@@ -199,7 +199,7 @@ const TrainingOverview: React.FC = () => {
           { label: 'Training', value: stats.training, color: '#ff9800', bgColor: 'rgba(255, 152, 0, 0.1)', borderColor: 'rgba(255, 152, 0, 0.3)' },
           { label: 'Failed', value: stats.failed, color: '#f44336', bgColor: 'rgba(244, 67, 54, 0.1)', borderColor: 'rgba(244, 67, 54, 0.3)' },
         ].map((s) => (
-          <Grid item xs={6} md={3} key={s.label}>
+          <Grid size={{ xs: 6, md: 3 }} key={s.label}>
             <Box
               sx={{
                 p: 2,
@@ -238,7 +238,7 @@ const TrainingOverview: React.FC = () => {
           <FilterIcon /> Filter & Search
         </Typography>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               fullWidth
               size="small"
@@ -255,7 +255,7 @@ const TrainingOverview: React.FC = () => {
               }}
             />
           </Grid>
-          <Grid item xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Status</InputLabel>
               <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} label="Status">
@@ -266,7 +266,7 @@ const TrainingOverview: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Sort by</InputLabel>
               <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} label="Sort by">
@@ -276,12 +276,12 @@ const TrainingOverview: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6} md={1}>
+          <Grid size={{ xs: 6, md: 1 }}>
             <Button fullWidth variant="outlined" onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
               {sortOrder === 'asc' ? 'ASC' : 'DESC'}
             </Button>
           </Grid>
-          <Grid item xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <Button
               fullWidth
               variant="outlined"
@@ -325,7 +325,7 @@ const TrainingOverview: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {filteredModels.map((model) => (
-            <Grid item xs={12} md={6} lg={4} key={model.id}>
+            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={model.id}>
               <ModelCard
                 model={model}
                 onDetails={(id) => navigate(`/training/models/${id}`)}

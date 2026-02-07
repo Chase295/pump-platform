@@ -16,7 +16,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Tabs,
   Tab,
   Dialog,
@@ -25,15 +24,11 @@ import {
   DialogActions,
   LinearProgress,
   TextField,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Tooltip,
   IconButton,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
-  ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
   ContentCopy as CopyIcon,
   TrendingUp as TrendingUpIcon,
@@ -329,7 +324,7 @@ const ModelDetails: React.FC = () => {
       <TabPanel value={activeTab} index={0}>
         <Grid container spacing={3}>
           {/* Key metrics cards */}
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>{formatPct(model.training_accuracy)}</Typography>
@@ -337,7 +332,7 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>{formatPct(model.training_f1)}</Typography>
@@ -345,7 +340,7 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>{formatPct(model.training_precision)}</Typography>
@@ -353,7 +348,7 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>{formatPct(model.training_recall)}</Typography>
@@ -363,7 +358,7 @@ const ModelDetails: React.FC = () => {
           </Grid>
 
           {/* Additional metrics */}
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>{formatPct(model.roc_auc)}</Typography>
@@ -371,7 +366,7 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>
@@ -381,7 +376,7 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: model.simulated_profit_pct && model.simulated_profit_pct > 0 ? '#4caf50' : '#f44336' }}>
@@ -391,7 +386,7 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ textAlign: 'center', bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>
@@ -403,30 +398,30 @@ const ModelDetails: React.FC = () => {
           </Grid>
 
           {/* Confusion Matrix */}
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Confusion Matrix</Typography>
                 <Grid container spacing={2}>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(76, 175, 80, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h4" sx={{ color: '#4caf50' }}>{model.tp ?? 0}</Typography>
                       <Typography variant="body2" color="text.secondary">True Positive</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244, 67, 54, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h4" sx={{ color: '#f44336' }}>{model.fp ?? 0}</Typography>
                       <Typography variant="body2" color="text.secondary">False Positive</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244, 67, 54, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h4" sx={{ color: '#f44336' }}>{model.fn ?? 0}</Typography>
                       <Typography variant="body2" color="text.secondary">False Negative</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(76, 175, 80, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h4" sx={{ color: '#4caf50' }}>{model.tn ?? 0}</Typography>
                       <Typography variant="body2" color="text.secondary">True Negative</Typography>
@@ -438,7 +433,7 @@ const ModelDetails: React.FC = () => {
           </Grid>
 
           {/* Training Config */}
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Training Configuration</Typography>
@@ -485,7 +480,7 @@ const ModelDetails: React.FC = () => {
       <TabPanel value={activeTab} index={1}>
         <Grid container spacing={3}>
           {/* All metrics table */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>All Metrics</Typography>
@@ -539,7 +534,7 @@ const ModelDetails: React.FC = () => {
 
           {/* F1 progress bar */}
           {model.training_f1 !== undefined && model.training_f1 !== null && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
                 <CardContent>
                   <Typography variant="subtitle2" gutterBottom>F1 Score Progress</Typography>
@@ -566,7 +561,7 @@ const ModelDetails: React.FC = () => {
 
           {/* Cross-validation */}
           {model.cv_scores && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Cross-Validation Results</Typography>
@@ -590,7 +585,7 @@ const ModelDetails: React.FC = () => {
       <TabPanel value={activeTab} index={2}>
         <Grid container spacing={3}>
           {/* Feature list */}
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>
@@ -615,7 +610,7 @@ const ModelDetails: React.FC = () => {
           </Grid>
 
           {/* Feature importance */}
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>
@@ -665,7 +660,7 @@ const ModelDetails: React.FC = () => {
               Run backtesting on a new time period to evaluate model performance on unseen data.
             </Typography>
             <Grid container spacing={2} alignItems="flex-end">
-              <Grid item xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   fullWidth
                   label="Test Start"
@@ -675,7 +670,7 @@ const ModelDetails: React.FC = () => {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   fullWidth
                   label="Test End"
@@ -685,7 +680,7 @@ const ModelDetails: React.FC = () => {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <Button
                   fullWidth
                   variant="contained"

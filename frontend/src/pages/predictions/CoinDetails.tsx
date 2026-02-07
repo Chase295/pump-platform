@@ -5,7 +5,7 @@
  * Uses serverApi.getCoinDetails().
  */
 import React, { useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Typography,
@@ -25,7 +25,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Tooltip,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -222,7 +221,7 @@ const CoinDetails: React.FC = () => {
                     borderRadius: 8,
                     color: '#fff',
                   }}
-                  formatter={(value: number) => [value?.toExponential(4), 'Price']}
+                  formatter={(value: number | undefined) => [value !== undefined ? value.toExponential(4) : '0', 'Price']}
                 />
                 <Line
                   type="monotone"

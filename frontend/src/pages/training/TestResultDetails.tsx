@@ -16,7 +16,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Alert,
   CircularProgress,
   LinearProgress,
@@ -170,7 +169,7 @@ const TestResultDetails: React.FC = () => {
           Performance Overview
         </Typography>
         <Grid container spacing={3}>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.05)', textAlign: 'center' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: getPerformanceColor(testResult.accuracy) }}>
@@ -181,7 +180,7 @@ const TestResultDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.05)', textAlign: 'center' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>
@@ -191,7 +190,7 @@ const TestResultDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.05)', textAlign: 'center' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: testResult.simulated_profit_pct && testResult.simulated_profit_pct > 0 ? '#4caf50' : '#f44336' }}>
@@ -203,7 +202,7 @@ const TestResultDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={6} md={3}>
+          <Grid size={{ xs: 6, md: 3 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.05)', textAlign: 'center' }}>
               <CardContent>
                 <Typography variant="h4" sx={{ color: '#00d4ff' }}>
@@ -241,21 +240,21 @@ const TestResultDetails: React.FC = () => {
               Train vs. Test Comparison
             </Typography>
             <Grid container spacing={2}>
-              <Grid item xs={6} md={3}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Typography variant="body2" color="text.secondary">Train Accuracy</Typography>
                 <Typography variant="h6">{formatPct(testResult.train_accuracy)}</Typography>
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Typography variant="body2" color="text.secondary">Test Accuracy</Typography>
                 <Typography variant="h6" sx={{ color: getPerformanceColor(testResult.accuracy) }}>
                   {formatPct(testResult.accuracy)}
                 </Typography>
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Typography variant="body2" color="text.secondary">Train F1</Typography>
                 <Typography variant="h6">{formatPct(testResult.train_f1)}</Typography>
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Typography variant="body2" color="text.secondary">Test F1</Typography>
                 <Typography variant="h6">{formatPct(testResult.f1_score)}</Typography>
               </Grid>
@@ -285,7 +284,7 @@ const TestResultDetails: React.FC = () => {
       {/* Tab 0: Overview */}
       <TabPanel value={tabValue} index={0}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={8}>
+          <Grid size={{ xs: 12, md: 8 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Performance Analysis</Typography>
@@ -331,30 +330,30 @@ const TestResultDetails: React.FC = () => {
           </Grid>
 
           {/* Confusion Matrix */}
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Confusion Matrix</Typography>
                 <Grid container spacing={1}>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(76, 175, 80, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h5" sx={{ color: '#4caf50' }}>{testResult.tp ?? 0}</Typography>
                       <Typography variant="caption" color="text.secondary">True Positive</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244, 67, 54, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h5" sx={{ color: '#f44336' }}>{testResult.fp ?? 0}</Typography>
                       <Typography variant="caption" color="text.secondary">False Positive</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244, 67, 54, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h5" sx={{ color: '#f44336' }}>{testResult.fn ?? 0}</Typography>
                       <Typography variant="caption" color="text.secondary">False Negative</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid size={6}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(76, 175, 80, 0.15)', borderRadius: 2 }}>
                       <Typography variant="h5" sx={{ color: '#4caf50' }}>{testResult.tn ?? 0}</Typography>
                       <Typography variant="caption" color="text.secondary">True Negative</Typography>
@@ -435,7 +434,7 @@ const TestResultDetails: React.FC = () => {
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Test Configuration</Typography>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography variant="body2" color="text.secondary">Test Result ID</Typography>

@@ -169,20 +169,20 @@ const CompareDetails: React.FC = () => {
       {/* Info Box */}
       <Paper sx={{ p: 3, mb: 3, bgcolor: 'rgba(0, 212, 255, 0.05)', border: '1px solid rgba(0, 212, 255, 0.2)' }}>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <Typography variant="body2" color="text.secondary">Models</Typography>
             <Typography variant="h6">
               {comparison.model_ids?.join(', ') || `${comparison.model_a_id} vs ${comparison.model_b_id}`}
             </Typography>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <Typography variant="body2" color="text.secondary">Test Period</Typography>
             <Typography variant="h6">
               {formatDate(comparison.test_start)} - {formatDate(comparison.test_end)}
             </Typography>
           </Grid>
           {comparison.winner_id && (
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <Typography variant="body2" color="text.secondary">Winner</Typography>
               <Chip
                 icon={<TrophyIcon />}
@@ -229,7 +229,7 @@ const CompareDetails: React.FC = () => {
             const isWinner = comparison.winner_id === result.model_id;
 
             return (
-              <Grid item xs={12} md={6} key={result.model_id}>
+              <Grid size={{ xs: 12, md: 6 }} key={result.model_id}>
                 <Card sx={{
                   height: '100%',
                   border: isWinner ? '2px solid #4caf50' : '1px solid rgba(255,255,255,0.1)',
@@ -250,23 +250,23 @@ const CompareDetails: React.FC = () => {
                       </Typography>
                     </Box>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                      <Grid item xs={6}>
+                      <Grid size={6}>
                         <Typography variant="body2" color="text.secondary">Accuracy</Typography>
                         <Typography variant="h6">{formatPct(result.accuracy)}</Typography>
                       </Grid>
-                      <Grid item xs={6}>
+                      <Grid size={6}>
                         <Typography variant="body2" color="text.secondary">F1 Score</Typography>
                         <Typography variant="h6">{formatPct(result.f1_score)}</Typography>
                       </Grid>
-                      <Grid item xs={6}>
+                      <Grid size={6}>
                         <Typography variant="body2" color="text.secondary">Precision</Typography>
                         <Typography variant="h6">{formatPct(result.precision_score)}</Typography>
                       </Grid>
-                      <Grid item xs={6}>
+                      <Grid size={6}>
                         <Typography variant="body2" color="text.secondary">Recall</Typography>
                         <Typography variant="h6">{formatPct(result.recall)}</Typography>
                       </Grid>
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2" color="text.secondary">Simulated Profit</Typography>
                         <Typography variant="h6" sx={{ color: (result.simulated_profit_pct ?? 0) >= 0 ? '#4caf50' : '#f44336' }}>
                           {formatNumber(result.simulated_profit_pct)}%
@@ -347,7 +347,7 @@ const CompareDetails: React.FC = () => {
       <TabPanel value={tabValue} index={2}>
         <Grid container spacing={3}>
           {sortedResults.map((result) => (
-            <Grid item xs={12} md={6} key={result.model_id}>
+            <Grid size={{ xs: 12, md: 6 }} key={result.model_id}>
               <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -357,25 +357,25 @@ const CompareDetails: React.FC = () => {
                     )}
                   </Typography>
                   <Grid container spacing={2} sx={{ mt: 1 }}>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(76, 175, 80, 0.15)', borderRadius: 2 }}>
                         <Typography variant="h4" sx={{ color: '#4caf50' }}>{result.tp ?? 0}</Typography>
                         <Typography variant="body2" color="text.secondary">True Positive</Typography>
                       </Box>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244, 67, 54, 0.15)', borderRadius: 2 }}>
                         <Typography variant="h4" sx={{ color: '#f44336' }}>{result.fp ?? 0}</Typography>
                         <Typography variant="body2" color="text.secondary">False Positive</Typography>
                       </Box>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(244, 67, 54, 0.15)', borderRadius: 2 }}>
                         <Typography variant="h4" sx={{ color: '#f44336' }}>{result.fn ?? 0}</Typography>
                         <Typography variant="body2" color="text.secondary">False Negative</Typography>
                       </Box>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(76, 175, 80, 0.15)', borderRadius: 2 }}>
                         <Typography variant="h4" sx={{ color: '#4caf50' }}>{result.tn ?? 0}</Typography>
                         <Typography variant="body2" color="text.secondary">True Negative</Typography>

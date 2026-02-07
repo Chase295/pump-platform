@@ -73,14 +73,12 @@ const PredictionModelDetails: React.FC = () => {
   const alertStats: AlertStatistics | undefined = alertStatsResponse?.data;
 
   // Load model statistics
-  const { data: modelStatsResponse } = useQuery({
+  useQuery({
     queryKey: ['server', 'model-statistics', modelId],
     queryFn: () => serverApi.getModelStatistics(modelId),
     enabled: !!modelId,
     refetchInterval: 30000,
   });
-
-  const modelStats = modelStatsResponse?.data;
 
   // Delete mutation
   const deleteMutation = useMutation({

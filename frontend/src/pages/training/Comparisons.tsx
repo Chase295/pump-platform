@@ -119,7 +119,7 @@ const Comparisons: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {comparisons.map((comparison) => (
-            <Grid item xs={12} md={6} key={comparison.id}>
+            <Grid size={{ xs: 12, md: 6 }} key={comparison.id}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', '&:hover': { borderColor: 'rgba(0, 212, 255, 0.3)' } }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>

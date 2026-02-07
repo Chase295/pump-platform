@@ -21,7 +21,6 @@ import {
   Card,
   CardContent,
   CardActions,
-  LinearProgress,
 } from '@mui/material';
 import {
   Assessment as TestResultsIcon,
@@ -33,7 +32,6 @@ import {
   Visibility as ViewIcon,
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
-import StatusChip from '../../components/training/StatusChip';
 import type { TestResultResponse } from '../../types/training';
 
 const TestResults: React.FC = () => {
@@ -189,7 +187,7 @@ const TestResults: React.FC = () => {
           { label: 'Good', value: stats.good, color: '#ff9800', bgColor: 'rgba(255, 152, 0, 0.1)', borderColor: 'rgba(255, 152, 0, 0.3)' },
           { label: 'Poor', value: stats.poor, color: '#f44336', bgColor: 'rgba(244, 67, 54, 0.1)', borderColor: 'rgba(244, 67, 54, 0.3)' },
         ].map((s) => (
-          <Grid item xs={6} md={3} key={s.label}>
+          <Grid size={{ xs: 6, md: 3 }} key={s.label}>
             <Box sx={{ p: 2, bgcolor: s.bgColor, border: `1px solid ${s.borderColor}`, borderRadius: 1, textAlign: 'center' }}>
               <Typography variant="h4" sx={{ color: s.color }}>{s.value}</Typography>
               <Typography variant="body2" color="textSecondary">{s.label}</Typography>
@@ -204,7 +202,7 @@ const TestResults: React.FC = () => {
           <FilterIcon /> Filter & Search
         </Typography>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               fullWidth
               size="small"
@@ -219,7 +217,7 @@ const TestResults: React.FC = () => {
               }}
             />
           </Grid>
-          <Grid item xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Performance</InputLabel>
               <Select value={performanceFilter} onChange={(e) => setPerformanceFilter(e.target.value)} label="Performance">
@@ -230,7 +228,7 @@ const TestResults: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Sort by</InputLabel>
               <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} label="Sort by">
@@ -241,12 +239,12 @@ const TestResults: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={6} md={1}>
+          <Grid size={{ xs: 6, md: 1 }}>
             <Button fullWidth variant="outlined" onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
               {sortOrder === 'asc' ? 'ASC' : 'DESC'}
             </Button>
           </Grid>
-          <Grid item xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <Button
               fullWidth
               variant="outlined"
@@ -278,7 +276,7 @@ const TestResults: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {filteredResults.map((result) => (
-            <Grid item xs={12} md={6} lg={4} key={result.id}>
+            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={result.id}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', '&:hover': { borderColor: 'rgba(0, 212, 255, 0.3)' } }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
@@ -297,23 +295,23 @@ const TestResults: React.FC = () => {
 
                   {/* Metrics */}
                   <Grid container spacing={1} sx={{ mb: 2 }}>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">Accuracy</Typography>
                       <Typography variant="h6" sx={{ color: getAccuracyColor(result.accuracy) }}>
                         {formatPct(result.accuracy)}
                       </Typography>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">F1 Score</Typography>
                       <Typography variant="h6" sx={{ color: '#00d4ff' }}>
                         {formatPct(result.f1_score)}
                       </Typography>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">Precision</Typography>
                       <Typography variant="body1">{formatPct(result.precision_score)}</Typography>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={6}>
                       <Typography variant="caption" color="text.secondary">Recall</Typography>
                       <Typography variant="body1">{formatPct(result.recall)}</Typography>
                     </Grid>
