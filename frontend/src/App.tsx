@@ -273,7 +273,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/discovery" element={<Discovery />} />
             <Route path="/training/*" element={<Training />} />
-            <Route path="/predictions" element={<Predictions />} />
+            <Route path="/predictions/*" element={<Predictions />} />
             <Route path="/trading/*" element={<Trading />} />
           </Routes>
         </Layout>
