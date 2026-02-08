@@ -234,7 +234,9 @@ async def check_lifecycle_and_advance(
         force_resubscribe_fn: Optional async callable for re-subscribing.
 
     Returns:
-        List of ``(batch_tuple, phase_id)`` pairs ready for ``flush_metrics_batch``.
+        Tuple of (metrics_results, trades_for_flush):
+        - metrics_results: List of ``(batch_tuple, phase_id)`` pairs for ``flush_metrics_batch``.
+        - trades_for_flush: List of tuples for ``flush_transactions_batch``.
     """
     from backend.modules.find.metrics import get_empty_buffer, calculate_advanced_metrics
     from zoneinfo import ZoneInfo
@@ -244,6 +246,7 @@ async def check_lifecycle_and_advance(
 
     batch_data = []
     phases_in_batch = []
+    trades_for_flush = []
     now_utc = datetime.now(timezone.utc)
     now_berlin = datetime.now(GERMAN_TZ)
 
@@ -337,8 +340,17 @@ async def check_lifecycle_and_advance(
                 # Reset stale warning on successful save
                 stale_data_warnings.pop(mint, None)
 
+            # Collect individual trades for coin_transactions before reset
+            if buf.get("trades"):
+                phase_id = entry["meta"]["phase_id"]
+                for t in buf["trades"]:
+                    trades_for_flush.append((
+                        t[0], now_berlin, t[1], t[2], t[3], t[4], t[5], phase_id,
+                    ))
+
             # Always reset buffer
             entry["buffer"] = get_empty_buffer()
             entry["next_flush"] = now_ts + entry["interval"]
 
-    return list(zip(batch_data, phases_in_batch)) if batch_data else []
+    metrics_results = list(zip(batch_data, phases_in_batch)) if batch_data else []
+    return metrics_results, trades_for_flush

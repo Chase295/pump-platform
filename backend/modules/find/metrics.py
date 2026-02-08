@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from backend.database import get_pool, execute_many
 from backend.config import settings
-from backend.shared.prometheus import find_metrics_saved
+from backend.shared.prometheus import find_metrics_saved, find_transactions_saved
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ def get_empty_buffer() -> dict:
         "wallets": set(), "v_sol": 0, "mcap": 0,
         "whale_buy_vol": 0, "whale_sell_vol": 0, "whale_buys": 0, "whale_sells": 0,
         "dev_sold_amount": 0,
+        "trades": [],
     }
 
 
@@ -107,6 +108,16 @@ def process_trade(watchlist: dict, data: dict, ath_cache: dict, dirty_aths: set,
     buf["v_sol"] = float(data["vSolInBondingCurve"])
     buf["mcap"] = price * 1_000_000_000
 
+    # Collect individual trade for coin_transactions
+    buf["trades"].append((
+        mint,
+        trader_key,
+        sol,
+        "buy" if is_buy else "sell",
+        price,
+        sol >= whale_threshold,
+    ))
+
 
 def calculate_advanced_metrics(buf: dict) -> dict:
     """Compute derived metrics from the raw buffer."""
@@ -181,6 +192,35 @@ async def flush_metrics_batch(batch_data: list[tuple], phases_in_batch: list[int
         status["db_connected"] = False
         from backend.shared.prometheus import find_db_connected
         find_db_connected.set(0)
+
+
+async def flush_transactions_batch(trades_data: list[tuple], status: dict) -> None:
+    """Write individual trade records to coin_transactions (non-fatal).
+
+    This is called AFTER flush_metrics_batch and is completely independent.
+    Failures here never affect coin_metrics or the main pipeline.
+
+    Args:
+        trades_data: List of tuples (mint, timestamp, trader_key, sol, tx_type, price, is_whale, phase_id).
+        status: Shared status dict (NOT modified on failure).
+    """
+    if not trades_data:
+        return
+
+    sql = """
+        INSERT INTO coin_transactions (
+            mint, timestamp, trader_public_key, sol_amount,
+            tx_type, price_sol, is_whale, phase_id_at_time
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    """
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.executemany(sql, trades_data)
+        find_transactions_saved.inc(len(trades_data))
+        logger.debug("Saved %d transactions", len(trades_data))
+    except Exception as e:
+        logger.warning("coin_transactions flush failed (non-fatal): %s", e)
 
 
 async def flush_ath_updates(ath_cache: dict, dirty_aths: set, status: dict) -> None:

@@ -44,6 +44,7 @@ from backend.modules.find.metrics import (
     get_empty_buffer,
     process_trade,
     flush_metrics_batch,
+    flush_transactions_batch,
     flush_ath_updates,
 )
 from backend.modules.find.phases import (
@@ -769,7 +770,7 @@ class CoinStreamer:
                         await self._flush_discovery_buffer()
 
                         # Lifecycle checks and metric flush
-                        results = await check_lifecycle_and_advance(
+                        results, trades_for_flush = await check_lifecycle_and_advance(
                             watchlist=self.watchlist,
                             phases_config=self.phases_config,
                             sorted_phase_ids=self.sorted_phase_ids,
@@ -786,6 +787,9 @@ class CoinStreamer:
                             batch_data = [r[0] for r in results]
                             phases_in_batch = [r[1] for r in results]
                             await flush_metrics_batch(batch_data, phases_in_batch, self.status)
+
+                        if trades_for_flush:
+                            await flush_transactions_batch(trades_for_flush, self.status)
 
                         # Zombie watchdog (every 60s)
                         if int(now_ts) % 60 == 0:

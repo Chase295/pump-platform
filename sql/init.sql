@@ -29,6 +29,8 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pump_n8n')\gexec
 -- ============================================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid() for pump-buy
+CREATE EXTENSION IF NOT EXISTS timescaledb;  -- Hypertables, compression, retention
+CREATE EXTENSION IF NOT EXISTS vector;  -- pgvector for similarity search
 
 
 -- ============================================================================
@@ -215,7 +217,6 @@ COMMENT ON TABLE coin_streams IS 'Active coin streams for continuous metrics tra
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS coin_metrics (
-    id BIGSERIAL PRIMARY KEY,
     mint VARCHAR(64) NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     phase_id_at_time INTEGER,
@@ -269,6 +270,73 @@ CREATE INDEX IF NOT EXISTS idx_coin_metrics_phase ON coin_metrics(phase_id_at_ti
 CREATE INDEX IF NOT EXISTS idx_coin_metrics_mint ON coin_metrics(mint);
 
 COMMENT ON TABLE coin_metrics IS 'OHLCV and trading metrics per coin per interval. Written by FIND, read by TRAINING and SERVER for ML.';
+
+-- TimescaleDB: Convert to hypertable (1 day chunks)
+SELECT create_hypertable('coin_metrics', 'timestamp',
+    chunk_time_interval => INTERVAL '1 day',
+    if_not_exists => TRUE
+);
+
+
+-- ============================================================================
+-- TABLE: coin_transactions (individual trades for graph analysis / pgvector)
+-- Written by FIND alongside coin_metrics. Not used by ML Training/Predictions.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS coin_transactions (
+    mint VARCHAR(64) NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    trader_public_key VARCHAR(44) NOT NULL,
+    sol_amount NUMERIC(20, 9) NOT NULL,
+    tx_type VARCHAR(4) NOT NULL CHECK (tx_type IN ('buy', 'sell')),
+    price_sol NUMERIC(30, 18) NOT NULL,
+    is_whale BOOLEAN NOT NULL DEFAULT FALSE,
+    phase_id_at_time INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_coin_tx_mint_timestamp ON coin_transactions(mint, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_coin_tx_trader ON coin_transactions(trader_public_key, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_coin_tx_timestamp ON coin_transactions(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_coin_tx_whale ON coin_transactions(is_whale) WHERE is_whale = TRUE;
+CREATE INDEX IF NOT EXISTS idx_coin_tx_type ON coin_transactions(tx_type);
+
+COMMENT ON TABLE coin_transactions IS 'Individual trade records for graph analysis and pattern detection. Written by FIND, not read by ML.';
+
+-- TimescaleDB: Convert to hypertable (1 day chunks)
+SELECT create_hypertable('coin_transactions', 'timestamp',
+    chunk_time_interval => INTERVAL '1 day',
+    if_not_exists => TRUE
+);
+
+
+-- ============================================================================
+-- TABLE: coin_pattern_embeddings (pgvector similarity search, schema-only)
+-- Populated by a separate embedding pipeline (not by FIND streamer).
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS coin_pattern_embeddings (
+    id BIGSERIAL PRIMARY KEY,
+    mint VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    window_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    window_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    embedding vector(128) NOT NULL,
+    phase_id_at_time INTEGER,
+    num_snapshots INTEGER NOT NULL DEFAULT 0,
+    label VARCHAR(50),
+    CONSTRAINT chk_window_order CHECK (window_start < window_end)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coin_patterns_embedding
+    ON coin_pattern_embeddings
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX IF NOT EXISTS idx_coin_patterns_mint ON coin_pattern_embeddings(mint);
+CREATE INDEX IF NOT EXISTS idx_coin_patterns_created ON coin_pattern_embeddings(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_coin_patterns_label ON coin_pattern_embeddings(label) WHERE label IS NOT NULL;
+
+COMMENT ON TABLE coin_pattern_embeddings IS 'Vector embeddings of coin price patterns for similarity search. Schema-only, populated later.';
 
 
 -- ============================================================================
@@ -767,7 +835,7 @@ CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at DES
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS model_predictions (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL,
 
     -- Basic information
     coin_id VARCHAR(255) NOT NULL,
@@ -820,9 +888,13 @@ CREATE TABLE IF NOT EXISTS model_predictions (
 
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Composite PK for TimescaleDB hypertable (must include time column)
+    PRIMARY KEY (prediction_timestamp, id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_model_predictions_id ON model_predictions(id);
 CREATE INDEX IF NOT EXISTS idx_model_predictions_coin_timestamp ON model_predictions(coin_id, prediction_timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_model_predictions_model ON model_predictions(model_id, prediction_timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_model_predictions_active_model ON model_predictions(active_model_id, prediction_timestamp DESC);
@@ -833,6 +905,12 @@ CREATE INDEX IF NOT EXISTS idx_model_predictions_coin_model_tag_status ON model_
 
 COMMENT ON TABLE model_predictions IS 'All predictions with tags (negativ/positiv/alert) and status (aktiv/inaktiv)';
 
+-- TimescaleDB: Convert to hypertable (7 day chunks)
+SELECT create_hypertable('model_predictions', 'prediction_timestamp',
+    chunk_time_interval => INTERVAL '7 days',
+    if_not_exists => TRUE
+);
+
 
 -- ============================================================================
 -- TABLE: alert_evaluations
@@ -840,7 +918,7 @@ COMMENT ON TABLE model_predictions IS 'All predictions with tags (negativ/positi
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS alert_evaluations (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL,
     prediction_id BIGINT NOT NULL REFERENCES predictions(id) ON DELETE CASCADE,
     coin_id VARCHAR(255) NOT NULL,
     model_id BIGINT NOT NULL,
@@ -909,9 +987,13 @@ CREATE TABLE IF NOT EXISTS alert_evaluations (
 
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Composite PK for TimescaleDB hypertable (must include time column)
+    PRIMARY KEY (alert_timestamp, id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_alert_evaluations_id ON alert_evaluations(id);
 CREATE INDEX IF NOT EXISTS idx_alert_evaluations_coin_timestamp ON alert_evaluations(coin_id, alert_timestamp ASC);
 CREATE INDEX IF NOT EXISTS idx_alert_evaluations_status ON alert_evaluations(status) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_alert_evaluations_prediction ON alert_evaluations(prediction_id);
@@ -919,6 +1001,12 @@ CREATE INDEX IF NOT EXISTS idx_alert_evaluations_type ON alert_evaluations(predi
 CREATE INDEX IF NOT EXISTS idx_alert_evaluations_evaluation_timestamp ON alert_evaluations(evaluation_timestamp) WHERE status = 'pending';
 
 COMMENT ON TABLE alert_evaluations IS 'Alert evaluations with full market data at alert and evaluation time, plus ATH tracking';
+
+-- TimescaleDB: Convert to hypertable (7 day chunks)
+SELECT create_hypertable('alert_evaluations', 'alert_timestamp',
+    chunk_time_interval => INTERVAL '7 days',
+    if_not_exists => TRUE
+);
 
 
 -- ============================================================================
@@ -1299,11 +1387,60 @@ VALUES (
 ON CONFLICT (alias) DO NOTHING;
 
 
+-- ############################################################################
+-- TIMESCALEDB: COMPRESSION POLICIES
+-- ############################################################################
+
+-- coin_transactions: Compress chunks older than 1 day
+ALTER TABLE coin_transactions SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'mint',
+    timescaledb.compress_orderby = 'timestamp DESC'
+);
+SELECT add_compression_policy('coin_transactions', INTERVAL '1 day', if_not_exists => TRUE);
+
+-- coin_metrics: Compress chunks older than 3 days
+ALTER TABLE coin_metrics SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'mint',
+    timescaledb.compress_orderby = 'timestamp DESC'
+);
+SELECT add_compression_policy('coin_metrics', INTERVAL '3 days', if_not_exists => TRUE);
+
+-- model_predictions: Compress chunks older than 14 days
+ALTER TABLE model_predictions SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'coin_id, active_model_id',
+    timescaledb.compress_orderby = 'prediction_timestamp DESC'
+);
+SELECT add_compression_policy('model_predictions', INTERVAL '14 days', if_not_exists => TRUE);
+
+-- alert_evaluations: Compress chunks older than 14 days
+ALTER TABLE alert_evaluations SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'coin_id, model_id',
+    timescaledb.compress_orderby = 'alert_timestamp DESC'
+);
+SELECT add_compression_policy('alert_evaluations', INTERVAL '14 days', if_not_exists => TRUE);
+
+
+-- ############################################################################
+-- TIMESCALEDB: RETENTION POLICIES (disabled - uncomment to activate)
+-- Caution: Permanently deletes old data!
+-- ############################################################################
+
+-- SELECT add_retention_policy('coin_transactions', INTERVAL '30 days', if_not_exists => TRUE);
+-- SELECT add_retention_policy('coin_metrics', INTERVAL '90 days', if_not_exists => TRUE);
+-- SELECT add_retention_policy('model_predictions', INTERVAL '60 days', if_not_exists => TRUE);
+-- SELECT add_retention_policy('alert_evaluations', INTERVAL '60 days', if_not_exists => TRUE);
+
+
 -- ============================================================================
 -- DONE
 -- ============================================================================
 -- Combined schema includes:
 --   FIND:     discovered_coins, coin_streams, ref_coin_phases, coin_metrics,
+--             coin_transactions, coin_pattern_embeddings,
 --             exchange_rates, 3 graduation views
 --   TRAINING: ml_models, ml_test_results, ml_comparisons, ml_jobs, ref_model_types
 --   SERVER:   prediction_active_models (with all migrations merged),

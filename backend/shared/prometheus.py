@@ -58,6 +58,11 @@ find_metrics_saved = Counter(
     "Total metric snapshots flushed to the database",
 )
 
+find_transactions_saved = Counter(
+    "find_transactions_saved_total",
+    "Total individual trade records flushed to coin_transactions",
+)
+
 find_phase_switches = Counter(
     "find_phase_switches_total",
     "Number of phase transitions for tracked coins",

@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: timescale/timescaledb-ha:pg16
     container_name: pump-platform-db
     restart: unless-stopped
     volumes:
