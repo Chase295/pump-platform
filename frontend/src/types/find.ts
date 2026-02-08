@@ -36,7 +36,6 @@ export interface FindHealthResponse {
 export interface FindConfigResponse {
   n8n_webhook_url: string;
   n8n_webhook_method: string;
-  db_dsn: string;
   coin_cache_seconds: number;
   db_refresh_interval: number;
   batch_size: number;
@@ -45,15 +44,12 @@ export interface FindConfigResponse {
   spam_burst_window: number;
   sol_reserves_full: number;
   whale_threshold_sol: number;
-  age_calculation_offset_min: number;
   trade_buffer_seconds: number;
-  ath_flush_interval: number;
 }
 
 export interface FindConfigUpdateRequest {
   n8n_webhook_url?: string;
   n8n_webhook_method?: string;
-  db_dsn?: string;
   coin_cache_seconds?: number;
   db_refresh_interval?: number;
   batch_size?: number;

@@ -16,6 +16,15 @@
 
 
 -- ============================================================================
+-- SEPARATE DATABASE: n8n (workflow automation)
+-- n8n manages its own schema automatically on first start
+-- ============================================================================
+
+SELECT 'CREATE DATABASE pump_n8n OWNER pump'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pump_n8n')\gexec
+
+
+-- ============================================================================
 -- EXTENSIONS
 -- ============================================================================
 
@@ -187,6 +196,8 @@ CREATE TABLE IF NOT EXISTS coin_streams (
     is_active BOOLEAN DEFAULT true,
     is_graduated BOOLEAN DEFAULT false,
     started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    ath_price_sol DOUBLE PRECISION DEFAULT 0,
+    ath_timestamp TIMESTAMP WITH TIME ZONE,
     CONSTRAINT unique_active_stream UNIQUE (token_address)
 );
 

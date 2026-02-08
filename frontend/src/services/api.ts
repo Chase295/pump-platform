@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+const TOKEN_KEY = 'pump-auth-token';
+
 // ------------------------------------------------------------------
 // Base Axios Instance
 // ------------------------------------------------------------------
@@ -9,20 +11,42 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor
+// Request interceptor - attach Bearer token
 api.interceptors.request.use(
-  (config) => config,
+  (config) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
   (error) => Promise.reject(error),
 );
 
-// Response interceptor
+// Response interceptor - handle 401
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      // Clear invalid token
+      localStorage.removeItem(TOKEN_KEY);
+      // Force re-render by reloading auth state (store will pick up null token)
+      window.dispatchEvent(new Event('auth-logout'));
+    }
     console.error('API Error:', error.response?.data || error.message);
     return Promise.reject(error);
   },
 );
+
+// ------------------------------------------------------------------
+// Auth API  (/api/auth/...)
+// ------------------------------------------------------------------
+export const authApi = {
+  login: (username: string, password: string) =>
+    api.post('/auth/login', { username, password }),
+  check: () => api.get('/auth/check'),
+  status: () => api.get('/auth/status'),
+};
 
 // ------------------------------------------------------------------
 // Global API (cross-module)
@@ -42,22 +66,22 @@ export const findApi = {
   updateConfig: (data: Record<string, unknown>) => api.put('/find/config', data),
 
   // Phases
-  getPhases: () => api.get('/find/database/phases'),
+  getPhases: () => api.get('/find/phases'),
   createPhase: (data: { name: string; interval_seconds: number; min_age_minutes: number; max_age_minutes: number }) =>
-    api.post('/find/database/phases', data),
-  updatePhase: (id: number, data: Record<string, unknown>) => api.put(`/find/database/phases/${id}`, data),
-  deletePhase: (id: number) => api.delete(`/find/database/phases/${id}`),
+    api.post('/find/phases', data),
+  updatePhase: (id: number, data: Record<string, unknown>) => api.put(`/find/phases/${id}`, data),
+  deletePhase: (id: number) => api.delete(`/find/phases/${id}`),
 
   // Streams
-  getStreams: (limit = 50) => api.get('/find/database/streams', { params: { limit } }),
-  getStreamStats: () => api.get('/find/database/streams/stats'),
+  getStreams: (limit = 50) => api.get('/find/streams', { params: { limit } }),
+  getStreamStats: () => api.get('/find/streams/stats'),
 
   // Metrics
   getRecentMetrics: (limit = 100, mint?: string) =>
-    api.get('/find/database/metrics', { params: { limit, mint } }),
+    api.get('/find/metrics', { params: { limit, mint } }),
   getCoinAnalytics: (mint: string, windows = '30s,1m,3m,5m,15m,30m,1h') =>
     api.get(`/find/analytics/${mint}`, { params: { windows } }),
-  getCoinDetail: (mint: string) => api.get(`/find/database/coin/${mint}`),
+  getCoinDetail: (mint: string) => api.get(`/find/coins/${mint}`),
 };
 
 // ------------------------------------------------------------------
@@ -173,9 +197,9 @@ export const buyApi = {
 
   // Trading
   executeBuy: (data: { wallet_alias: string; mint: string; amount_sol: number; slippage_bps?: number; use_jito?: boolean; jito_tip_lamports?: number }) =>
-    api.post('/buy/buy', data),
+    api.post('/buy/execute-buy', data),
   executeSell: (data: { wallet_alias: string; mint: string; amount_pct?: number; slippage_bps?: number; use_jito?: boolean; jito_tip_lamports?: number }) =>
-    api.post('/buy/sell', data),
+    api.post('/buy/execute-sell', data),
   sellAll: (data: { wallet_alias: string; slippage_bps?: number; use_jito?: boolean; jito_tip_lamports?: number }) =>
     api.post('/buy/sell-all', data),
 

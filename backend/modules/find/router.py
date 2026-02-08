@@ -132,6 +132,75 @@ class AnalyticsResponse(BaseModel):
 
 
 # =====================================================================
+# Health Endpoint
+# =====================================================================
+
+@router.get("/health", operation_id="find_health")
+async def health_check():
+    """Health check for the find module."""
+    import time as _time
+
+    try:
+        pool = _get_pool()
+        row = await pool.fetchrow("SELECT 1 AS ok")
+        db_ok = row is not None
+    except Exception:
+        db_ok = False
+
+    streamer = _streamer
+    ws_connected = False
+    uptime_seconds = 0.0
+    last_message_ago = None
+    reconnect_count = 0
+    last_error = None
+    cache_stats = {"total_coins": 0, "activated_coins": 0, "expired_coins": 0, "oldest_age_seconds": 0, "newest_age_seconds": 0}
+    tracking_stats = {"active_coins": 0, "total_trades": 0, "total_metrics_saved": 0}
+    discovery_stats = {"total_coins_discovered": 0, "n8n_available": False, "n8n_buffer_size": 0}
+
+    if streamer:
+        status_info = streamer.get_status()
+        ws_connected = status_info.get("ws_connected", False)
+        reconnect_count = status_info.get("reconnect_count", 0)
+        last_error = status_info.get("last_error")
+
+        start = status_info.get("start_time")
+        if start:
+            uptime_seconds = round(_time.time() - start, 1)
+
+        last_msg = status_info.get("last_message_time")
+        if last_msg:
+            last_message_ago = round(_time.time() - last_msg, 1)
+
+        cache_stats = streamer.get_cache_stats()
+
+        tracking_stats = {
+            "active_coins": len(streamer.watchlist),
+            "total_trades": status_info.get("total_trades", 0),
+            "total_metrics_saved": status_info.get("total_metrics_saved", 0),
+        }
+
+        discovery_stats = {
+            "total_coins_discovered": status_info.get("total_coins_discovered", 0),
+            "n8n_available": status_info.get("n8n_available", False),
+            "n8n_buffer_size": len(streamer.discovery_buffer),
+        }
+
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "db_connected": db_ok,
+        "ws_connected": ws_connected,
+        "uptime_seconds": uptime_seconds,
+        "last_message_ago": last_message_ago,
+        "reconnect_count": reconnect_count,
+        "last_error": last_error,
+        "cache_stats": cache_stats,
+        "tracking_stats": tracking_stats,
+        "discovery_stats": discovery_stats,
+        "module": "find",
+    }
+
+
+# =====================================================================
 # Configuration Endpoints
 # =====================================================================
 

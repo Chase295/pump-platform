@@ -12,6 +12,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Chip,
 } from '@mui/material';
 import { Save as SaveIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +33,6 @@ const FindConfig: React.FC = () => {
   const [formData, setFormData] = useState<FindConfigUpdateRequest>({
     n8n_webhook_url: '',
     n8n_webhook_method: 'POST',
-    db_dsn: '',
     coin_cache_seconds: 120,
     db_refresh_interval: 10,
     batch_size: 10,
@@ -50,7 +50,6 @@ const FindConfig: React.FC = () => {
       const newFormData: FindConfigUpdateRequest = {
         n8n_webhook_url: config.n8n_webhook_url || '',
         n8n_webhook_method: config.n8n_webhook_method || 'POST',
-        db_dsn: config.db_dsn || '',
         coin_cache_seconds: config.coin_cache_seconds || 120,
         db_refresh_interval: config.db_refresh_interval || 10,
         batch_size: config.batch_size || 10,
@@ -89,16 +88,11 @@ const FindConfig: React.FC = () => {
 
     if (!originalData) return;
 
-    // Build an object with only changed fields
     const updateData: Partial<FindConfigUpdateRequest> = {};
 
     Object.keys(formData).forEach((key) => {
       const formKey = key as keyof FindConfigUpdateRequest;
       if (formData[formKey] !== originalData[formKey]) {
-        // Do not send censored passwords
-        if (formKey === 'db_dsn' && formData.db_dsn && formData.db_dsn.includes('***')) {
-          return;
-        }
         (updateData as Record<string, unknown>)[formKey] = formData[formKey];
       }
     });
@@ -142,27 +136,22 @@ const FindConfig: React.FC = () => {
 
       <form onSubmit={handleSubmit}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {/* n8n Configuration */}
+          {/* Row 1: n8n + Discovery Timing */}
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 } }}>
             <Box sx={{ flex: 1 }}>
               <Card>
-                <CardHeader
-                  title="n8n Integration"
-                  subheader="Webhook settings for coin discovery"
-                />
+                <CardHeader title="n8n Integration" subheader="Webhook for new coin notifications" />
                 <CardContent>
-                  <Box sx={{ mb: 2 }}>
-                    <TextField
-                      fullWidth
-                      label="Webhook URL"
-                      value={formData.n8n_webhook_url}
-                      onChange={(e) => handleInputChange('n8n_webhook_url', e.target.value)}
-                      placeholder="https://n8n.example.com/webhook/xyz"
-                      helperText="Full URL to the n8n webhook endpoint"
-                    />
-                  </Box>
-
-                  <FormControl fullWidth>
+                  <TextField
+                    fullWidth
+                    label="Webhook URL"
+                    value={formData.n8n_webhook_url}
+                    onChange={(e) => handleInputChange('n8n_webhook_url', e.target.value)}
+                    placeholder="https://n8n.example.com/webhook/xyz"
+                    helperText="n8n webhook endpoint URL"
+                    sx={{ mb: 2 }}
+                  />
+                  <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel>HTTP Method</InputLabel>
                     <Select
                       value={formData.n8n_webhook_method}
@@ -173,114 +162,63 @@ const FindConfig: React.FC = () => {
                       <MenuItem value="POST">POST</MenuItem>
                     </Select>
                   </FormControl>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Batch Size"
+                      value={formData.batch_size}
+                      onChange={(e) => handleInputChange('batch_size', parseInt(e.target.value))}
+                      inputProps={{ min: 1, max: 100 }}
+                      helperText="Coins per batch (1-100)"
+                    />
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Batch Timeout (s)"
+                      value={formData.batch_timeout}
+                      onChange={(e) => handleInputChange('batch_timeout', parseInt(e.target.value))}
+                      inputProps={{ min: 10, max: 300 }}
+                      helperText="Max wait before send (10-300s)"
+                    />
+                  </Box>
                 </CardContent>
               </Card>
             </Box>
 
-            {/* Database Configuration */}
             <Box sx={{ flex: 1 }}>
               <Card>
-                <CardHeader
-                  title="Database"
-                  subheader="PostgreSQL connection string"
-                />
-                <CardContent>
-                  <TextField
-                    fullWidth
-                    label="Database DSN"
-                    value={formData.db_dsn}
-                    onChange={(e) => handleInputChange('db_dsn', e.target.value)}
-                    placeholder="postgresql://user:pass@host:port/database"
-                    helperText="PostgreSQL connection string (password is automatically hidden)"
-                    multiline
-                    rows={2}
-                  />
-                </CardContent>
-              </Card>
-            </Box>
-          </Box>
-
-          {/* Performance Settings */}
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, flexWrap: 'wrap', gap: { xs: 2, md: 3 } }}>
-            <Box sx={{ flex: 1 }}>
-              <Card>
-                <CardHeader
-                  title="Cache"
-                  subheader="Coin cache settings"
-                />
+                <CardHeader title="Discovery Timing" subheader="Cache and refresh intervals" />
                 <CardContent>
                   <TextField
                     fullWidth
                     type="number"
-                    label="Cache Time (seconds)"
+                    label="Coin Cache Time (seconds)"
                     value={formData.coin_cache_seconds}
                     onChange={(e) => handleInputChange('coin_cache_seconds', parseInt(e.target.value))}
                     inputProps={{ min: 10, max: 3600 }}
-                    helperText="How long new coins are cached (10-3600s)"
+                    helperText="How long new coins are cached before activation (10-3600s)"
+                    sx={{ mb: 2 }}
                   />
-                </CardContent>
-              </Card>
-            </Box>
-
-            <Box sx={{ flex: 1 }}>
-              <Card>
-                <CardHeader
-                  title="Refresh"
-                  subheader="Database query interval"
-                />
-                <CardContent>
                   <TextField
                     fullWidth
                     type="number"
-                    label="Refresh Interval (seconds)"
+                    label="DB Refresh Interval (seconds)"
                     value={formData.db_refresh_interval}
                     onChange={(e) => handleInputChange('db_refresh_interval', parseInt(e.target.value))}
                     inputProps={{ min: 5, max: 300 }}
-                    helperText="How often the DB is queried for new streams"
-                  />
-                </CardContent>
-              </Card>
-            </Box>
-
-            <Box sx={{ flex: 1 }}>
-              <Card>
-                <CardHeader
-                  title="Batch"
-                  subheader="n8n batch settings"
-                />
-                <CardContent>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="Batch Size"
-                    value={formData.batch_size}
-                    onChange={(e) => handleInputChange('batch_size', parseInt(e.target.value))}
-                    inputProps={{ min: 1, max: 100 }}
-                    helperText="How many coins per n8n batch"
-                  />
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="Batch Timeout (seconds)"
-                    value={formData.batch_timeout}
-                    onChange={(e) => handleInputChange('batch_timeout', parseInt(e.target.value))}
-                    inputProps={{ min: 10, max: 300 }}
-                    helperText="Max time before an incomplete batch is sent"
-                    sx={{ mt: 2 }}
+                    helperText="How often phase transitions are checked (5-300s)"
                   />
                 </CardContent>
               </Card>
             </Box>
           </Box>
 
-          {/* Filter Settings */}
+          {/* Row 2: Filters + Thresholds (read-only) */}
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 } }}>
             <Box sx={{ flex: 1 }}>
               <Card>
-                <CardHeader
-                  title="Coin Filter"
-                  subheader="Name and spam filters"
-                />
+                <CardHeader title="Coin Filters" subheader="Name patterns and spam detection" />
                 <CardContent>
                   <TextField
                     fullWidth
@@ -288,10 +226,9 @@ const FindConfig: React.FC = () => {
                     value={formData.bad_names_pattern}
                     onChange={(e) => handleInputChange('bad_names_pattern', e.target.value)}
                     placeholder="test|bot|rug|scam|cant|honey|faucet"
-                    helperText="Regex pattern for bad coin names (pipe-separated)"
+                    helperText="Regex pattern to filter suspicious coin names (pipe-separated)"
                     sx={{ mb: 2 }}
                   />
-
                   <TextField
                     fullWidth
                     type="number"
@@ -299,7 +236,7 @@ const FindConfig: React.FC = () => {
                     value={formData.spam_burst_window}
                     onChange={(e) => handleInputChange('spam_burst_window', parseInt(e.target.value))}
                     inputProps={{ min: 5, max: 300 }}
-                    helperText="Time window for spam burst detection (5-300s)"
+                    helperText="Time window for duplicate coin detection (5-300s)"
                   />
                 </CardContent>
               </Card>
@@ -308,19 +245,40 @@ const FindConfig: React.FC = () => {
             <Box sx={{ flex: 1 }}>
               <Card>
                 <CardHeader
-                  title="Filter Statistics"
-                  subheader="Live filter results"
+                  title="Trading Thresholds"
+                  subheader="Read-only values from environment"
+                  action={<Chip label="ENV" size="small" variant="outlined" />}
                 />
                 <CardContent>
-                  <Typography variant="body2" color="textSecondary" gutterBottom>
-                    Filtered coins are shown in Prometheus metrics
-                  </Typography>
-                  <Typography variant="body2">
-                    Bad Name Filter: Removes coins with suspicious names
-                  </Typography>
-                  <Typography variant="body2">
-                    Spam Burst Filter: Prevents coin spam in short periods
-                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">SOL Reserves Full</Typography>
+                      <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                        {config?.sol_reserves_full ?? '—'} SOL
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary">
+                        Bonding curve threshold for "graduated" coins
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">Whale Threshold</Typography>
+                      <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                        {config?.whale_threshold_sol ?? '—'} SOL
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary">
+                        Minimum trade size to flag as whale activity
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">Trade Buffer</Typography>
+                      <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                        {config?.trade_buffer_seconds ?? '—'} seconds
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary">
+                        Grace period for trade subscription after cache expires
+                      </Typography>
+                    </Box>
+                  </Box>
                 </CardContent>
               </Card>
             </Box>
@@ -344,59 +302,11 @@ const FindConfig: React.FC = () => {
               disabled={isLoading || updateMutation.isPending}
               size="large"
             >
-              {updateMutation.isPending ? 'Saving...' : 'Save'}
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
           </Box>
         </Box>
       </form>
-
-      {/* Current Configuration Display */}
-      {config && (
-        <Card sx={{ mt: 3 }}>
-          <CardHeader
-            title="Current Configuration"
-            subheader="Live values from the service"
-          />
-          <CardContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" color="textSecondary">n8n Webhook</Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                    {config.n8n_webhook_url || 'Not set'}
-                  </Typography>
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" color="textSecondary">HTTP Method</Typography>
-                  <Typography variant="body1">{config.n8n_webhook_method}</Typography>
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" color="textSecondary">Cache Time</Typography>
-                  <Typography variant="body1">{config.coin_cache_seconds} seconds</Typography>
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" color="textSecondary">Batch Size</Typography>
-                  <Typography variant="body1">{config.batch_size} coins</Typography>
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 2 }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" color="textSecondary">Bad Names Pattern</Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                    {config.bad_names_pattern || 'test|bot|rug|scam|cant|honey|faucet'}
-                  </Typography>
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" color="textSecondary">Spam Burst Window</Typography>
-                  <Typography variant="body1">{config.spam_burst_window || 30} seconds</Typography>
-                </Box>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
     </Box>
   );
 };

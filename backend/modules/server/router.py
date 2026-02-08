@@ -819,6 +819,89 @@ async def get_latest_prediction_endpoint(
 
 
 # ============================================================
+# Alert Statistics Endpoint
+# ============================================================
+
+@router.get("/alerts/statistics")
+async def get_alert_statistics_endpoint(
+    model_id: Optional[int] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+):
+    """Get alert statistics, optionally filtered by model"""
+    try:
+        pool = get_pool()
+
+        where_clauses = ["1=1"]
+        params = []
+        idx = 1
+
+        if model_id is not None:
+            where_clauses.append(f"active_model_id = ${idx}")
+            params.append(model_id)
+            idx += 1
+        if date_from:
+            where_clauses.append(f"prediction_timestamp >= ${idx}::timestamptz")
+            params.append(date_from)
+            idx += 1
+        if date_to:
+            where_clauses.append(f"prediction_timestamp <= ${idx}::timestamptz")
+            params.append(date_to)
+            idx += 1
+
+        where = " AND ".join(where_clauses)
+
+        row = await pool.fetchrow(f"""
+            SELECT
+                COUNT(*) FILTER (WHERE tag = 'alert') as total_alerts,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND status = 'aktiv') as pending,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND evaluation_result = 'success') as success,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND evaluation_result = 'failed') as failed,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND evaluation_result = 'not_applicable') as expired,
+                COUNT(*) FILTER (WHERE tag = 'alert') as alerts_above_threshold,
+                COUNT(*) FILTER (WHERE tag != 'alert') as non_alerts_count,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND evaluation_result = 'success') as alerts_success,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND evaluation_result = 'failed') as alerts_failed,
+                COUNT(*) FILTER (WHERE tag = 'alert' AND status = 'aktiv') as alerts_pending,
+                COUNT(*) FILTER (WHERE tag != 'alert' AND evaluation_result = 'success') as non_alerts_success,
+                COUNT(*) FILTER (WHERE tag != 'alert' AND evaluation_result = 'failed') as non_alerts_failed,
+                COUNT(*) FILTER (WHERE tag != 'alert' AND status = 'aktiv') as non_alerts_pending
+            FROM model_predictions
+            WHERE {where}
+        """, *params)
+
+        total_alerts = row['total_alerts'] or 0
+        alerts_success = row['alerts_success'] or 0
+        alerts_failed = row['alerts_failed'] or 0
+        non_alerts_success = row['non_alerts_success'] or 0
+        non_alerts_failed = row['non_alerts_failed'] or 0
+
+        alerts_evaluated = alerts_success + alerts_failed
+        non_alerts_evaluated = non_alerts_success + non_alerts_failed
+
+        return {
+            "total_alerts": total_alerts,
+            "pending": row['pending'] or 0,
+            "success": row['success'] or 0,
+            "failed": row['failed'] or 0,
+            "expired": row['expired'] or 0,
+            "alerts_above_threshold": row['alerts_above_threshold'] or 0,
+            "non_alerts_count": row['non_alerts_count'] or 0,
+            "alerts_success": alerts_success,
+            "alerts_failed": alerts_failed,
+            "alerts_pending": row['alerts_pending'] or 0,
+            "non_alerts_success": non_alerts_success,
+            "non_alerts_failed": non_alerts_failed,
+            "non_alerts_pending": row['non_alerts_pending'] or 0,
+            "alerts_success_rate": round(alerts_success / alerts_evaluated * 100, 1) if alerts_evaluated > 0 else 0,
+            "non_alerts_success_rate": round(non_alerts_success / non_alerts_evaluated * 100, 1) if non_alerts_evaluated > 0 else 0,
+        }
+    except Exception as e:
+        logger.error(f"Error getting alert statistics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
 # System Endpoints
 # ============================================================
 

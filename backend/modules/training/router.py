@@ -547,7 +547,7 @@ async def get_available_features(include_flags: bool = Query(True, description="
 async def health_check():
     """Health check for the training module."""
     try:
-        pool = await get_pool()
+        pool = get_pool()
         row = await pool.fetchrow("SELECT 1 as ok")
         db_ok = row is not None
     except Exception:

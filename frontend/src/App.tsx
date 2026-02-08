@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import {
@@ -15,6 +15,8 @@ import {
   ListItemText,
   useMediaQuery,
   IconButton,
+  CircularProgress,
+  Button,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -22,7 +24,10 @@ import {
   ModelTraining as ModelTrainingIcon,
   Analytics as AnalyticsIcon,
   SwapHoriz as SwapHorizIcon,
+  AccountTree as AccountTreeIcon,
   Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
 
 // Pages
@@ -31,6 +36,11 @@ import Discovery from './pages/Discovery';
 import Training from './pages/Training';
 import Predictions from './pages/Predictions';
 import Trading from './pages/Trading';
+import N8nWorkflows from './pages/N8nWorkflows';
+import Login from './pages/Login';
+
+// Auth
+import useAuthStore from './stores/useAuthStore';
 
 // Theme - Matching existing dark design across all services
 const theme = createTheme({
@@ -94,24 +104,41 @@ const navItems = [
   { path: '/training', label: 'Training', icon: <ModelTrainingIcon /> },
   { path: '/predictions', label: 'Predictions', icon: <AnalyticsIcon /> },
   { path: '/trading', label: 'Trading', icon: <SwapHorizIcon /> },
+  { path: '/workflows', label: 'Workflows', icon: <AccountTreeIcon /> },
 ];
 
 const DRAWER_WIDTH = 256;
+const DRAWER_COLLAPSED_WIDTH = 64;
 
 // Layout Component
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(false);
+  const authRequired = useAuthStore((s) => s.authRequired);
+  const logout = useAuthStore((s) => s.logout);
+
+  const currentDrawerWidth = collapsed ? DRAWER_COLLAPSED_WIDTH : DRAWER_WIDTH;
 
   const drawerContent = (
-    <Box sx={{ width: DRAWER_WIDTH, pt: 2 }}>
-      <Typography
-        variant="h6"
-        sx={{ px: 2, pb: 1, fontWeight: 'bold', color: '#00d4ff' }}
-      >
-        Pump Platform
-      </Typography>
+    <Box sx={{ pt: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ px: collapsed ? 0 : 2, pb: 1, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between' }}>
+        {!collapsed && (
+          <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#00d4ff' }}>
+            Pump Platform
+          </Typography>
+        )}
+        {!isMobile && (
+          <IconButton
+            onClick={() => setCollapsed(!collapsed)}
+            size="small"
+            sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#00d4ff' } }}
+          >
+            <ChevronLeftIcon sx={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          </IconButton>
+        )}
+      </Box>
       <List>
         {navItems.map((item) => (
           <ListItem key={item.path} disablePadding>
@@ -124,12 +151,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   ? location.pathname === '/'
                   : location.pathname.startsWith(item.path)
               }
-              onClick={() => isMobile && setDrawerOpen(false)}
+              onClick={() => isMobile && setMobileOpen(false)}
+              title={collapsed ? item.label : undefined}
               sx={{
                 borderRadius: 2,
                 mx: 1,
-                minHeight: { xs: 48, md: 44 },
-                py: { xs: 1.5, md: 1 },
+                minHeight: 44,
+                py: 1,
+                justifyContent: collapsed ? 'center' : 'initial',
                 '&.Mui-selected': {
                   backgroundColor: 'rgba(0, 212, 255, 0.2)',
                   color: '#00d4ff',
@@ -146,10 +175,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+              <ListItemIcon sx={{ minWidth: collapsed ? 0 : 40, color: 'inherit', justifyContent: 'center' }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText primary={item.label} />
+              {!collapsed && <ListItemText primary={item.label} />}
             </ListItemButton>
           </ListItem>
         ))}
@@ -171,15 +200,13 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         overflow: 'auto',
       }}
     >
-      {/* Mobile Drawer */}
       {isMobile ? (
         <Drawer
           variant="temporary"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
           ModalProps={{ keepMounted: true }}
           sx={{
-            display: { xs: 'block', md: 'none' },
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: DRAWER_WIDTH,
@@ -192,17 +219,17 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {drawerContent}
         </Drawer>
       ) : (
-        /* Desktop Drawer */
         <Drawer
           variant="permanent"
           sx={{
-            display: { xs: 'none', md: 'block' },
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
-              width: DRAWER_WIDTH,
+              width: currentDrawerWidth,
               background:
                 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
               borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+              overflowX: 'hidden',
+              transition: 'width 0.2s ease-in-out',
             },
           }}
           open
@@ -215,8 +242,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <Box
         component="main"
         sx={{
-          width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` },
-          ml: { xs: 0, md: `${DRAWER_WIDTH}px` },
+          width: { xs: '100%', md: `calc(100% - ${currentDrawerWidth}px)` },
+          ml: { xs: 0, md: `${currentDrawerWidth}px` },
+          transition: 'margin-left 0.2s ease-in-out, width 0.2s ease-in-out',
         }}
       >
         {/* Top Bar */}
@@ -234,7 +262,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <IconButton
                 color="inherit"
                 edge="start"
-                onClick={() => setDrawerOpen(true)}
+                onClick={() => setMobileOpen(true)}
                 sx={{ mr: 2 }}
               >
                 <MenuIcon />
@@ -247,9 +275,23 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             >
               Pump Platform
             </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>
+            <Typography variant="body2" sx={{ opacity: 0.7, mr: authRequired ? 2 : 0 }}>
               v1.0.0
             </Typography>
+            {authRequired && (
+              <Button
+                size="small"
+                onClick={logout}
+                startIcon={<LogoutIcon />}
+                sx={{
+                  color: 'rgba(255,255,255,0.7)',
+                  textTransform: 'none',
+                  '&:hover': { color: '#ff4081' },
+                }}
+              >
+                Logout
+              </Button>
+            )}
           </Toolbar>
         </AppBar>
 
@@ -262,8 +304,63 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
+// Loading Spinner (shown while checking auth status)
+const LoadingScreen: React.FC = () => (
+  <Box
+    sx={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    <CircularProgress sx={{ color: '#00d4ff' }} />
+  </Box>
+);
+
 // Main App Component
 function App() {
+  const { token, authRequired, checkAuthStatus, logout } = useAuthStore();
+
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  // Listen for 401 logout events from API interceptor
+  useEffect(() => {
+    const handleLogout = () => {
+      logout();
+    };
+    window.addEventListener('auth-logout', handleLogout);
+    return () => window.removeEventListener('auth-logout', handleLogout);
+  }, [logout]);
+
+  // Still checking auth status
+  if (authRequired === null) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LoadingScreen />
+      </ThemeProvider>
+    );
+  }
+
+  // Auth required but no token -> show login
+  if (authRequired && !token) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Login />
+      </ThemeProvider>
+    );
+  }
+
+  // Authenticated or no auth required -> normal app
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -275,6 +372,7 @@ function App() {
             <Route path="/training/*" element={<Training />} />
             <Route path="/predictions/*" element={<Predictions />} />
             <Route path="/trading/*" element={<Trading />} />
+            <Route path="/workflows" element={<N8nWorkflows />} />
           </Routes>
         </Layout>
       </Router>

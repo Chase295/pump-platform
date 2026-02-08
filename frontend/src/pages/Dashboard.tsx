@@ -337,9 +337,9 @@ export default function Dashboard() {
   // Overall system health
   const healthServices = [
     { name: 'Find', ok: !findHealthError && findHealth?.status === 'healthy', loading: findHealthLoading },
-    { name: 'Training', ok: !trainingHealthError && trainingHealth?.status === 'ok', loading: trainingHealthLoading },
-    { name: 'Server', ok: !serverHealthError && serverHealth?.status === 'ok', loading: serverHealthLoading },
-    { name: 'Buy', ok: !buyHealthError && buyHealth?.status === 'ok', loading: buyHealthLoading },
+    { name: 'Training', ok: !trainingHealthError && trainingHealth?.status === 'healthy', loading: trainingHealthLoading },
+    { name: 'Server', ok: !serverHealthError && serverHealth?.status === 'healthy', loading: serverHealthLoading },
+    { name: 'Buy', ok: !buyHealthError && buyHealth?.status === 'healthy', loading: buyHealthLoading },
   ];
 
   const servicesUp = healthServices.filter((s) => s.ok).length;

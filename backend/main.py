@@ -10,9 +10,10 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.config import settings
 from backend.database import init_pool, close_pool, check_health
@@ -22,6 +23,7 @@ from backend.modules.find.router import router as find_router
 from backend.modules.training.router import router as training_router
 from backend.modules.server.router import router as server_router
 from backend.modules.buy.router import router as buy_router
+from backend.modules.auth.router import router as auth_router, _auth_enabled, _generate_token
 
 # Import module lifecycle components
 from backend.modules.find.streamer import CoinStreamer
@@ -33,6 +35,38 @@ from backend.modules.server.predictor import preload_all_models
 from backend.shared.prometheus import get_metrics, platform_uptime_seconds
 
 logger = logging.getLogger(__name__)
+
+# Paths that never require authentication
+_PUBLIC_PATHS = frozenset({"/", "/health", "/metrics", "/api/auth/login", "/api/auth/status"})
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Reject unauthenticated requests to /api/... when auth is enabled."""
+
+    async def dispatch(self, request: Request, call_next):
+        if not _auth_enabled():
+            return await call_next(request)
+
+        path = request.url.path
+
+        # Public paths - always allowed
+        if path in _PUBLIC_PATHS:
+            return await call_next(request)
+
+        # Only protect /api/ routes
+        if not path.startswith("/api/"):
+            return await call_next(request)
+
+        # Check Bearer token
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(status_code=401, content={"detail": "Missing or invalid token"})
+
+        token = auth_header.removeprefix("Bearer ").strip()
+        if token != _generate_token():
+            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
+
+        return await call_next(request)
 
 # Module-level references for lifecycle management
 _streamer: CoinStreamer | None = None
@@ -118,6 +152,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Auth middleware (must be added before CORS so it runs after CORS)
+app.add_middleware(AuthMiddleware)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -128,6 +165,7 @@ app.add_middleware(
 )
 
 # Mount module routers
+app.include_router(auth_router)      # /api/auth/...
 app.include_router(find_router)      # /api/find/...
 app.include_router(training_router)  # /api/training/...
 app.include_router(server_router)    # /api/server/...

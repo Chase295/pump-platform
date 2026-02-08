@@ -57,6 +57,26 @@ router = APIRouter(prefix="/api/buy", tags=["buy"])
 
 
 # =================================================================
+# HEALTH ENDPOINT
+# =================================================================
+
+@router.get("/health")
+async def health_check():
+    """Health check for the buy module."""
+    try:
+        row = await fetchrow("SELECT 1 AS ok")
+        db_ok = row is not None
+    except Exception:
+        db_ok = False
+
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "db_connected": db_ok,
+        "module": "buy",
+    }
+
+
+# =================================================================
 # TRADING ENDPOINTS
 # =================================================================
 
