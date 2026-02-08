@@ -191,17 +191,30 @@ const DiscoveryOverview: React.FC = () => {
 
           {/* n8n Status */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <WebhookIcon sx={{ fontSize: 14, color: health?.discovery_stats?.n8n_available ? '#4caf50' : '#f44336' }} />
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
-              n8n {health?.discovery_stats?.n8n_available ? 'Online' : 'Offline'}
-            </Typography>
-            {(health?.discovery_stats?.n8n_buffer_size ?? 0) > 0 && (
-              <Chip
-                label={`${health?.discovery_stats?.n8n_buffer_size} buffered`}
-                size="small"
-                sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ff9800', fontSize: '0.65rem', height: 20 }}
-              />
-            )}
+            {(() => {
+              const available = health?.discovery_stats?.n8n_available;
+              const bufferSize = health?.discovery_stats?.n8n_buffer_size ?? 0;
+              // n8n_available is only set true after a successful send.
+              // If buffer=0 and not explicitly available, n8n is idle (no sends needed yet).
+              const isIdle = !available && bufferSize === 0;
+              const color = available ? '#4caf50' : isIdle ? '#ff9800' : '#f44336';
+              const label = available ? 'Online' : isIdle ? 'Idle' : 'Offline';
+              return (
+                <>
+                  <WebhookIcon sx={{ fontSize: 14, color }} />
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
+                    n8n {label}
+                  </Typography>
+                  {bufferSize > 0 && (
+                    <Chip
+                      label={`${bufferSize} buffered`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ff9800', fontSize: '0.65rem', height: 20 }}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </Box>
 
           {/* Last Message */}
@@ -273,9 +286,9 @@ const DiscoveryOverview: React.FC = () => {
           <DiscoveryStatCard
             label="n8n Buffer"
             value={health?.discovery_stats?.n8n_buffer_size ?? '--'}
-            sublabel={health?.discovery_stats?.n8n_available ? 'webhook ready' : 'webhook offline'}
+            sublabel={health?.discovery_stats?.n8n_available ? 'webhook active' : (health?.discovery_stats?.n8n_buffer_size ?? 0) === 0 ? 'idle - no sends yet' : 'webhook offline'}
             icon={<WebhookIcon />}
-            accentColor={health?.discovery_stats?.n8n_available ? '76, 175, 80' : '255, 152, 0'}
+            accentColor={health?.discovery_stats?.n8n_available ? '76, 175, 80' : (health?.discovery_stats?.n8n_buffer_size ?? 0) === 0 ? '255, 152, 0' : '244, 67, 54'}
             loading={!health}
           />
         </Grid>
