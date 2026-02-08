@@ -114,6 +114,23 @@ export interface Stream {
   is_graduated: boolean;
   started_at: string;
   last_metric_at?: string;
+  ath_price_sol?: number;
+  ath_timestamp?: string;
+}
+
+export interface RecentMetric {
+  mint: string;
+  timestamp: string;
+  phase_id_at_time: number;
+  price_close: number;
+  volume_sol: number;
+  num_buys: number;
+  num_sells: number;
+  unique_wallets: number;
+  market_cap_close?: number;
+  bonding_curve_pct?: number;
+  buy_volume_sol?: number;
+  sell_volume_sol?: number;
 }
 
 export interface StreamStats {

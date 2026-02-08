@@ -3,65 +3,123 @@ import {
   Typography,
   Box,
   Card,
-  CardContent,
   Chip,
-  Paper,
   Alert,
   LinearProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Tooltip,
+  Grid,
 } from '@mui/material';
 import {
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  Timeline as TimelineIcon,
+  Wifi as WifiIcon,
   Storage as StorageIcon,
+  AccessTime as AccessTimeIcon,
+  Cached as CachedIcon,
+  ShowChart as ShowChartIcon,
   SwapHoriz as SwapHorizIcon,
+  Inventory as InventoryIcon,
+  ContentCopy as ContentCopyIcon,
+  Webhook as WebhookIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { findApi } from '../../services/api';
-import type { FindHealthResponse, FindConfigResponse } from '../../types/find';
+import type { FindHealthResponse, StreamStats, Phase, RecentMetric } from '../../types/find';
+import DiscoveryStatCard from '../../components/discovery/DiscoveryStatCard';
+import PipelineVisualization from '../../components/discovery/PipelineVisualization';
+import PhaseDistributionChart from '../../components/discovery/PhaseDistributionChart';
+
+const fmt = (n: number | undefined | null): string => {
+  if (n == null) return '--';
+  return n.toLocaleString('en-US');
+};
+
+const fmtUptime = (seconds: number | undefined | null): string => {
+  if (seconds == null) return '--';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const fmtAgo = (seconds: number | null | undefined): string => {
+  if (seconds == null) return '--';
+  if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3600)}h ago`;
+};
+
+const truncateAddress = (addr: string): string => {
+  if (!addr || addr.length <= 12) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+};
+
+const timeAgo = (ts: string): string => {
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (diff < 0) return 'just now';
+  if (diff < 60) return `${Math.floor(diff)}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+};
+
+const PHASE_CHIP_COLORS: Record<number, string> = {
+  1: '#2196f3',
+  2: '#ff9800',
+  3: '#4caf50',
+  99: '#f44336',
+  100: '#9c27b0',
+};
 
 const DiscoveryOverview: React.FC = () => {
-  const {
-    data: health,
-    error: healthError,
-    isLoading: healthLoading,
-  } = useQuery<FindHealthResponse>({
+  const { data: health, error: healthError, isLoading: healthLoading } = useQuery<FindHealthResponse>({
     queryKey: ['find', 'health'],
-    queryFn: async () => {
-      const res = await findApi.getHealth();
-      return res.data;
-    },
+    queryFn: async () => (await findApi.getHealth()).data,
     refetchInterval: 5000,
   });
 
-  const { data: config } = useQuery<FindConfigResponse>({
-    queryKey: ['find', 'config'],
-    queryFn: async () => {
-      const res = await findApi.getConfig();
-      return res.data;
-    },
-    refetchInterval: 30000,
+  const { data: streamStats } = useQuery<StreamStats>({
+    queryKey: ['find', 'streamStats'],
+    queryFn: async () => (await findApi.getStreamStats()).data,
+    refetchInterval: 10000,
   });
 
-  const isServiceHealthy = health ? health.status === 'healthy' : false;
+  const { data: phases } = useQuery<Phase[]>({
+    queryKey: ['find', 'phases'],
+    queryFn: async () => {
+      const res = await findApi.getPhases();
+      return res.data.phases ?? res.data;
+    },
+    staleTime: 60000,
+  });
 
-  const uptimeFormatted = React.useMemo(() => {
-    if (!health?.uptime_seconds) return 'N/A';
-    const uptime = health.uptime_seconds;
-    const hours = Math.floor(uptime / 3600);
-    const minutes = Math.floor((uptime % 3600) / 60);
-    const seconds = Math.floor(uptime % 60);
-    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
-    return `${seconds}s`;
-  }, [health?.uptime_seconds]);
+  const { data: recentMetrics } = useQuery<RecentMetric[]>({
+    queryKey: ['find', 'recentMetrics'],
+    queryFn: async () => {
+      const res = await findApi.getRecentMetrics(20);
+      return res.data.metrics ?? res.data;
+    },
+    refetchInterval: 10000,
+  });
 
-  if (healthLoading && !health) {
+  const loading = healthLoading && !health;
+  const statusColor = health?.status === 'healthy' ? '#4caf50' : health?.status === 'degraded' ? '#ff9800' : '#f44336';
+
+  if (loading) {
     return (
-      <Box sx={{ mt: 4, mb: 4 }}>
-        <LinearProgress />
-        <Typography variant="h6" sx={{ mt: 2, textAlign: 'center' }}>
-          Loading service status...
+      <Box sx={{ mt: 4 }}>
+        <LinearProgress sx={{ mb: 2 }} />
+        <Typography variant="h6" sx={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+          Connecting to Discovery Service...
         </Typography>
       </Box>
     );
@@ -75,191 +133,369 @@ const DiscoveryOverview: React.FC = () => {
         </Alert>
       )}
 
-      {/* Service Status Overview */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, mb: 3 }}>
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="textSecondary" gutterBottom>
-                  Service Status
-                </Typography>
-                <Typography variant="h5" sx={{ fontSize: { xs: '1.25rem', md: '1.5rem' } }}>
-                  {isServiceHealthy ? 'Healthy' : 'Degraded'}
-                </Typography>
+      {/* A) System Status Bar */}
+      <Card
+        sx={{
+          mb: 2,
+          bgcolor: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderTop: `2px solid ${statusColor}`,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: { xs: 1.5, sm: 3 },
+            px: { xs: 1.5, sm: 2 },
+            py: 1,
+          }}
+        >
+          {/* WS Status */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                bgcolor: health?.ws_connected ? '#4caf50' : '#f44336',
+                animation: health?.ws_connected ? 'pulse 2s infinite' : 'none',
+                '@keyframes pulse': {
+                  '0%': { boxShadow: '0 0 0 0 rgba(76,175,80,0.6)' },
+                  '70%': { boxShadow: '0 0 0 6px rgba(76,175,80,0)' },
+                  '100%': { boxShadow: '0 0 0 0 rgba(76,175,80,0)' },
+                },
+              }}
+            />
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
+              WS {health?.ws_connected ? 'Connected' : 'Disconnected'}
+            </Typography>
+          </Box>
+
+          {/* DB Status */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <StorageIcon sx={{ fontSize: 14, color: health?.db_connected ? '#4caf50' : '#f44336' }} />
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
+              DB {health?.db_connected ? 'OK' : 'Down'}
+            </Typography>
+          </Box>
+
+          {/* Uptime */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <AccessTimeIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }} />
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+              {fmtUptime(health?.uptime_seconds)}
+            </Typography>
+          </Box>
+
+          {/* Last Message */}
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>
+            Last msg: {fmtAgo(health?.last_message_ago)}
+          </Typography>
+
+          {/* Reconnects */}
+          {(health?.reconnect_count ?? 0) > 0 && (
+            <Chip
+              label={`${health?.reconnect_count} reconnects`}
+              size="small"
+              sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ff9800', fontSize: '0.7rem', height: 22 }}
+            />
+          )}
+        </Box>
+      </Card>
+
+      {/* B) Live Counter Row */}
+      <Grid container spacing={1.5} sx={{ mb: 2 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <DiscoveryStatCard
+            label="Active Streams"
+            value={fmt(streamStats?.active_streams)}
+            sublabel={
+              streamStats?.streams_by_phase
+                ? Object.entries(streamStats.streams_by_phase)
+                    .filter(([, v]) => v > 0)
+                    .map(([k, v]) => `P${k}:${v}`)
+                    .join(' ')
+                : undefined
+            }
+            icon={<ShowChartIcon />}
+            accentColor="0, 212, 255"
+            loading={!streamStats}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <DiscoveryStatCard
+            label="Discovered"
+            value={fmt(health?.discovery_stats?.total_coins_discovered)}
+            sublabel="total coins found"
+            icon={<WifiIcon />}
+            accentColor="76, 175, 80"
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <DiscoveryStatCard
+            label="Metrics Saved"
+            value={fmt(health?.tracking_stats?.total_metrics_saved)}
+            sublabel="OHLCV snapshots"
+            icon={<InventoryIcon />}
+            accentColor="33, 150, 243"
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <DiscoveryStatCard
+            label="Trades"
+            value={fmt(health?.tracking_stats?.total_trades)}
+            sublabel="transactions recorded"
+            icon={<SwapHorizIcon />}
+            accentColor="156, 39, 176"
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <DiscoveryStatCard
+            label="n8n Buffer"
+            value={health?.discovery_stats?.n8n_buffer_size ?? '--'}
+            sublabel={health?.discovery_stats?.n8n_available ? 'webhook ready' : 'webhook offline'}
+            icon={<WebhookIcon />}
+            accentColor={health?.discovery_stats?.n8n_available ? '76, 175, 80' : '255, 152, 0'}
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <DiscoveryStatCard
+            label="Cache"
+            value={`${health?.cache_stats?.activated_coins ?? 0}/${health?.cache_stats?.total_coins ?? 0}`}
+            sublabel={`${health?.cache_stats?.expired_coins ?? 0} expired`}
+            icon={<CachedIcon />}
+            accentColor="0, 212, 255"
+            loading={!health}
+          />
+        </Grid>
+      </Grid>
+
+      {/* C) Pipeline Visualization */}
+      <Box sx={{ mb: 2 }}>
+        <PipelineVisualization
+          wsConnected={health?.ws_connected ?? false}
+          totalDiscovered={health?.discovery_stats?.total_coins_discovered ?? 0}
+          cacheTotal={health?.cache_stats?.total_coins ?? 0}
+          cacheActivated={health?.cache_stats?.activated_coins ?? 0}
+          activeStreams={streamStats?.active_streams ?? 0}
+          metricsSaved={health?.tracking_stats?.total_metrics_saved ?? 0}
+          totalTrades={health?.tracking_stats?.total_trades ?? 0}
+        />
+      </Box>
+
+      {/* D) Phase Distribution + Stream Stats */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid size={{ xs: 12, md: 7 }}>
+          <Card sx={{ bgcolor: 'rgba(0, 212, 255, 0.03)', border: '1px solid rgba(0, 212, 255, 0.15)', p: 2, height: '100%' }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', mb: 1, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1 }}>
+              Phase Distribution
+            </Typography>
+            {streamStats?.streams_by_phase && phases ? (
+              <PhaseDistributionChart streamsByPhase={streamStats.streams_by_phase} phases={phases} />
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
+                <Typography color="textSecondary">Loading...</Typography>
               </Box>
-              {isServiceHealthy ? (
-                <CheckCircleIcon color="success" sx={{ fontSize: { xs: 32, md: 40 } }} />
-              ) : (
-                <ErrorIcon color="error" sx={{ fontSize: { xs: 32, md: 40 } }} />
+            )}
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, md: 5 }}>
+          <Card sx={{ bgcolor: 'rgba(0, 212, 255, 0.03)', border: '1px solid rgba(0, 212, 255, 0.15)', p: 2, height: '100%' }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', mb: 2, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1 }}>
+              Stream Summary
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <StatRow label="Total Streams" value={fmt(streamStats?.total_streams)} color="#00d4ff" />
+              <StatRow label="Active" value={fmt(streamStats?.active_streams)} color="#4caf50" />
+              <StatRow
+                label="Ended"
+                value={fmt(
+                  streamStats ? streamStats.total_streams - streamStats.active_streams : null
+                )}
+                color="#f44336"
+              />
+              <StatRow
+                label="Graduated"
+                value={fmt(streamStats?.streams_by_phase?.[100])}
+                color="#9c27b0"
+              />
+              {phases && phases.length > 0 && (
+                <>
+                  <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', pt: 1.5, mt: 0.5 }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                      Active Phases
+                    </Typography>
+                  </Box>
+                  {phases.map((p) => (
+                    <Box key={p.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: PHASE_CHIP_COLORS[p.id] || '#607d8b' }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>
+                          {p.name}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {p.interval_seconds}s / {p.min_age_minutes}-{p.max_age_minutes}m
+                      </Typography>
+                    </Box>
+                  ))}
+                </>
               )}
             </Box>
-          </CardContent>
-        </Card>
+          </Card>
+        </Grid>
+      </Grid>
 
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="textSecondary" gutterBottom>
-                  Uptime
-                </Typography>
-                <Typography variant="h5" sx={{ fontSize: { xs: '1.25rem', md: '1.5rem' } }}>
-                  {uptimeFormatted}
-                </Typography>
-              </Box>
-              <TimelineIcon color="primary" sx={{ fontSize: { xs: 32, md: 40 } }} />
-            </Box>
-          </CardContent>
-        </Card>
-
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="textSecondary" gutterBottom>
-                  WebSocket
-                </Typography>
-                <Chip
-                  label={health?.ws_connected ? 'Connected' : 'Disconnected'}
-                  color={health?.ws_connected ? 'success' : 'error'}
-                  size="small"
-                />
-              </Box>
-              <SwapHorizIcon color="primary" sx={{ fontSize: { xs: 32, md: 40 } }} />
-            </Box>
-          </CardContent>
-        </Card>
-
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="textSecondary" gutterBottom>
-                  Database
-                </Typography>
-                <Chip
-                  label={health?.db_connected ? 'Connected' : 'Disconnected'}
-                  color={health?.db_connected ? 'success' : 'error'}
-                  size="small"
-                />
-              </Box>
-              <StorageIcon color="primary" sx={{ fontSize: { xs: 32, md: 40 } }} />
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
-
-      {/* Cache & Discovery Stats */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, mb: 3 }}>
-        <Paper sx={{ p: { xs: 1.5, md: 2 }, flex: 1 }}>
-          <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>
-            Cache Statistics
+      {/* E) Recent Metrics Feed */}
+      <Card sx={{ bgcolor: 'rgba(0, 212, 255, 0.03)', border: '1px solid rgba(0, 212, 255, 0.15)', mb: 2 }}>
+        <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1 }}>
+            Recent Metrics Feed
           </Typography>
-          {health ? (
-            <Box>
-              <Typography>
-                Total Coins: <strong>{health.cache_stats?.total_coins || 0}</strong>
-              </Typography>
-              <Typography>
-                Activated: <strong>{health.cache_stats?.activated_coins || 0}</strong>
-              </Typography>
-              <Typography>
-                Expired: <strong>{health.cache_stats?.expired_coins || 0}</strong>
-              </Typography>
-              <Typography>
-                Oldest Cache: <strong>{health.cache_stats?.oldest_age_seconds || 0}s</strong>
-              </Typography>
-            </Box>
-          ) : (
-            <Typography color="textSecondary">
-              Loading data...
-            </Typography>
-          )}
-        </Paper>
-
-        <Paper sx={{ p: { xs: 1.5, md: 2 }, flex: 1 }}>
-          <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>
-            Discovery Statistics
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.65rem' }}>
+            Last 20 entries - refreshes every 10s
           </Typography>
-          {health?.discovery_stats && (
-            <Box>
-              <Typography>
-                Coins Discovered: <strong>{health.discovery_stats.total_coins_discovered}</strong>
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                <Typography sx={{ mr: 1 }}>
-                  n8n Status:
-                </Typography>
-                <Chip
-                  label={health.discovery_stats.n8n_available ? 'Available' : 'Unavailable'}
-                  color={health.discovery_stats.n8n_available ? 'success' : 'warning'}
-                  size="small"
-                />
-              </Box>
-              <Typography sx={{ mt: 1 }}>
-                n8n Buffer: <strong>{health.discovery_stats.n8n_buffer_size || 0}</strong> coins waiting
-              </Typography>
-            </Box>
-          )}
-        </Paper>
-      </Box>
+        </Box>
+        <TableContainer sx={{ maxHeight: 380 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                {['Coin', 'Phase', 'Price', 'Volume', 'B/S', 'Wallets', 'Age'].map((h) => (
+                  <TableCell
+                    key={h}
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: '0.7rem',
+                      color: 'rgba(255,255,255,0.5)',
+                      bgcolor: '#1a1a2e',
+                      borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      py: 0.75,
+                    }}
+                  >
+                    {h}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {recentMetrics && recentMetrics.length > 0 ? (
+                recentMetrics.map((m, i) => (
+                  <TableRow
+                    key={`${m.mint}-${m.timestamp}-${i}`}
+                    sx={{
+                      '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
+                      '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.05)' },
+                    }}
+                  >
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                          {truncateAddress(m.mint)}
+                        </Typography>
+                        <Tooltip title="Copy address">
+                          <IconButton
+                            size="small"
+                            onClick={() => navigator.clipboard.writeText(m.mint)}
+                            sx={{ p: 0.25, opacity: 0.4, '&:hover': { opacity: 1 } }}
+                          >
+                            <ContentCopyIcon sx={{ fontSize: 12 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Chip
+                        label={`P${m.phase_id_at_time}`}
+                        size="small"
+                        sx={{
+                          bgcolor: `${PHASE_CHIP_COLORS[m.phase_id_at_time] || '#607d8b'}20`,
+                          color: PHASE_CHIP_COLORS[m.phase_id_at_time] || '#607d8b',
+                          fontSize: '0.65rem',
+                          height: 20,
+                          minWidth: 36,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {m.price_close?.toExponential(2) ?? '--'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {m.volume_sol?.toFixed(2) ?? '--'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                        <Box component="span" sx={{ color: '#4caf50' }}>{m.num_buys}</Box>
+                        {'/'}
+                        <Box component="span" sx={{ color: '#f44336' }}>{m.num_sells}</Box>
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {m.unique_wallets}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                        {timeAgo(m.timestamp)}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={7} sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography color="textSecondary" variant="body2">
+                      {recentMetrics ? 'No recent metrics' : 'Loading...'}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
 
-      {/* Tracking Stats */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 2, md: 3 }, mb: 3 }}>
-        <Paper sx={{ p: { xs: 1.5, md: 2 }, flex: 1 }}>
-          <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>
-            Tracking Statistics
-          </Typography>
-          {health?.tracking_stats && (
-            <Box>
-              <Typography>
-                Active Coins: <strong>{health.tracking_stats.active_coins}</strong>
-              </Typography>
-              <Typography>
-                Total Trades: <strong>{health.tracking_stats.total_trades.toLocaleString()}</strong>
-              </Typography>
-              <Typography>
-                Metrics Saved: <strong>{health.tracking_stats.total_metrics_saved.toLocaleString()}</strong>
-              </Typography>
-            </Box>
-          )}
-        </Paper>
-
-        <Paper sx={{ p: { xs: 1.5, md: 2 }, flex: 1 }}>
-          <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>
-            Service Configuration
-          </Typography>
-          {config && (
-            <Box>
-              <Typography variant="body2" color="textSecondary">
-                Cache Time: <strong>{config.coin_cache_seconds}s</strong>
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                Batch Size: <strong>{config.batch_size}</strong>
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                DB Refresh: <strong>{config.db_refresh_interval}s</strong>
-              </Typography>
-            </Box>
-          )}
-        </Paper>
-      </Box>
-
-      {/* Error Display */}
+      {/* F) Error Display */}
       {health?.last_error && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
+        <Alert
+          severity="warning"
+          sx={{
+            bgcolor: 'rgba(255, 152, 0, 0.08)',
+            border: '1px solid rgba(255, 152, 0, 0.2)',
+            color: '#ff9800',
+            '& .MuiAlert-icon': { color: '#ff9800' },
+          }}
+        >
           <Typography variant="body2">
             <strong>Last Error:</strong> {health.last_error}
           </Typography>
         </Alert>
       )}
-
-      <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-        Last update: {health ? new Date().toLocaleTimeString() : 'N/A'} (auto-refresh every 5s)
-      </Typography>
     </Box>
   );
 };
+
+function StatRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>
+        {label}
+      </Typography>
+      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, color: color || '#fff', fontSize: '0.9rem' }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
 
 export default DiscoveryOverview;
