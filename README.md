@@ -39,7 +39,9 @@ pump-platform/
 │       ├── pages/            # Dashboard, Discovery, Training, Predictions, Trading
 │       └── services/api.ts   # API-Client
 ├── sql/
-│   └── init.sql              # Datenbank-Schema
+│   ├── init.sql              # Datenbank-Schema (alle Tabellen)
+│   ├── migrate_to_pgvector.sql  # Migration: pgvector + coin_transactions
+│   └── migrate_to_timescaledb.sql # Migration: TimescaleDB Hypertables
 ├── docker-compose.yml         # Docker Compose Stack
 ├── .env.example              # Umgebungsvariablen-Vorlage
 └── .mcp.json                 # MCP-Server-Konfiguration
@@ -49,10 +51,28 @@ pump-platform/
 
 | Modul | Beschreibung | API-Prefix |
 |-------|-------------|------------|
-| Find | WebSocket-Streaming neuer Tokens von pumpportal.fun | `/api/find/` |
+| Find | WebSocket-Streaming neuer Tokens, OHLCV-Metriken + Einzel-Trades | `/api/find/` |
 | Training | XGBoost-Modell-Training mit Job-Queue | `/api/training/` |
 | Server | ML-Vorhersagen, Alert-Evaluierung, n8n-Webhooks | `/api/server/` |
 | Buy | Trading-Ausfuehrung, Wallet-Verwaltung, Positionen | `/api/buy/` |
+
+## Datenbank
+
+PostgreSQL 16 + TimescaleDB + pgvector (`timescale/timescaledb-ha:pg16`).
+
+**Wichtige Tabellen:**
+- `coin_metrics` - Aggregierte OHLCV-Snapshots pro Phasen-Intervall (Hypertable)
+- `coin_transactions` - Einzelne Trades mit Wallet, Betrag, Preis (Hypertable)
+- `coin_pattern_embeddings` - Vektor-Embeddings fuer Similarity Search (pgvector, Schema-only)
+
+**Migrations:**
+```bash
+# pgvector + coin_transactions (fuer bestehende DBs)
+docker exec -i pump-platform-db psql -U pump -d pump_platform < sql/migrate_to_pgvector.sql
+
+# TimescaleDB Hypertables (fuer bestehende DBs)
+docker exec -i pump-platform-db psql -U pump -d pump_platform < sql/migrate_to_timescaledb.sql
+```
 
 ## Konfiguration
 

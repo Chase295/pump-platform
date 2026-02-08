@@ -49,6 +49,7 @@ const DiscoveryInfo: React.FC = () => (
             <li><Typography variant="body2">120-Sekunden Cache vor Aktivierung des vollstaendigen Trackings</Typography></li>
             <li><Typography variant="body2">Phasen-basiertes Metrik-Tracking mit konfigurierbaren Intervallen</Typography></li>
             <li><Typography variant="body2">OHLCV-Daten, Volume, Wallet-Tracking in coin_metrics Tabelle</Typography></li>
+            <li><Typography variant="body2">Einzelne Trades in coin_transactions Tabelle (Wallet, Betrag, Preis)</Typography></li>
             <li><Typography variant="body2">n8n Webhook-Integration fuer Benachrichtigungen</Typography></li>
           </Box>
           <CodeBlock>
@@ -58,7 +59,8 @@ const DiscoveryInfo: React.FC = () => (
     -> 120s Cache (Trade-Sammlung)
     -> Coin-Stream erstellen (Phase 1)
     -> Metriken alle X Sekunden speichern
-    -> coin_metrics Tabelle (PostgreSQL)`}
+    -> coin_metrics (aggregierte OHLCV-Snapshots)
+    -> coin_transactions (einzelne Trades)`}
           </CodeBlock>
         </Chapter>
 
@@ -195,9 +197,31 @@ Trade-Zaehlung:
 )`}
           </CodeBlock>
 
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
             Jeder Eintrag speichert OHLCV-Daten fuer das jeweilige Phasen-Intervall.
             Der Training-Service und Prediction-Server lesen diese Daten fuer ML-Vorhersagen.
+          </Typography>
+
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold', color: '#ff9800' }}>
+            coin_transactions Schema
+          </Typography>
+          <CodeBlock>
+{`INSERT INTO coin_transactions (
+  mint, timestamp, trader_public_key, sol_amount,
+  tx_type, price_sol, is_whale, phase_id_at_time
+)
+
+Parallel zu coin_metrics gespeichert (non-fatal).
+Einzelne Trades mit Wallet-Adresse fuer:
+  - Pattern-Analyse & Graph-Features
+  - Wallet-Clustering (spaeter Neo4j)
+  - pgvector Similarity Search`}
+          </CodeBlock>
+
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            coin_transactions ist eine TimescaleDB Hypertable mit 1-Tag Chunks und
+            automatischer Compression nach 1 Tag. Fehler beim Speichern beeintraechtigen
+            niemals die coin_metrics Pipeline.
           </Typography>
         </Chapter>
 
