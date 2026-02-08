@@ -23,6 +23,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { buyApi } from '../../services/api';
+import { useTradingContext } from './TradingContext';
 import type { Wallet, Position, PositionStatus } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
@@ -46,6 +47,7 @@ const statusBadge = (status: string) => {
 export default function Positions() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const ctx = useTradingContext();
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -55,7 +57,7 @@ export default function Positions() {
   const fetchData = async () => {
     try {
       const [walletsRes, positionsRes] = await Promise.all([
-        buyApi.getWallets(),
+        buyApi.getWallets(ctx.walletType),
         buyApi.getPositions(filterWallet || undefined, filterStatus || undefined),
       ]);
       setWallets(walletsRes.data);
@@ -70,6 +72,8 @@ export default function Positions() {
   }, [filterWallet, filterStatus]);
 
   const walletLookup = new Map(wallets.map((w) => [w.id, w]));
+  const walletIds = new Set(wallets.map((w) => w.id));
+  const filteredPositions = positions.filter((p) => walletIds.has(p.wallet_id));
 
   // ---------------------------------------------------------------------------
   // Mobile card
@@ -137,7 +141,7 @@ export default function Positions() {
           gap: 2,
         }}
       >
-        <Typography variant="h5">Positions</Typography>
+        <Typography variant="h5">{ctx.label} - Positions</Typography>
         <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchData}>
           Refresh
         </Button>
@@ -177,12 +181,12 @@ export default function Positions() {
 
       {/* Table / Cards */}
       {isMobile ? (
-        positions.length === 0 ? (
+        filteredPositions.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
             <Typography sx={{ color: '#b8c5d6' }}>No positions found</Typography>
           </Box>
         ) : (
-          positions.map(renderMobileCard)
+          filteredPositions.map(renderMobileCard)
         )
       ) : (
         <TableContainer
@@ -202,7 +206,7 @@ export default function Positions() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {positions.map((pos) => {
+              {filteredPositions.map((pos) => {
                 const wallet = walletLookup.get(pos.wallet_id);
                 return (
                   <TableRow key={pos.id}>
@@ -240,7 +244,7 @@ export default function Positions() {
                   </TableRow>
                 );
               })}
-              {positions.length === 0 && (
+              {filteredPositions.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} sx={{ textAlign: 'center', color: '#b8c5d6', py: 4 }}>
                     No positions found
@@ -255,7 +259,7 @@ export default function Positions() {
       {/* Summary */}
       <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
         <Typography variant="body2" sx={{ color: '#b8c5d6' }}>
-          Showing {positions.length} position{positions.length !== 1 ? 's' : ''}
+          Showing {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
           {filterWallet && ` for wallet "${filterWallet}"`}
           {filterStatus && ` with status ${filterStatus}`}
         </Typography>

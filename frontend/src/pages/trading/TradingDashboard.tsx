@@ -24,6 +24,7 @@ import {
   ShowChart as ShowChartIcon,
 } from '@mui/icons-material';
 import { buyApi } from '../../services/api';
+import { useTradingContext } from './TradingContext';
 import type { DashboardStats, WalletPerformance, Wallet } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ function StatCard({ title, value, icon, color }: StatCardProps) {
 // Main Component
 // ---------------------------------------------------------------------------
 export default function TradingDashboard() {
+  const ctx = useTradingContext();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [performance, setPerformance] = useState<WalletPerformance[]>([]);
@@ -84,12 +86,12 @@ export default function TradingDashboard() {
     try {
       const [statsRes, walletsRes, perfRes] = await Promise.all([
         buyApi.getDashboardStats(),
-        buyApi.getWallets(),
+        buyApi.getWallets(ctx.walletType),
         buyApi.getWalletPerformance(),
       ]);
       setStats(statsRes.data);
       setWallets(walletsRes.data);
-      setPerformance(perfRes.data);
+      setPerformance(perfRes.data.filter((p: WalletPerformance) => p.type === ctx.walletType));
     } catch (err) {
       console.error('Failed to load trading dashboard:', err);
     } finally {
@@ -101,7 +103,8 @@ export default function TradingDashboard() {
     fetchAll();
     const interval = setInterval(fetchAll, 10_000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.walletType]);
 
   if (loading && !stats) {
     return (
@@ -121,7 +124,7 @@ export default function TradingDashboard() {
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 3 }}>
-        Trading Dashboard
+        {ctx.label} Dashboard
       </Typography>
 
       {/* Summary stats */}
@@ -353,7 +356,7 @@ export default function TradingDashboard() {
       {/* Total portfolio */}
       <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(255, 255, 255, 0.05)', borderRadius: 2 }}>
         <Typography variant="body2" sx={{ color: '#b8c5d6' }}>
-          Total Portfolio Value (Virtual)
+          Total Portfolio Value ({ctx.walletType === 'TEST' ? 'Virtual' : 'Real'})
         </Typography>
         <Typography variant="h3" sx={{ color: '#00d4ff', fontWeight: 600 }}>
           {totalBalance.toFixed(4)} SOL

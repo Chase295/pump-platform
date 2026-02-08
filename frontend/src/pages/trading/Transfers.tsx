@@ -25,6 +25,7 @@ import {
   Paper,
 } from '@mui/material';
 import { buyApi } from '../../services/api';
+import { useTradingContext } from './TradingContext';
 import type { Wallet, TransferLog } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ const truncate = (addr: string, chars = 4) =>
 // Main Component
 // ---------------------------------------------------------------------------
 export default function Transfers() {
+  const ctx = useTradingContext();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transferLogs, setTransferLogs] = useState<TransferLog[]>([]);
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -52,7 +54,7 @@ export default function Transfers() {
   const fetchData = async () => {
     try {
       const [walletsRes, logsRes] = await Promise.all([
-        buyApi.getWallets(),
+        buyApi.getWallets(ctx.walletType),
         buyApi.getTransferLogs(),
       ]);
       setWallets(walletsRes.data);
@@ -66,7 +68,7 @@ export default function Transfers() {
     fetchData();
   }, []);
 
-  const transferWallets = wallets.filter((w) => w.type === 'TEST' && w.transfer_enabled);
+  const transferWallets = wallets.filter((w) => w.transfer_enabled);
   const selectedWallet = wallets.find((w) => w.alias === form.wallet_alias);
 
   // ---------------------------------------------------------------------------
@@ -94,7 +96,7 @@ export default function Transfers() {
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 3 }}>
-        Transfers
+        {ctx.label} - Transfers
       </Typography>
 
       {alert && (
@@ -119,7 +121,7 @@ export default function Transfers() {
                   >
                     {transferWallets.map((w) => (
                       <MenuItem key={w.id} value={w.alias}>
-                        {w.alias} ({w.virtual_sol_balance.toFixed(4)} SOL)
+                        {w.alias} ({(ctx.walletType === 'TEST' ? w.virtual_sol_balance : w.real_sol_balance).toFixed(4)} SOL)
                       </MenuItem>
                     ))}
                   </Select>
@@ -194,7 +196,7 @@ export default function Transfers() {
                       Available Balance
                     </Typography>
                     <Typography variant="h6">
-                      {selectedWallet.virtual_sol_balance.toFixed(6)} SOL
+                      {(ctx.walletType === 'TEST' ? selectedWallet.virtual_sol_balance : selectedWallet.real_sol_balance).toFixed(6)} SOL
                     </Typography>
                   </Box>
                 )}

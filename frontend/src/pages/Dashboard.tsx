@@ -19,7 +19,8 @@ import {
   Search as SearchIcon,
   ModelTraining as ModelTrainingIcon,
   Analytics as AnalyticsIcon,
-  SwapHoriz as SwapHorizIcon,
+  Science as ScienceIcon,
+  AccountBalance as RealTradingIcon,
   Storage as StorageIcon,
   ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
@@ -305,20 +306,7 @@ export default function Dashboard() {
     ...QUERY_OPTS,
   });
 
-  // ----- Buy: dashboard stats + performance -----
-  const {
-    data: buyStats,
-    isLoading: buyStatsLoading,
-    isError: buyStatsError,
-  } = useQuery({
-    queryKey: ['dashboard', 'buy', 'stats'],
-    queryFn: async () => {
-      const res = await buyApi.getDashboardStats();
-      return res.data;
-    },
-    ...QUERY_OPTS,
-  });
-
+  // ----- Buy: performance + wallets -----
   const {
     data: buyPerformance,
     isLoading: buyPerfLoading,
@@ -327,6 +315,32 @@ export default function Dashboard() {
     queryKey: ['dashboard', 'buy', 'performance'],
     queryFn: async () => {
       const res = await buyApi.getWalletPerformance();
+      return res.data;
+    },
+    ...QUERY_OPTS,
+  });
+
+  const {
+    data: testWallets,
+    isLoading: testWalletsLoading,
+    isError: testWalletsError,
+  } = useQuery({
+    queryKey: ['dashboard', 'buy', 'wallets', 'TEST'],
+    queryFn: async () => {
+      const res = await buyApi.getWallets('TEST');
+      return res.data;
+    },
+    ...QUERY_OPTS,
+  });
+
+  const {
+    data: realWallets,
+    isLoading: realWalletsLoading,
+    isError: realWalletsError,
+  } = useQuery({
+    queryKey: ['dashboard', 'buy', 'wallets', 'REAL'],
+    queryFn: async () => {
+      const res = await buyApi.getWallets('REAL');
       return res.data;
     },
     ...QUERY_OPTS,
@@ -370,9 +384,22 @@ export default function Dashboard() {
   const totalAlerts = alertStats?.total_alerts ?? 0;
   const alertSuccessRate = alertStats?.success_rate ?? alertStats?.alerts_success_rate;
 
-  // Buy derived
-  const netProfitToday = Array.isArray(buyPerformance)
-    ? buyPerformance.reduce((sum: number, p: any) => sum + (p.profit_24h ?? 0), 0)
+  // Test Trading derived
+  const testPerf = Array.isArray(buyPerformance)
+    ? buyPerformance.filter((p: any) => p.type === 'TEST')
+    : [];
+  const testProfitToday = testPerf.reduce((sum: number, p: any) => sum + (p.profit_24h ?? 0), 0);
+  const testActiveWallets = Array.isArray(testWallets)
+    ? testWallets.filter((w: any) => w.status === 'ACTIVE').length
+    : 0;
+
+  // Real Trading derived
+  const realPerf = Array.isArray(buyPerformance)
+    ? buyPerformance.filter((p: any) => p.type === 'REAL')
+    : [];
+  const realProfitToday = realPerf.reduce((sum: number, p: any) => sum + (p.profit_24h ?? 0), 0);
+  const realActiveWallets = Array.isArray(realWallets)
+    ? realWallets.filter((w: any) => w.status === 'ACTIVE').length
     : 0;
 
   // Find: phase chips
@@ -647,42 +674,73 @@ export default function Dashboard() {
         </Grid>
 
         {/* -------------------------------------------------------------- */}
-        {/* Card 4: Trading (Buy)                                            */}
+        {/* Card 4: Test Trading                                              */}
         {/* -------------------------------------------------------------- */}
         <Grid size={{ xs: 12, md: 6 }}>
           <ModuleCard
-            title="Trading"
-            icon={<SwapHorizIcon sx={{ color: '#ff9800', fontSize: 24 }} />}
-            accentColor="255, 152, 0"
-            linkTo="/trading"
-            isLoading={buyStatsLoading && buyPerfLoading}
-            isError={buyStatsError && buyPerfError}
+            title="Test Trading"
+            icon={<ScienceIcon sx={{ color: '#00d4ff', fontSize: 24 }} />}
+            accentColor="0, 212, 255"
+            linkTo="/test-trading"
+            isLoading={testWalletsLoading && buyPerfLoading}
+            isError={testWalletsError && buyPerfError}
           >
             <StatLine
               label="Active Wallets"
-              value={fmt(buyStats?.active_wallets)}
+              value={fmt(testActiveWallets)}
             />
             <StatLine
-              label="Open Positions"
-              value={fmt(buyStats?.open_positions)}
-            />
-            <StatLine
-              label="Volume Today"
-              value={
-                buyStats?.total_volume_today != null
-                  ? `${fmtSol(buyStats.total_volume_today)} SOL`
-                  : '--'
-              }
+              label="Total Test Wallets"
+              value={fmt(testWallets?.length ?? 0)}
             />
             <StatLine
               label="P&L Today"
               value={
-                buyPerformance
-                  ? `${netProfitToday >= 0 ? '+' : ''}${fmtSol(netProfitToday)} SOL`
+                testPerf.length > 0
+                  ? `${testProfitToday >= 0 ? '+' : ''}${fmtSol(testProfitToday)} SOL`
                   : '--'
               }
-              color={netProfitToday >= 0 ? '#4caf50' : '#f44336'}
+              color={testProfitToday >= 0 ? '#4caf50' : '#f44336'}
             />
+          </ModuleCard>
+        </Grid>
+
+        {/* -------------------------------------------------------------- */}
+        {/* Card 5: Real Trading                                              */}
+        {/* -------------------------------------------------------------- */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <ModuleCard
+            title="Real Trading"
+            icon={<RealTradingIcon sx={{ color: '#4caf50', fontSize: 24 }} />}
+            accentColor="76, 175, 80"
+            linkTo="/real-trading"
+            isLoading={realWalletsLoading && buyPerfLoading}
+            isError={realWalletsError && buyPerfError}
+          >
+            <StatLine
+              label="Active Wallets"
+              value={fmt(realActiveWallets)}
+            />
+            <StatLine
+              label="Total Real Wallets"
+              value={fmt(realWallets?.length ?? 0)}
+            />
+            <StatLine
+              label="P&L Today"
+              value={
+                realPerf.length > 0
+                  ? `${realProfitToday >= 0 ? '+' : ''}${fmtSol(realProfitToday)} SOL`
+                  : '--'
+              }
+              color={realProfitToday >= 0 ? '#4caf50' : '#f44336'}
+            />
+            {realActiveWallets === 0 && (
+              <Chip
+                label="Not yet active"
+                size="small"
+                sx={{ mt: 1, bgcolor: 'rgba(255, 152, 0, 0.15)', color: '#ff9800' }}
+              />
+            )}
           </ModuleCard>
         </Grid>
       </Grid>

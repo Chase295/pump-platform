@@ -23,7 +23,8 @@ import {
   Search as SearchIcon,
   ModelTraining as ModelTrainingIcon,
   Analytics as AnalyticsIcon,
-  SwapHoriz as SwapHorizIcon,
+  Science as ScienceIcon,
+  AccountBalance as RealTradingIcon,
   AccountTree as AccountTreeIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
@@ -35,7 +36,8 @@ import Dashboard from './pages/Dashboard';
 import Discovery from './pages/Discovery';
 import Training from './pages/Training';
 import Predictions from './pages/Predictions';
-import Trading from './pages/Trading';
+import TestTrading from './pages/TestTrading';
+import RealTrading from './pages/RealTrading';
 import N8nWorkflows from './pages/N8nWorkflows';
 import Login from './pages/Login';
 
@@ -103,7 +105,8 @@ const navItems = [
   { path: '/discovery', label: 'Discovery', icon: <SearchIcon /> },
   { path: '/training', label: 'Training', icon: <ModelTrainingIcon /> },
   { path: '/predictions', label: 'Predictions', icon: <AnalyticsIcon /> },
-  { path: '/trading', label: 'Trading', icon: <SwapHorizIcon /> },
+  { path: '/test-trading', label: 'Test Trading', icon: <ScienceIcon /> },
+  { path: '/real-trading', label: 'Real Trading', icon: <RealTradingIcon /> },
   { path: '/workflows', label: 'Workflows', icon: <AccountTreeIcon /> },
 ];
 
@@ -371,7 +374,8 @@ function App() {
             <Route path="/discovery" element={<Discovery />} />
             <Route path="/training/*" element={<Training />} />
             <Route path="/predictions/*" element={<Predictions />} />
-            <Route path="/trading/*" element={<Trading />} />
+            <Route path="/test-trading/*" element={<TestTrading />} />
+            <Route path="/real-trading/*" element={<RealTrading />} />
             <Route path="/workflows" element={<N8nWorkflows />} />
           </Routes>
         </Layout>

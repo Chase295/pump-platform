@@ -38,6 +38,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { buyApi } from '../../services/api';
+import { useTradingContext } from './TradingContext';
 import type { Wallet, WalletStatus } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ const statusColor: Record<string, { bg: string; fg: string }> = {
 export default function Wallets() {
   const theme = useTheme();
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
+  const ctx = useTradingContext();
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -65,7 +67,7 @@ export default function Wallets() {
   const [newWallet, setNewWallet] = useState({
     alias: '',
     address: '',
-    type: 'TEST' as 'TEST' | 'REAL',
+    type: ctx.walletType as 'TEST' | 'REAL',
     tag: '',
     virtual_sol_balance: 10,
     virtual_loss_percent: 1,
@@ -93,7 +95,7 @@ export default function Wallets() {
   // ---------------------------------------------------------------------------
   const fetchWallets = async () => {
     try {
-      const res = await buyApi.getWallets();
+      const res = await buyApi.getWallets(ctx.walletType);
       setWallets(res.data);
     } catch {
       console.error('Failed to fetch wallets');
@@ -114,7 +116,7 @@ export default function Wallets() {
       setNewWallet({
         alias: '',
         address: '',
-        type: 'TEST',
+        type: ctx.walletType,
         tag: '',
         virtual_sol_balance: 10,
         virtual_loss_percent: 1,
@@ -329,7 +331,7 @@ export default function Wallets() {
           gap: 2,
         }}
       >
-        <Typography variant="h5">Wallets</Typography>
+        <Typography variant="h5">{ctx.label} - Wallets</Typography>
         <Box sx={{ display: 'flex', gap: 2, width: { xs: '100%', sm: 'auto' } }}>
           <Button
             variant="outlined"
@@ -539,17 +541,6 @@ export default function Wallets() {
               fullWidth
               helperText="Solana public key"
             />
-            <FormControl fullWidth>
-              <InputLabel>Type</InputLabel>
-              <Select
-                value={newWallet.type}
-                label="Type"
-                onChange={(e) => setNewWallet({ ...newWallet, type: e.target.value as 'TEST' | 'REAL' })}
-              >
-                <MenuItem value="TEST">TEST (Simulation)</MenuItem>
-                <MenuItem value="REAL">REAL (Blockchain)</MenuItem>
-              </Select>
-            </FormControl>
             <TextField
               label="Tag"
               value={newWallet.tag}
@@ -557,7 +548,7 @@ export default function Wallets() {
               fullWidth
               helperText="Optional strategy tag"
             />
-            {newWallet.type === 'TEST' && (
+            {ctx.walletType === 'TEST' && (
               <>
                 <TextField
                   label="Initial Balance (SOL)"

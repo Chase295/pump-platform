@@ -23,6 +23,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { buyApi } from '../../services/api';
+import { useTradingContext } from './TradingContext';
 import type { Wallet, TradeLog, TransferLog } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ const truncate = (addr: string, chars = 6) =>
 export default function TradeLogs() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const ctx = useTradingContext();
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [tradeLogs, setTradeLogs] = useState<TradeLog[]>([]);
@@ -47,13 +49,15 @@ export default function TradeLogs() {
   const fetchData = async () => {
     try {
       const [walletsRes, tradeRes, transferRes] = await Promise.all([
-        buyApi.getWallets(),
+        buyApi.getWallets(ctx.walletType),
         buyApi.getTradeLogs(filterWallet || undefined, filterAction || undefined),
         buyApi.getTransferLogs(filterWallet || undefined),
       ]);
-      setWallets(walletsRes.data);
-      setTradeLogs(tradeRes.data);
-      setTransferLogs(transferRes.data);
+      const wallets = walletsRes.data;
+      setWallets(wallets);
+      const walletIds = new Set(wallets.map((w: Wallet) => w.id));
+      setTradeLogs(tradeRes.data.filter((l: TradeLog) => walletIds.has(l.wallet_id)));
+      setTransferLogs(transferRes.data.filter((l: TransferLog) => walletIds.has(l.wallet_id)));
     } catch {
       console.error('Failed to load logs');
     }
@@ -148,7 +152,7 @@ export default function TradeLogs() {
           gap: 2,
         }}
       >
-        <Typography variant="h5">Trade Logs</Typography>
+        <Typography variant="h5">{ctx.label} - Logs</Typography>
         <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchData}>
           Refresh
         </Button>

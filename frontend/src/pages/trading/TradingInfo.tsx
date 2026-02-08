@@ -21,6 +21,7 @@ import {
   McpToolRow,
   InfoPageWrapper,
 } from '../../components/shared/InfoChapter';
+import { useTradingContext } from './TradingContext';
 
 const chapterIds = [
   'trade-overview',
@@ -38,14 +39,49 @@ const SmallTable: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </TableContainer>
 );
 
-const TradingInfo: React.FC = () => (
+const TradingInfo: React.FC = () => {
+  const ctx = useTradingContext();
+
+  return (
   <InfoPageWrapper
-    title="Trading (pump-buy)"
+    title={`${ctx.label} - Info`}
     subtitle="Simulations- & Live-Trading mit Risk-Management"
     chapterIds={chapterIds}
   >
     {({ expandedChapters, handleChapterChange }) => (
       <>
+        {ctx.walletType === 'REAL' && (
+          <Alert
+            severity="info"
+            sx={{
+              mb: 3,
+              bgcolor: 'rgba(33, 150, 243, 0.1)',
+              border: '1px solid rgba(33, 150, 243, 0.3)',
+              '& .MuiAlert-icon': { color: '#2196f3' },
+            }}
+          >
+            Real blockchain trading is currently <strong>not yet implemented</strong>.
+            You can create and manage REAL wallets, but buy/sell operations will return a NOT_IMPLEMENTED status.
+            When implemented, real trading will execute actual Solana transactions via Jupiter DEX
+            and optionally use Jito bundles for MEV protection.
+          </Alert>
+        )}
+
+        {ctx.walletType === 'TEST' && (
+          <Alert
+            severity="info"
+            sx={{
+              mb: 3,
+              bgcolor: 'rgba(0, 212, 255, 0.1)',
+              border: '1px solid rgba(0, 212, 255, 0.3)',
+              '& .MuiAlert-icon': { color: '#00d4ff' },
+            }}
+          >
+            Test trading uses virtual balances and simulates trades using real Jupiter DEX prices.
+            &quot;Pain Mode&quot; applies an artificial loss percentage to simulate real-world trading friction.
+          </Alert>
+        )}
+
         {/* 1. System-Uebersicht */}
         <Chapter
           id="trade-overview"
@@ -376,6 +412,7 @@ const TradingInfo: React.FC = () => (
       </>
     )}
   </InfoPageWrapper>
-);
+  );
+};
 
 export default TradingInfo;

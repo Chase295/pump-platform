@@ -17,11 +17,18 @@ import {
   Alert,
   Chip,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import { buyApi } from '../../services/api';
+import { useTradingContext } from './TradingContext';
 import type { Wallet, Position, TradeResponse } from '../../types/buy';
 
 export default function ExecuteTrade() {
+  const ctx = useTradingContext();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -48,10 +55,14 @@ export default function ExecuteTrade() {
   // Sell-all state
   const [sellAllWallet, setSellAllWallet] = useState('');
 
+  // Confirmation dialog state (for REAL mode)
+  const [confirmDialog, setConfirmDialog] = useState<{ action: string; onConfirm: () => void } | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+
   const fetchData = async () => {
     try {
       const [walletsRes, positionsRes] = await Promise.all([
-        buyApi.getWallets(),
+        buyApi.getWallets(ctx.walletType),
         buyApi.getPositions(),
       ]);
       setWallets(walletsRes.data);
@@ -131,15 +142,49 @@ export default function ExecuteTrade() {
     }
   };
 
+  // Confirmation wrappers for REAL mode
+  const handleBuyClick = () => {
+    if (ctx.walletType === 'REAL') {
+      setConfirmDialog({ action: 'BUY', onConfirm: handleBuy });
+    } else {
+      handleBuy();
+    }
+  };
+
+  const handleSellClick = () => {
+    if (ctx.walletType === 'REAL') {
+      setConfirmDialog({ action: 'SELL', onConfirm: handleSell });
+    } else {
+      handleSell();
+    }
+  };
+
+  const handleSellAllClick = () => {
+    if (ctx.walletType === 'REAL') {
+      setConfirmDialog({ action: 'SELL ALL', onConfirm: handleSellAll });
+    } else {
+      handleSellAll();
+    }
+  };
+
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 3 }}>
-        Execute Trade
+        {ctx.label} - Trade
       </Typography>
 
       {alert && (
         <Alert severity={alert.type} sx={{ mb: 3 }} onClose={() => setAlert(null)}>
           {alert.message}
+        </Alert>
+      )}
+
+      {ctx.walletType === 'REAL' && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3, bgcolor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)' }}
+        >
+          Real trading is not yet implemented. Buy/Sell orders will return NOT_IMPLEMENTED status.
         </Alert>
       )}
 
@@ -219,7 +264,7 @@ export default function ExecuteTrade() {
                 <Button
                   variant="contained"
                   color="success"
-                  onClick={handleBuy}
+                  onClick={handleBuyClick}
                   disabled={!buyForm.wallet_alias || !buyForm.mint || buyForm.amount_sol <= 0}
                   fullWidth
                   size="large"
@@ -295,7 +340,7 @@ export default function ExecuteTrade() {
                 <Button
                   variant="contained"
                   color="error"
-                  onClick={handleSell}
+                  onClick={handleSellClick}
                   disabled={!sellForm.wallet_alias || !sellForm.mint}
                   fullWidth
                   size="large"
@@ -332,7 +377,7 @@ export default function ExecuteTrade() {
                 <Button
                   variant="contained"
                   color="warning"
-                  onClick={handleSellAll}
+                  onClick={handleSellAllClick}
                   disabled={!sellAllWallet}
                   size="large"
                 >
@@ -426,6 +471,34 @@ export default function ExecuteTrade() {
           </Card>
         </Box>
       )}
+
+      {/* Confirmation Dialog for REAL trades */}
+      <Dialog open={!!confirmDialog} onClose={() => { setConfirmDialog(null); setConfirmText(''); }}>
+        <DialogTitle sx={{ color: '#ff9800' }}>Confirm Real Trade</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            You are about to execute a REAL {confirmDialog?.action} order.
+            Type <strong>CONFIRM</strong> to proceed.
+          </DialogContentText>
+          <TextField
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            fullWidth
+            placeholder="Type CONFIRM"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setConfirmDialog(null); setConfirmText(''); }}>Cancel</Button>
+          <Button
+            onClick={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); setConfirmText(''); }}
+            disabled={confirmText !== 'CONFIRM'}
+            variant="contained"
+            color="warning"
+          >
+            Execute
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
