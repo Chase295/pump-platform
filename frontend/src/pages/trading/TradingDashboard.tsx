@@ -19,13 +19,11 @@ import {
   AccountBalanceWallet as WalletIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
-  SwapHoriz as SwapHorizIcon,
   Inventory as InventoryIcon,
-  ShowChart as ShowChartIcon,
 } from '@mui/icons-material';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
-import type { DashboardStats, WalletPerformance, Wallet } from '../../types/buy';
+import type { WalletPerformance, Wallet } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
 // Stat Card
@@ -77,19 +75,16 @@ function StatCard({ title, value, icon, color }: StatCardProps) {
 // ---------------------------------------------------------------------------
 export default function TradingDashboard() {
   const ctx = useTradingContext();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [performance, setPerformance] = useState<WalletPerformance[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAll = async () => {
     try {
-      const [statsRes, walletsRes, perfRes] = await Promise.all([
-        buyApi.getDashboardStats(),
+      const [walletsRes, perfRes] = await Promise.all([
         buyApi.getWallets(ctx.walletType),
         buyApi.getWalletPerformance(),
       ]);
-      setStats(statsRes.data);
       setWallets(walletsRes.data);
       setPerformance(perfRes.data.filter((p: WalletPerformance) => p.type === ctx.walletType));
     } catch (err) {
@@ -106,7 +101,7 @@ export default function TradingDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.walletType]);
 
-  if (loading && !stats) {
+  if (loading && wallets.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
         <CircularProgress sx={{ color: '#00d4ff' }} />
@@ -115,7 +110,6 @@ export default function TradingDashboard() {
   }
 
   const totalProfit = performance.reduce((sum, p) => sum + p.net_profit_sol, 0);
-  const profit24h = performance.reduce((sum, p) => sum + p.profit_24h, 0);
   const totalBalance = wallets.reduce(
     (sum, w) => sum + (w.type === 'TEST' ? w.virtual_sol_balance : w.real_sol_balance),
     0,
@@ -132,7 +126,7 @@ export default function TradingDashboard() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Total Wallets"
-            value={stats?.total_wallets ?? wallets.length}
+            value={wallets.length}
             icon={<WalletIcon sx={{ color: '#00d4ff', fontSize: 30 }} />}
             color="0, 212, 255"
           />
@@ -140,34 +134,22 @@ export default function TradingDashboard() {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Active Wallets"
-            value={stats?.active_wallets ?? wallets.filter((w) => w.status === 'ACTIVE').length}
+            value={wallets.filter((w) => w.status === 'ACTIVE').length}
             icon={<TrendingUpIcon sx={{ color: '#4caf50', fontSize: 30 }} />}
             color="76, 175, 80"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
-            title="Open Positions"
-            value={stats?.open_positions ?? 0}
+            title="Total Trades"
+            value={performance.reduce((sum, p) => sum + p.trade_count, 0)}
             icon={<InventoryIcon sx={{ color: '#ff9800', fontSize: 30 }} />}
             color="255, 152, 0"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
-            title="Trades Today"
-            value={stats?.total_trades_today ?? 0}
-            icon={<SwapHorizIcon sx={{ color: '#9c27b0', fontSize: 30 }} />}
-            color="156, 39, 176"
-          />
-        </Grid>
-      </Grid>
-
-      {/* Performance metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            title="Total Profit (All Time)"
+            title="Total P&L"
             value={`${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(4)} SOL`}
             icon={
               totalProfit >= 0 ? (
@@ -177,36 +159,6 @@ export default function TradingDashboard() {
               )
             }
             color={totalProfit >= 0 ? '76, 175, 80' : '244, 67, 54'}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            title="24h Profit / Loss"
-            value={`${profit24h >= 0 ? '+' : ''}${profit24h.toFixed(4)} SOL`}
-            icon={
-              profit24h >= 0 ? (
-                <TrendingUpIcon sx={{ color: '#4caf50', fontSize: 30 }} />
-              ) : (
-                <TrendingDownIcon sx={{ color: '#f44336', fontSize: 30 }} />
-              )
-            }
-            color={profit24h >= 0 ? '76, 175, 80' : '244, 67, 54'}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            title="Total Trades"
-            value={performance.reduce((sum, p) => sum + p.trade_count, 0)}
-            icon={<ShowChartIcon sx={{ color: '#2196f3', fontSize: 30 }} />}
-            color="33, 150, 243"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            title="Volume Today"
-            value={`${(stats?.total_volume_today ?? 0).toFixed(2)} SOL`}
-            icon={<SwapHorizIcon sx={{ color: '#ff9800', fontSize: 30 }} />}
-            color="255, 152, 0"
           />
         </Grid>
       </Grid>
@@ -358,7 +310,7 @@ export default function TradingDashboard() {
         <Typography variant="body2" sx={{ color: '#b8c5d6' }}>
           Total Portfolio Value ({ctx.walletType === 'TEST' ? 'Virtual' : 'Real'})
         </Typography>
-        <Typography variant="h3" sx={{ color: '#00d4ff', fontWeight: 600 }}>
+        <Typography variant="h3" sx={{ color: `rgb(${ctx.accentColor})`, fontWeight: 600 }}>
           {totalBalance.toFixed(4)} SOL
         </Typography>
       </Box>
