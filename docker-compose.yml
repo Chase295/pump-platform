@@ -66,32 +66,20 @@ services:
       N8N_SECURE_COOKIE: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
       GENERIC_TIMEZONE: Europe/Berlin
+      N8N_ADMIN_EMAIL: ${N8N_ADMIN_EMAIL:-admin@pump.local}
+      N8N_ADMIN_PASSWORD: ${N8N_ADMIN_PASSWORD:-PumpAdmin123!}
     expose:
       - "5678"
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./scripts/n8n-init.sh:/n8n-init.sh:ro
+    entrypoint: ["sh", "/n8n-init.sh"]
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:5678/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 30s
-    networks:
-      - pump-network
-
-  n8n-init:
-    image: curlimages/curl:latest
-    container_name: pump-platform-n8n-init
-    depends_on:
-      n8n:
-        condition: service_healthy
-    environment:
-      N8N_ADMIN_EMAIL: ${N8N_ADMIN_EMAIL:-admin@pump.local}
-      N8N_ADMIN_PASSWORD: ${N8N_ADMIN_PASSWORD:-PumpAdmin123!}
-    volumes:
-      - ./scripts/n8n-init.sh:/init.sh:ro
-    entrypoint: ["sh", "/init.sh"]
-    restart: "no"
     networks:
       - pump-network
 
