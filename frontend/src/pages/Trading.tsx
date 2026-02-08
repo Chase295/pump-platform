@@ -7,6 +7,7 @@ import {
   Send as TransferIcon,
   Inventory as PositionsIcon,
   History as LogsIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 // Sub-pages
@@ -16,6 +17,7 @@ import ExecuteTrade from './trading/ExecuteTrade';
 import Transfers from './trading/Transfers';
 import Positions from './trading/Positions';
 import TradeLogs from './trading/TradeLogs';
+import TradingInfo from './trading/TradingInfo';
 
 const subNavItems = [
   { path: '/trading', label: 'Dashboard', icon: <DashboardIcon />, end: true },
@@ -24,6 +26,7 @@ const subNavItems = [
   { path: '/trading/transfers', label: 'Transfers', icon: <TransferIcon /> },
   { path: '/trading/positions', label: 'Positions', icon: <PositionsIcon /> },
   { path: '/trading/logs', label: 'Logs', icon: <LogsIcon /> },
+  { path: '/trading/info', label: 'Info', icon: <InfoIcon /> },
 ];
 
 export default function Trading() {
@@ -38,6 +41,7 @@ export default function Trading() {
     if (path.startsWith('/trading/transfers')) return 3;
     if (path.startsWith('/trading/positions')) return 4;
     if (path.startsWith('/trading/logs')) return 5;
+    if (path.startsWith('/trading/info')) return 6;
     return 0;
   };
 
@@ -94,6 +98,7 @@ export default function Trading() {
         <Route path="transfers" element={<Transfers />} />
         <Route path="positions" element={<Positions />} />
         <Route path="logs" element={<TradeLogs />} />
+        <Route path="info" element={<TradingInfo />} />
       </Routes>
     </Box>
   );

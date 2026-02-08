@@ -11,6 +11,7 @@ import {
   Schedule as ScheduleIcon,
   ListAlt as StreamIcon,
   Settings as SettingsIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 // Sub-components
@@ -18,6 +19,7 @@ import DiscoveryOverview from './discovery/DiscoveryOverview';
 import Phases from './discovery/Phases';
 import Streams from './discovery/Streams';
 import FindConfig from './discovery/FindConfig';
+import DiscoveryInfo from './discovery/DiscoveryInfo';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -89,6 +91,7 @@ export default function Discovery() {
           <Tab icon={<ScheduleIcon />} iconPosition="start" label="Phases" {...a11yProps(1)} />
           <Tab icon={<StreamIcon />} iconPosition="start" label="Streams" {...a11yProps(2)} />
           <Tab icon={<SettingsIcon />} iconPosition="start" label="Config" {...a11yProps(3)} />
+          <Tab icon={<InfoIcon />} iconPosition="start" label="Info" {...a11yProps(4)} />
         </Tabs>
       </Box>
 
@@ -103,6 +106,9 @@ export default function Discovery() {
       </TabPanel>
       <TabPanel value={tabValue} index={3}>
         <FindConfig />
+      </TabPanel>
+      <TabPanel value={tabValue} index={4}>
+        <DiscoveryInfo />
       </TabPanel>
     </Container>
   );
