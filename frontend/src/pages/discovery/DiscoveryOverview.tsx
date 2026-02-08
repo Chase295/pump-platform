@@ -189,6 +189,21 @@ const DiscoveryOverview: React.FC = () => {
             </Typography>
           </Box>
 
+          {/* n8n Status */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <WebhookIcon sx={{ fontSize: 14, color: health?.discovery_stats?.n8n_available ? '#4caf50' : '#f44336' }} />
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
+              n8n {health?.discovery_stats?.n8n_available ? 'Online' : 'Offline'}
+            </Typography>
+            {(health?.discovery_stats?.n8n_buffer_size ?? 0) > 0 && (
+              <Chip
+                label={`${health?.discovery_stats?.n8n_buffer_size} buffered`}
+                size="small"
+                sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ff9800', fontSize: '0.65rem', height: 20 }}
+              />
+            )}
+          </Box>
+
           {/* Last Message */}
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>
             Last msg: {fmtAgo(health?.last_message_ago)}
