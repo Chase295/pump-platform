@@ -199,8 +199,8 @@ async def send_batch_to_n8n(batch: list, status: dict) -> bool:
     webhook_method = settings.N8N_FIND_WEBHOOK_METHOD
 
     if not webhook_url:
-        logger.error("N8N_FIND_WEBHOOK_URL is not set")
-        return False
+        # No webhook configured - silently discard batch
+        return True
 
     max_retries = 3
     retry_count = 0
@@ -725,7 +725,16 @@ class CoinStreamer:
                         except asyncio.TimeoutError:
                             if now_ts - last_message_time > settings.WS_CONNECTION_TIMEOUT and now_ts % 30 < 1:
                                 logger.warning("No messages for %ds - reconnecting", settings.WS_CONNECTION_TIMEOUT)
-                                raise websockets.exceptions.ConnectionClosed(1006, "Timeout")
+                                self.status["ws_connected"] = False
+                                self.status["last_error"] = "timeout: no messages"
+                                find_ws_connected.set(0)
+                                if self.batching_task and not self.batching_task.done():
+                                    self.batching_task.cancel()
+                                    try:
+                                        await self.batching_task
+                                    except asyncio.CancelledError:
+                                        pass
+                                break
 
                         except websockets.exceptions.ConnectionClosed as e:
                             logger.warning("WebSocket connection closed: %s", e)
