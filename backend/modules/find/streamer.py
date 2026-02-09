@@ -198,9 +198,11 @@ async def send_batch_to_n8n(batch: list, status: dict) -> bool:
     """
     webhook_url = settings.N8N_FIND_WEBHOOK_URL
     webhook_method = settings.N8N_FIND_WEBHOOK_METHOD
+    status["n8n_no_url"] = not bool(webhook_url)
 
     if not webhook_url:
         # No webhook configured - silently discard batch
+        status["n8n_available"] = False
         return True
 
     max_retries = 3
@@ -230,6 +232,7 @@ async def send_batch_to_n8n(batch: list, status: dict) -> bool:
             if http_status == 200:
                 logger.info("Batch (%d coins) sent to n8n", len(batch))
                 status["n8n_available"] = True
+                status["n8n_no_url"] = False
                 status["last_n8n_success"] = time.time()
                 find_n8n_batches_sent.inc()
                 return True
@@ -319,6 +322,7 @@ class CoinStreamer:
             "db_connected": False,
             "ws_connected": False,
             "n8n_available": False,
+            "n8n_no_url": False,
             "last_error": None,
             "start_time": time.time(),
             "connection_start": None,

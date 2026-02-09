@@ -182,6 +182,7 @@ async def health_check():
         discovery_stats = {
             "total_coins_discovered": status_info.get("total_coins_discovered", 0),
             "n8n_available": status_info.get("n8n_available", False),
+            "n8n_no_url": status_info.get("n8n_no_url", False),
             "n8n_buffer_size": len(streamer.discovery_buffer),
         }
 

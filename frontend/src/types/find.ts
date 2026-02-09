@@ -17,6 +17,7 @@ export interface TrackingStats {
 export interface DiscoveryStats {
   total_coins_discovered: number;
   n8n_available: boolean;
+  n8n_no_url?: boolean;
   n8n_buffer_size: number;
 }
 

@@ -192,13 +192,21 @@ const DiscoveryOverview: React.FC = () => {
           {/* n8n Status */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             {(() => {
-              const available = health?.discovery_stats?.n8n_available;
-              const bufferSize = health?.discovery_stats?.n8n_buffer_size ?? 0;
-              // n8n_available is only set true after a successful send.
-              // If buffer=0 and not explicitly available, n8n is idle (no sends needed yet).
-              const isIdle = !available && bufferSize === 0;
-              const color = available ? '#4caf50' : isIdle ? '#ff9800' : '#f44336';
-              const label = available ? 'Online' : isIdle ? 'Idle' : 'Offline';
+              const ds = health?.discovery_stats;
+              const available = ds?.n8n_available;
+              const noUrl = ds?.n8n_no_url;
+              const bufferSize = ds?.n8n_buffer_size ?? 0;
+              let color: string;
+              let label: string;
+              if (available) {
+                color = '#4caf50'; label = 'Online';
+              } else if (noUrl) {
+                color = '#ff9800'; label = 'No URL';
+              } else if (bufferSize === 0) {
+                color = '#ff9800'; label = 'Idle';
+              } else {
+                color = '#f44336'; label = 'Offline';
+              }
               return (
                 <>
                   <WebhookIcon sx={{ fontSize: 14, color }} />
@@ -286,9 +294,9 @@ const DiscoveryOverview: React.FC = () => {
           <DiscoveryStatCard
             label="n8n Buffer"
             value={health?.discovery_stats?.n8n_buffer_size ?? '--'}
-            sublabel={health?.discovery_stats?.n8n_available ? 'webhook active' : (health?.discovery_stats?.n8n_buffer_size ?? 0) === 0 ? 'idle - no sends yet' : 'webhook offline'}
+            sublabel={health?.discovery_stats?.n8n_available ? 'webhook active' : health?.discovery_stats?.n8n_no_url ? 'no webhook URL configured' : 'webhook offline'}
             icon={<WebhookIcon />}
-            accentColor={health?.discovery_stats?.n8n_available ? '76, 175, 80' : (health?.discovery_stats?.n8n_buffer_size ?? 0) === 0 ? '255, 152, 0' : '244, 67, 54'}
+            accentColor={health?.discovery_stats?.n8n_available ? '76, 175, 80' : health?.discovery_stats?.n8n_no_url ? '255, 152, 0' : '244, 67, 54'}
             loading={!health}
           />
         </Grid>

@@ -21,8 +21,6 @@ from backend.shared.prometheus import find_phase_switches, find_active_streams
 
 logger = logging.getLogger(__name__)
 
-# Age offset applied before checking phase boundaries (minutes)
-AGE_CALCULATION_OFFSET_MIN = 60
 
 
 async def load_phases_config(pool=None) -> tuple[dict, list]:
@@ -144,22 +142,21 @@ async def get_active_streams_from_db(ath_cache: dict, pool=None) -> dict:
 async def switch_phase(mint: str, old_phase: int, new_phase: int) -> None:
     """Update the current phase for a coin stream in the database.
 
+    Raises on failure so the caller can decide whether to update in-memory state.
+
     Args:
         mint: Token address.
         old_phase: Previous phase ID (for logging).
         new_phase: New phase ID.
     """
-    try:
-        pool = get_pool()
-        async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE coin_streams SET current_phase_id = $1 WHERE token_address = $2",
-                new_phase, mint,
-            )
-        find_phase_switches.inc()
-        logger.info("Phase %d -> %d for %s", old_phase, new_phase, mint[:8])
-    except Exception as e:
-        logger.error("Phase switch error for %s: %s", mint[:8], e)
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE coin_streams SET current_phase_id = $1 WHERE token_address = $2",
+            new_phase, mint,
+        )
+    find_phase_switches.inc()
+    logger.info("Phase %d -> %d for %s", old_phase, new_phase, mint[:8])
 
 
 async def stop_tracking(mint: str, is_graduation: bool, watchlist: dict,
@@ -260,36 +257,47 @@ async def check_lifecycle_and_advance(
                                 subscribed_mints=subscribed_mints, dirty_aths=dirty_aths)
             continue
 
-        # Phase upgrade check
+        # Phase upgrade check -- find the correct phase for the coin's age
         created_at = entry["meta"]["created_at"]
         current_pid = entry["meta"]["phase_id"]
         diff = now_utc - created_at
-        age_minutes = (diff.total_seconds() / 60) - AGE_CALCULATION_OFFSET_MIN
-        if age_minutes < 0:
-            age_minutes = 0
+        age_minutes = diff.total_seconds() / 60
 
         phase_cfg = phases_config.get(current_pid)
         if phase_cfg and age_minutes > phase_cfg["max_age"]:
-            next_pid = None
+            # Find the correct target phase (may skip multiple phases)
+            target_pid = None
             for pid in sorted_phase_ids:
-                if pid > current_pid:
-                    next_pid = pid
+                if pid <= current_pid:
+                    continue
+                p_cfg = phases_config.get(pid)
+                if p_cfg and age_minutes <= p_cfg["max_age"]:
+                    target_pid = pid
                     break
 
-            if next_pid is None or next_pid >= 99:
+            # If no suitable phase found, coin has outlived all phases
+            if target_pid is None or target_pid >= 99:
                 await stop_tracking(mint, is_graduation=False, watchlist=watchlist,
                                     subscribed_mints=subscribed_mints, dirty_aths=dirty_aths)
                 continue
+
+            # Advance phase -- only update in-memory state after DB succeeds
+            try:
+                await switch_phase(mint, current_pid, target_pid)
+            except Exception as e:
+                logger.error("Phase switch failed for %s (%d->%d): %s -- will retry next cycle",
+                             mint[:8], current_pid, target_pid, e)
             else:
-                await switch_phase(mint, current_pid, next_pid)
-                entry["meta"]["phase_id"] = next_pid
-                new_interval = phases_config[next_pid]["interval"]
+                entry["meta"]["phase_id"] = target_pid
+                new_interval = phases_config[target_pid]["interval"]
                 entry["interval"] = new_interval
                 entry["next_flush"] = now_ts + new_interval
 
-                # Force re-subscribe after phase change
                 if force_resubscribe_fn:
-                    await force_resubscribe_fn(mint)
+                    try:
+                        await force_resubscribe_fn(mint)
+                    except Exception as e:
+                        logger.warning("Re-subscribe after phase switch failed for %s: %s", mint[:8], e)
 
         # Flush check
         if now_ts >= entry["next_flush"]:
