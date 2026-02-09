@@ -26,6 +26,7 @@ import {
   Science as ScienceIcon,
   AccountBalance as RealTradingIcon,
   AccountTree as AccountTreeIcon,
+  Hub as HubIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
   Logout as LogoutIcon,
@@ -39,6 +40,7 @@ import Predictions from './pages/Predictions';
 import TestTrading from './pages/TestTrading';
 import RealTrading from './pages/RealTrading';
 import N8nWorkflows from './pages/N8nWorkflows';
+import Neo4jGraph from './pages/Neo4jGraph';
 import Login from './pages/Login';
 
 // Auth
@@ -108,6 +110,7 @@ const navItems = [
   { path: '/test-trading', label: 'Test Trading', icon: <ScienceIcon /> },
   { path: '/real-trading', label: 'Real Trading', icon: <RealTradingIcon /> },
   { path: '/workflows', label: 'Workflows', icon: <AccountTreeIcon /> },
+  { path: '/graph', label: 'Graph', icon: <HubIcon /> },
 ];
 
 const DRAWER_WIDTH = 256;
@@ -377,6 +380,7 @@ function App() {
             <Route path="/test-trading/*" element={<TestTrading />} />
             <Route path="/real-trading/*" element={<RealTrading />} />
             <Route path="/workflows" element={<N8nWorkflows />} />
+            <Route path="/graph" element={<Neo4jGraph />} />
           </Routes>
         </Layout>
       </Router>

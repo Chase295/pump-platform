@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     SAFETY_BUFFER_SOL: float = 0.001
 
     # ------------------------------------------------------------------
+    # Graph module (Neo4j)
+    # ------------------------------------------------------------------
+    NEO4J_URI: str = "bolt://neo4j:7687"
+    NEO4J_USER: str = ""
+    NEO4J_PASSWORD: str = ""
+    NEO4J_SYNC_INTERVAL_SECONDS: int = 300
+    NEO4J_SYNC_ENABLED: bool = True
+
+    # ------------------------------------------------------------------
     # Auth
     # ------------------------------------------------------------------
     AUTH_USER: str = ""

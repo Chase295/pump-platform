@@ -7,13 +7,13 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
-      POSTGRES_DB: pump_platform
-      POSTGRES_USER: pump
+      POSTGRES_DB: ${DB_NAME:-pump_platform}
+      POSTGRES_USER: ${DB_USER:-pump}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pump -d pump_platform"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pump} -d ${DB_NAME:-pump_platform}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,7 +29,8 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://pump:${DB_PASSWORD:-changeme}@db:5432/pump_platform
+      DATABASE_URL: postgresql://${DB_USER:-pump}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-pump_platform}
+      NEO4J_URI: bolt://neo4j:7687
     volumes:
       - models:/app/models
       - logs:/app/logs
@@ -56,8 +57,8 @@ services:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: db
       DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: pump_n8n
-      DB_POSTGRESDB_USER: pump
+      DB_POSTGRESDB_DATABASE: ${DB_NAME:-pump_platform}_n8n
+      DB_POSTGRESDB_USER: ${DB_USER:-pump}
       DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-changeme}
       N8N_PATH: /n8n/
       N8N_EDITOR_BASE_URL: http://localhost:3000/n8n/
@@ -79,6 +80,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+      start_period: 30s
+    networks:
+      - pump-network
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: pump-platform-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: none
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_bolt_listen__address: 0.0.0.0:7687
+      NEO4J_server_bolt_advertised__address: localhost:3000
+      NEO4J_server_bolt_tls__level: DISABLED
+    expose:
+      - "7474"
+      - "7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
       start_period: 30s
     networks:
       - pump-network
@@ -105,6 +131,7 @@ volumes:
   models:
   logs:
   n8n_data:
+  neo4j_data:
 
 networks:
   pump-network:

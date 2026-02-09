@@ -23,6 +23,7 @@ from backend.modules.find.router import router as find_router
 from backend.modules.training.router import router as training_router
 from backend.modules.server.router import router as server_router
 from backend.modules.buy.router import router as buy_router
+from backend.modules.graph.router import router as graph_router
 from backend.modules.auth.router import router as auth_router, _auth_enabled, _generate_token
 
 # Import module lifecycle components
@@ -30,6 +31,12 @@ from backend.modules.find.streamer import CoinStreamer
 from backend.modules.training.jobs import JobManager
 from backend.modules.server.alerts import start_alert_evaluator, stop_alert_evaluator
 from backend.modules.server.predictor import preload_all_models
+
+# Import graph module lifecycle
+from backend.modules.graph.neo4j_client import (
+    init_neo4j, close_neo4j, check_health as neo4j_check_health,
+)
+from backend.modules.graph.sync import start_graph_sync, stop_graph_sync
 
 # Import Prometheus metrics
 from backend.shared.prometheus import get_metrics, platform_uptime_seconds
@@ -118,6 +125,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Model preload failed (non-fatal): %s", e)
 
+    # 6. Initialize Neo4j graph database (background retry - Neo4j may start slower)
+    async def _init_neo4j_with_retry(max_retries: int = 12, delay: int = 10):
+        for attempt in range(1, max_retries + 1):
+            try:
+                await init_neo4j(settings.NEO4J_URI, settings.NEO4J_USER, settings.NEO4J_PASSWORD)
+                logger.info("Neo4j driver initialized (attempt %d)", attempt)
+                if settings.NEO4J_SYNC_ENABLED:
+                    await start_graph_sync(interval_seconds=settings.NEO4J_SYNC_INTERVAL_SECONDS)
+                    logger.info("Graph sync service started")
+                return
+            except Exception as e:
+                logger.warning("Neo4j init attempt %d/%d failed: %s", attempt, max_retries, e)
+                if attempt < max_retries:
+                    await asyncio.sleep(delay)
+        logger.error("Neo4j init failed after %d attempts - graph module disabled", max_retries)
+
+    asyncio.create_task(_init_neo4j_with_retry())
+
     logger.info("Pump Platform ready on port %d", settings.API_PORT)
 
     # Start uptime tracking task
@@ -139,6 +164,8 @@ async def lifespan(app: FastAPI):
     if _job_manager:
         await _job_manager.stop()
     await stop_alert_evaluator()
+    await stop_graph_sync()
+    await close_neo4j()
     await close_pool()
 
     logger.info("Pump Platform stopped")
@@ -170,6 +197,7 @@ app.include_router(find_router)      # /api/find/...
 app.include_router(training_router)  # /api/training/...
 app.include_router(server_router)    # /api/server/...
 app.include_router(buy_router)       # /api/buy/...
+app.include_router(graph_router)     # /api/graph/...
 
 # MCP integration - exposes all API endpoints as MCP tools
 from fastapi_mcp import FastApiMCP
@@ -203,6 +231,12 @@ async def global_health():
     find_ok = _streamer is not None and _streamer.get_status().get("ws_connected", False)
     training_ok = _job_manager is not None
 
+    # Neo4j health (non-blocking, fail-safe)
+    try:
+        graph_ok = await neo4j_check_health()
+    except Exception:
+        graph_ok = False
+
     return {
         "status": "healthy" if db_ok else "degraded",
         "db_connected": db_ok,
@@ -212,6 +246,7 @@ async def global_health():
             "training": training_ok,
             "server": True,
             "buy": True,
+            "graph": graph_ok,
         },
     }
 
