@@ -20,8 +20,8 @@
 -- n8n manages its own schema automatically on first start
 -- ============================================================================
 
-SELECT 'CREATE DATABASE pump_n8n OWNER pump'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pump_n8n')\gexec
+SELECT 'CREATE DATABASE pump_platform_n8n OWNER pump'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pump_platform_n8n')\gexec
 
 
 -- ============================================================================
