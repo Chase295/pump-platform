@@ -117,6 +117,7 @@ services:
       IPFS_PATH: /data/ipfs
     volumes:
       - ipfs_data:/data/ipfs
+      - ./scripts/ipfs-init.sh:/container-init.d/001-cors.sh:ro
     ports:
       - "5001:5001"  # API + Web UI
       - "8080:8080"  # Gateway (content retrieval)
