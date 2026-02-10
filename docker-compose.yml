@@ -117,10 +117,10 @@ services:
       IPFS_PATH: /data/ipfs
     volumes:
       - ipfs_data:/data/ipfs
-    expose:
-      - "5001"  # API + Web UI
-      - "8080"  # Gateway (content retrieval)
-      - "4001"  # Swarm (P2P)
+    ports:
+      - "5001:5001"  # API + Web UI
+      - "8080:8080"  # Gateway (content retrieval)
+      - "4001:4001"  # Swarm (P2P)
     healthcheck:
       test: ["CMD-SHELL", "ipfs dag stat /ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn || exit 1"]
       interval: 30s

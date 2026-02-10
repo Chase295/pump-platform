@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Tabs,
@@ -21,6 +21,10 @@ import {
   OpenInNew as OpenIcon,
   Image as ImageIcon,
   Link as LinkIcon,
+  CheckCircle as OkIcon,
+  Storage as StorageIcon,
+  People as PeersIcon,
+  Speed as SpeedIcon,
 } from '@mui/icons-material';
 
 // ---- Metadata Lookup Tab ----
@@ -28,7 +32,7 @@ const MetadataLookup: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [metadata, setMetadata] = useState<Record<string, unknown> | null>(null);
+  const [metadata, setMetadata] = useState<Record<string, string | number | boolean | null | object> | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   const resolveCid = (uri: string): string => {
@@ -319,11 +323,141 @@ const MetadataLookup: React.FC = () => {
   );
 };
 
+// ---- Node Status Tab ----
+interface NodeInfo {
+  id: string;
+  agentVersion: string;
+  peers: number;
+  repoSize: string;
+  repoObjects: number;
+}
+
+const NodeStatus: React.FC = () => {
+  const [info, setInfo] = useState<NodeInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInfo = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const [idRes, swarmRes, repoRes] = await Promise.all([
+          fetch('/api/v0/id', { method: 'POST' }),
+          fetch('/api/v0/swarm/peers', { method: 'POST' }),
+          fetch('/api/v0/repo/stat', { method: 'POST' }),
+        ]);
+
+        if (!idRes.ok) throw new Error(`RPC error: ${idRes.status}`);
+
+        const idData = await idRes.json();
+        const swarmData = swarmRes.ok ? await swarmRes.json() : { Peers: [] };
+        const repoData = repoRes.ok ? await repoRes.json() : { RepoSize: 0, NumObjects: 0 };
+
+        const sizeBytes = repoData.RepoSize || 0;
+        const sizeMB = (sizeBytes / 1024 / 1024).toFixed(1);
+
+        setInfo({
+          id: idData.ID,
+          agentVersion: idData.AgentVersion,
+          peers: (swarmData.Peers || []).length,
+          repoSize: `${sizeMB} MB`,
+          repoObjects: repoData.NumObjects || 0,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Connection failed');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInfo();
+    const interval = setInterval(fetchInfo, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading && !info) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress sx={{ color: '#00d4ff' }} />
+      </Box>
+    );
+  }
+
+  if (error && !info) {
+    return <Alert severity="error">IPFS Node not reachable: {error}</Alert>;
+  }
+
+  if (!info) return null;
+
+  const cards = [
+    { icon: <OkIcon sx={{ color: '#4caf50' }} />, label: 'Status', value: 'Online' },
+    { icon: <SpeedIcon sx={{ color: '#00d4ff' }} />, label: 'Version', value: info.agentVersion },
+    { icon: <PeersIcon sx={{ color: '#ff9800' }} />, label: 'Peers', value: String(info.peers) },
+    { icon: <StorageIcon sx={{ color: '#ab47bc' }} />, label: 'Repo', value: `${info.repoSize} (${info.repoObjects} objects)` },
+  ];
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        {cards.map((c) => (
+          <Paper
+            key={c.label}
+            sx={{
+              flex: '1 1 200px',
+              p: 2,
+              bgcolor: '#1a1a2e',
+              border: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            {c.icon}
+            <Box>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{c.label}</Typography>
+              <Typography variant="body2" sx={{ color: '#fff', fontFamily: 'monospace' }}>{c.value}</Typography>
+            </Box>
+          </Paper>
+        ))}
+      </Stack>
+
+      <Paper sx={{ p: 2, bgcolor: '#1a1a2e', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Peer ID</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" sx={{ color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>
+            {info.id}
+          </Typography>
+          <Tooltip title="Copy">
+            <IconButton size="small" onClick={() => navigator.clipboard.writeText(info.id)} sx={{ color: 'rgba(255,255,255,0.5)' }}>
+              <CopyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Paper>
+
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+          Gateway: <code>{window.location.origin}/ipfs/&lt;CID&gt;</code>
+        </Typography>
+      </Box>
+    </Box>
+  );
+};
+
 // ---- Main IPFS Explorer Page ----
 const IpfsExplorer: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
+  const [iframeReady, setIframeReady] = useState(false);
 
-  const ipfsWebUiSrc = '/ipfs-ui/';
+  // Pre-configure localStorage so the Kubo Web UI (loaded via /ipfs/<CID> on same origin)
+  // finds our /api/v0/ proxy instead of trying localhost:5001
+  useEffect(() => {
+    // The IPFS Web UI reads 'ipfsApi' from localStorage to find the RPC endpoint
+    localStorage.setItem('ipfsApi', window.location.origin);
+    setIframeReady(true);
+  }, []);
 
   return (
     <Box>
@@ -359,11 +493,12 @@ const IpfsExplorer: React.FC = () => {
         >
           <Tab icon={<IpfsIcon />} iconPosition="start" label="IPFS Web UI" />
           <Tab icon={<SearchIcon />} iconPosition="start" label="Metadata Lookup" />
+          <Tab icon={<StorageIcon />} iconPosition="start" label="Node Status" />
         </Tabs>
       </Box>
 
-      {/* Tab 0: IPFS Web UI iframe */}
-      {tabValue === 0 && (
+      {/* Tab 0: Kubo Web UI (iframe, same origin via /ipfs/<CID> gateway) */}
+      {tabValue === 0 && iframeReady && (
         <Box
           sx={{
             width: '100%',
@@ -374,7 +509,7 @@ const IpfsExplorer: React.FC = () => {
           }}
         >
           <iframe
-            src={ipfsWebUiSrc}
+            src="/ipfs-rpc/webui/"
             title="IPFS Web UI"
             style={{
               width: '100%',
@@ -388,6 +523,9 @@ const IpfsExplorer: React.FC = () => {
 
       {/* Tab 1: Metadata Lookup */}
       {tabValue === 1 && <MetadataLookup />}
+
+      {/* Tab 2: Node Status */}
+      {tabValue === 2 && <NodeStatus />}
     </Box>
   );
 };
