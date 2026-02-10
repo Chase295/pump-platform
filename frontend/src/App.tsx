@@ -27,6 +27,7 @@ import {
   AccountBalance as RealTradingIcon,
   AccountTree as AccountTreeIcon,
   Hub as HubIcon,
+  Cloud as CloudIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
   Logout as LogoutIcon,
@@ -41,6 +42,7 @@ import TestTrading from './pages/TestTrading';
 import RealTrading from './pages/RealTrading';
 import N8nWorkflows from './pages/N8nWorkflows';
 import Neo4jGraph from './pages/Neo4jGraph';
+import IpfsExplorer from './pages/IpfsExplorer';
 import Login from './pages/Login';
 
 // Auth
@@ -111,6 +113,7 @@ const navItems = [
   { path: '/real-trading', label: 'Real Trading', icon: <RealTradingIcon /> },
   { path: '/workflows', label: 'Workflows', icon: <AccountTreeIcon /> },
   { path: '/graph', label: 'Graph', icon: <HubIcon /> },
+  { path: '/ipfs', label: 'IPFS', icon: <CloudIcon /> },
 ];
 
 const DRAWER_WIDTH = 256;
@@ -381,6 +384,7 @@ function App() {
             <Route path="/real-trading/*" element={<RealTrading />} />
             <Route path="/workflows" element={<N8nWorkflows />} />
             <Route path="/graph" element={<Neo4jGraph />} />
+            <Route path="/ipfs" element={<IpfsExplorer />} />
           </Routes>
         </Layout>
       </Router>

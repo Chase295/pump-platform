@@ -109,6 +109,27 @@ services:
     networks:
       - pump-network
 
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: pump-platform-ipfs
+    restart: unless-stopped
+    environment:
+      IPFS_PATH: /data/ipfs
+    volumes:
+      - ipfs_data:/data/ipfs
+    expose:
+      - "5001"  # API + Web UI
+      - "8080"  # Gateway (content retrieval)
+      - "4001"  # Swarm (P2P)
+    healthcheck:
+      test: ["CMD-SHELL", "ipfs dag stat /ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - pump-network
+
   frontend:
     build: ./frontend
     container_name: pump-platform-frontend
@@ -132,6 +153,7 @@ volumes:
   logs:
   n8n_data:
   neo4j_data:
+  ipfs_data:
 
 networks:
   pump-network:
