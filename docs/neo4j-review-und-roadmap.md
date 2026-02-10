@@ -502,7 +502,7 @@ Wenn der Dev 0% haelt (hat alles verkauft), ist das ein schlechtes Zeichen.
 | `NEXT_PHASE` | **Nein** | PhaseSnapshot -> PhaseSnapshot | HOCH |
 | `PRICE_AT` | **Nein** | Token -> PriceCheckpoint | MITTEL |
 | `NEXT_CHECKPOINT` | **Nein** | PriceCheckpoint -> PriceCheckpoint | MITTEL |
-| `SIMILAR_TO` | **Nein** | Token -> Token | MITTEL |
+| `SIMILAR_TO` | **Ja** (Feb 2026) | Token -> Token | ERLEDIGT |
 | `TRADES_WITH` | **Nein** | Wallet -> Wallet | MITTEL |
 | `BELONGS_TO` | **Nein** | Wallet -> WalletCluster | MITTEL |
 | `DURING_MARKET` | **Nein** | Token -> SolPrice | NIEDRIG |
@@ -517,10 +517,11 @@ Wenn der Dev 0% haelt (hat alles verkauft), ist das ein schlechtes Zeichen.
 
 ### Besonders wichtige fehlende Relationships erklaert
 
-**`SIMILAR_TO` (Token -> Token)**
-Kommt aus pgvector. Wenn zwei Token-Patterns aehnlich sind (Cosine Similarity > 0.85),
-wird eine `SIMILAR_TO`-Kante erstellt. So kannst du im Graph direkt sehen:
-"Token ABC sieht aus wie Token XYZ das ein Rug war."
+**`SIMILAR_TO` (Token -> Token) - IMPLEMENTIERT (Feb 2026)**
+Kommt aus pgvector via `backend/modules/embeddings/similarity.py`.
+Wenn zwei Token-Patterns aehnlich sind (Cosine Similarity > 0.85),
+wird eine `SIMILAR_TO`-Kante erstellt. Automatischer Sync via `sync_similarities_to_neo4j()`.
+Manuell auslösbar via `POST /api/embeddings/neo4j/sync`.
 
 **`TRADES_WITH` (Wallet -> Wallet)**
 Abgeleitet aus gemeinsamen Token-Kaeufen. Wenn Wallet A und Wallet B
@@ -610,19 +611,19 @@ async def _create_phase_snapshots(self) -> int:
         """, params)
 ```
 
-### 6.3 pgvector Embedding Pipeline (MITTEL)
+### 6.3 pgvector Embedding Pipeline - ERLEDIGT (Feb 2026)
 
-**Was muss gebaut werden:**
-Code der aus `coin_metrics` Feature-Vektoren berechnet und in `coin_pattern_embeddings` schreibt.
+**Vollstaendig implementiert in `backend/modules/embeddings/`:**
 
-**Ablauf:**
-1. Alle coin_metrics fuer ein Token + Phase laden (z.B. 120 Zeilen fuer Baby-Phase)
-2. Features berechnen: Preis-Normalisierung, Volumen-Ratio, Buy/Sell-Verhaeltnis, etc.
-3. Auf 128 Dimensionen bringen (PCA, Autoencoder, oder feste Feature-Auswahl)
-4. In `coin_pattern_embeddings` speichern
-
-**Wichtig:** Diese Pipeline ist UNABHAENGIG von Neo4j. Sie schreibt in PostgreSQL (pgvector).
-Neo4j kann spaeter die Ergebnisse nutzen um `SIMILAR_TO`-Kanten zu erstellen.
+- **128-Feature-Extraktion** aus `coin_metrics` (60 Features) + `coin_transactions` (40 Features) + Kontext/Interaktionen (28 Features)
+- **Handcrafted v1 Strategie**: Deterministische 128-dim Vektoren, kein Training noetig
+- **Background-Service**: Generiert Embeddings alle 60s inkrementell
+- **Auto-Labeling**: pump, rug, organic_growth, flat, dump, mixed
+- **Similarity Search**: pgvector HNSW mit <50ms bei 100k Embeddings
+- **Neo4j SIMILAR_TO Sync**: Automatisch + manuell auslösbar
+- **25+ API-Endpoints** unter `/api/embeddings/`
+- **Frontend**: 3 neue Tabs in Discovery (Similarity, Patterns, Embeddings)
+- **Vorbereitet fuer**: PCA + Autoencoder Strategien (Generator-Registry)
 
 ### 6.4 coin_transactions -> Neo4j Sync (NIEDRIG)
 
@@ -675,14 +676,15 @@ signifikante Trades (Whales, grosse Volumen, etc.)
 
 **Ergebnis:** Scam-Wallet-Netzwerke werden sichtbar.
 
-### Phase 4: Similarity (pgvector -> Neo4j)
+### Phase 4: Similarity (pgvector -> Neo4j) - ERLEDIGT (Feb 2026)
 
-| Aufgabe | Aufwand | Dateien |
-|---------|---------|---------|
-| Embedding Pipeline implementieren | 4-6h | Neuer Service |
-| SIMILAR_TO Kanten aus pgvector | 2h | sync.py |
+| Aufgabe | Status | Dateien |
+|---------|--------|---------|
+| Embedding Pipeline implementieren | DONE | `backend/modules/embeddings/` (8 Dateien) |
+| SIMILAR_TO Kanten aus pgvector | DONE | `backend/modules/embeddings/similarity.py` |
+| Frontend (3 Discovery-Tabs) | DONE | `frontend/src/pages/discovery/Similarity*.tsx` etc. |
 
-**Ergebnis:** "Zeig mir Tokens die so aussehen wie dieser Rug."
+**Ergebnis:** "Zeig mir Tokens die so aussehen wie dieser Rug." - FUNKTIONIERT
 
 ### Phase 5: Enrichment (Nice-to-have)
 

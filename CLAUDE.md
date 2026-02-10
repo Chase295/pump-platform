@@ -13,13 +13,15 @@ Unified crypto token trading platform consolidating discovery, ML training, pred
   - `backend/modules/training/` - ML model training (XGBoost, job queue)
   - `backend/modules/server/` - ML predictions, alerts, n8n webhooks
   - `backend/modules/buy/` - Trading execution, wallet management, positions
+  - `backend/modules/embeddings/` - pgvector embedding pipeline, similarity search, auto-labeling
+  - `backend/modules/graph/` - Neo4j graph sync, Cypher query API
 - **Frontend**: React + TypeScript + MUI at `frontend/`
   - Pages: Dashboard, Discovery, Training, Predictions, Trading
   - State: Zustand stores, @tanstack/react-query
   - API client: `frontend/src/services/api.ts` (Axios)
 - **Database**: PostgreSQL 16 + TimescaleDB + pgvector
   - Schema: `sql/init.sql` (all tables)
-  - Migrations: `sql/migrate_to_pgvector.sql`, `sql/migrate_to_timescaledb.sql`
+  - Migrations: `sql/migrate_to_pgvector.sql`, `sql/migrate_to_timescaledb.sql`, `sql/migrate_embeddings_v2.sql`
   - Connection: asyncpg pool (shared across all modules)
   - Docker image: `timescale/timescaledb-ha:pg16` (includes pgvector)
   - Extensions: timescaledb, pgcrypto, vector
@@ -30,6 +32,8 @@ All routes use `/api/{module}/` prefix:
 - `/api/training/` - Models, jobs, test results, comparisons, features
 - `/api/server/` - Active models, predictions, alerts, alert config, system
 - `/api/buy/` - Wallets, positions, trades, transfers, dashboard
+- `/api/embeddings/` - Configs, generation, browse, similarity search, labels, analysis, Neo4j sync
+- `/api/graph/` - Neo4j health, stats, sync, Cypher queries
 
 ## Database Tables
 Core tables (all in `sql/init.sql`):
@@ -37,7 +41,11 @@ Core tables (all in `sql/init.sql`):
 - `coin_streams` - Active tracking streams with phase + ATH
 - `coin_metrics` - Aggregated OHLCV snapshots (TimescaleDB hypertable) - used by ML Training & Predictions
 - `coin_transactions` - Individual trade records (TimescaleDB hypertable) - for pattern analysis & graph features
-- `coin_pattern_embeddings` - Vector embeddings for similarity search (pgvector, schema-only for now)
+- `coin_pattern_embeddings` - 128-dim vector embeddings for similarity search (pgvector HNSW index)
+- `embedding_configs` - Embedding strategy configurations (window size, normalization, phases)
+- `embedding_jobs` - Background generation jobs with progress tracking
+- `pattern_labels` - Manual/auto labels (pump, rug, flat, etc.) with confidence
+- `similarity_cache` - Pre-computed similarity pairs for Neo4j SIMILAR_TO sync
 - `ref_coin_phases` - Phase config (interval, age range)
 - `ml_models`, `ml_jobs`, `ml_test_results`, `ml_comparisons` - Training module
 - `active_models`, `predictions`, `model_predictions`, `alert_evaluations` - Server module
@@ -48,7 +56,9 @@ Core tables (all in `sql/init.sql`):
 1. **CoinStreamer** - WebSocket connection to pumpportal.fun for new token events, saves to coin_metrics + coin_transactions
 2. **JobManager** - Polls job queue for training/test/compare jobs
 3. **AlertEvaluator** - Evaluates prediction accuracy, sends n8n webhooks
-4. **Uptime tracker** - Updates Prometheus gauge every 10s
+4. **EmbeddingService** - Generates 128-dim embeddings from coin_metrics + coin_transactions every 60s, with auto-labeling
+5. **GraphSyncService** - Syncs PostgreSQL data to Neo4j every 300s
+6. **Uptime tracker** - Updates Prometheus gauge every 10s
 
 ## Key Patterns
 - Raw SQL with asyncpg (no ORM)

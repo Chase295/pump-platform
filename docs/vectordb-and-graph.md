@@ -32,8 +32,8 @@ Das System verwendet **drei Datenbanken** mit unterschiedlichen Aufgaben:
         (Zeitreihen)    (Einzeltrades)       (128-dim Vektoren)
         OHLCV, ML       Pattern-Analyse      Aehnlichkeitssuche
               |               |                |
-              +-------+-------+                | (Embedding Pipeline
-              |       |                        |  noch nicht integriert)
+              +-------+-------+                | Embedding Pipeline
+              |       |                        | (AKTIV seit Feb 2026)
         ML Training   FIND Streamer            |
         Predictions   WebSocket                |
                               |
@@ -111,20 +111,26 @@ CREATE TABLE IF NOT EXISTS coin_transactions (
 
 ### 2.3 coin_pattern_embeddings (Vektor-Tabelle)
 
-**Datei:** `sql/init.sql:317-339`
-**Status:** Schema existiert, wird noch NICHT automatisch befuellt
+**Datei:** `sql/init.sql`
+**Status:** AKTIV - wird automatisch vom EmbeddingService befuellt (alle 60s)
 
 ```sql
 CREATE TABLE IF NOT EXISTS coin_pattern_embeddings (
     id              BIGSERIAL    PRIMARY KEY,
-    mint            VARCHAR(64)  NOT NULL,          -- Token-Adresse
+    mint            VARCHAR(64)  NOT NULL,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    window_start    TIMESTAMPTZ  NOT NULL,          -- Pattern-Zeitfenster Start
-    window_end      TIMESTAMPTZ  NOT NULL,          -- Pattern-Zeitfenster Ende
-    embedding       vector(128)  NOT NULL,          -- 128-dimensionaler Vektor
-    phase_id_at_time INTEGER,                       -- Phase waehrend des Fensters
-    num_snapshots   INTEGER      NOT NULL DEFAULT 0, -- Anzahl Datenpunkte
-    label           VARCHAR(50),                    -- z.B. 'pump', 'dump', 'organic'
+    window_start    TIMESTAMPTZ  NOT NULL,
+    window_end      TIMESTAMPTZ  NOT NULL,
+    embedding       vector(128)  NOT NULL,          -- 128-dim Vektor (Handcrafted v1)
+    phase_id_at_time INTEGER,
+    num_snapshots   INTEGER      NOT NULL DEFAULT 0,
+    label           VARCHAR(50),                    -- Auto-Label: pump, rug, flat, etc.
+    strategy        VARCHAR(50)  DEFAULT 'handcrafted_v1',  -- Embedding-Strategie
+    config_id       BIGINT,                         -- FK zu embedding_configs
+    feature_hash    VARCHAR(64),                    -- Reproduzierbarkeits-Hash
+    metadata        JSONB,                          -- Flexible Zusatzinfos
+    quality_score   NUMERIC(5,4),                   -- Embedding-Qualitaet (0-1)
+    is_labeled      BOOLEAN      DEFAULT FALSE,
     CONSTRAINT chk_window_order CHECK (window_start < window_end)
 );
 ```
@@ -145,15 +151,26 @@ CREATE INDEX idx_coin_patterns_embedding
 | ef_construction | 64 | Suchbreite beim Index-Aufbau |
 | Dimensionen | 128 | Feste Vektorgroesse |
 
-**Geplante Similarity-Abfrage:**
+**Similarity-Abfrage (implementiert in `similarity.py`):**
 ```sql
--- Die 10 aehnlichsten Patterns zu einem gegebenen Vektor finden
-SELECT mint, label, 1 - (embedding <=> $1::vector) AS similarity
+SET LOCAL hnsw.ef_search = 100;
+SELECT mint, label, 1 - (embedding <=> $1::vector) AS cosine_similarity
 FROM coin_pattern_embeddings
 WHERE phase_id_at_time = 2
 ORDER BY embedding <=> $1::vector
 LIMIT 10;
 ```
+
+### 2.4 Neue Embedding-Tabellen (seit Feb 2026)
+
+**Migration:** `sql/migrate_embeddings_v2.sql`
+
+| Tabelle | Zweck |
+|---------|-------|
+| `embedding_configs` | Strategiekonfiguration: Name, Window-Size, Normalisierung, Phasenfilter |
+| `embedding_jobs` | Hintergrund-Jobs (GENERATE/BACKFILL) mit Fortschritt |
+| `pattern_labels` | Labels mit Confidence + Source (manual/auto/propagated) |
+| `similarity_cache` | Vorberechnete Aehnlichkeitspaare fuer Neo4j SIMILAR_TO Sync |
 
 ### 2.4 Migration fuer bestehende Datenbanken
 
@@ -185,7 +202,7 @@ pumpportal.fun WebSocket
         |
         +---> coin_transactions (jeder einzelne Trade)
         |       |
-        |       +--> [GEPLANT] Embedding Pipeline --> coin_pattern_embeddings
+        |       +--> Embedding Pipeline --> coin_pattern_embeddings (AKTIV)
         |       +--> Neo4j Graph Sync (ueber discovered_coins, nicht direkt)
         |
         +---> discovered_coins (Token-Metadaten)
@@ -225,24 +242,43 @@ async def flush_transactions_batch(trades_data, status):
 
 **Wichtig:** `flush_transactions_batch` ist **non-fatal**. Fehler werden geloggt aber ignoriert - die Haupt-Metrik-Pipeline (`coin_metrics`) laeuft immer weiter.
 
-### 3.3 Daten in coin_pattern_embeddings (geplant)
+### 3.3 Daten in coin_pattern_embeddings (AKTIV)
 
-**Status: Schema vorhanden, Pipeline noch nicht implementiert**
+**Status: Vollstaendig implementiert und aktiv seit Feb 2026**
+**Backend-Modul:** `backend/modules/embeddings/`
 
-Geplanter Ablauf:
-1. `coin_transactions` + `coin_metrics` fuer ein Zeitfenster laden
-2. Feature-Vektor aus Preis-/Volumen-/Trade-Mustern berechnen
-3. Auf 128 Dimensionen reduzieren (z.B. via Autoencoder oder PCA)
-4. Als Embedding in `coin_pattern_embeddings` speichern
-5. Via HNSW-Index aehnliche Patterns finden
+**Ablauf (alle 60 Sekunden automatisch):**
+1. `EmbeddingService` laedt aktive Configs aus `embedding_configs`
+2. Pro Config: Zeitfenster seit letztem Lauf generieren (inkrementell)
+3. Aktive Mints per Fenster aus `coin_metrics` ermitteln
+4. 128 Features aus `coin_metrics` + `coin_transactions` extrahieren
+5. Normalisierung (MinMax/ZScore/Robust) anwenden
+6. Batch-Insert in `coin_pattern_embeddings`
+7. Auto-Labeling basierend auf Post-Window-Preisentwicklung
+8. Similarity-Cache aktualisieren + optional Neo4j SIMILAR_TO sync
 
-**Geplante Embedding-Features (Konzept):**
-| Feature-Gruppe | Beispiele | Herkunft |
-|---------------|-----------|----------|
-| Preis-Pattern | OHLC-Verlauf normalisiert | coin_metrics |
-| Volumen-Pattern | Buy/Sell-Ratio ueber Zeit | coin_metrics |
-| Trade-Verteilung | Whale-Anteil, Unique Wallets | coin_transactions |
-| Momentum | RSI, MACD normalisiert | coin_metrics (berechnet) |
+**128 Features in 8 Gruppen (implementiert in `features.py`):**
+
+| Gruppe | Features | Herkunft |
+|--------|----------|----------|
+| A: Preis-Dynamik | 20 (Return, Volatilitaet, Drawdown, Hurst) | coin_metrics |
+| B: Volumen-Dynamik | 16 (Trends, Buy/Sell-Ratio, Whale-Anteil) | coin_metrics |
+| C: Markt-Struktur | 12 (Market-Cap, Bonding-Curve, Dev-Sold) | coin_metrics |
+| D: Partizipation | 12 (Unique Wallets, Konzentration) | coin_metrics |
+| E: Temporale Patterns | 14 (Bursts, Streaks, Timing-Entropy) | coin_transactions |
+| F: Wallet-Verhalten | 14 (Whale-Trader, Gini, Top-Dominanz) | coin_transactions |
+| G: Price-Impact | 12 (VWAP, Sell-Pressure, Buy-Exhaustion) | coin_transactions |
+| H: Kontext + Interaktion | 28 (Smart-Money, FOMO, Wash-Trade) | Berechnet |
+
+**Auto-Labels:**
+| Label | Bedingung (Post-Window) |
+|-------|------------------------|
+| `pump` | Max Gain >50% in naechsten 10 Snapshots |
+| `rug` | Max Loss <-80% |
+| `organic_growth` | Gain >10%, Loss >-20% |
+| `flat` | Gain <5%, Loss <5% |
+| `dump` | Loss <-50% |
+| `mixed` | Alles andere |
 
 ### 3.4 Daten in Neo4j (Graph Export)
 
@@ -407,7 +443,20 @@ await close_neo4j()
 - Fehler sind non-fatal (Sync laeuft weiter)
 - Statistiken via `get_graph_sync().get_status()`
 
-### 6.4 FIND-Modul (coin_transactions Quelle)
+### 6.4 Embeddings-Modul (Embedding Pipeline)
+
+| Datei | Zweck |
+|-------|-------|
+| `backend/modules/embeddings/__init__.py` | Public API: router, service start/stop |
+| `backend/modules/embeddings/features.py` | 128-Feature-Extraktion aus coin_metrics + coin_transactions |
+| `backend/modules/embeddings/generator.py` | Embedding-Strategien (Handcrafted v1) + Normalizer-Registry |
+| `backend/modules/embeddings/service.py` | Background EmbeddingService (60s Intervall) |
+| `backend/modules/embeddings/similarity.py` | pgvector HNSW Similarity Search + Neo4j SIMILAR_TO Sync |
+| `backend/modules/embeddings/db_queries.py` | SQL CRUD fuer Embeddings, Configs, Jobs, Labels |
+| `backend/modules/embeddings/router.py` | FastAPI Router (`/api/embeddings/`) - 25+ Endpoints |
+| `backend/modules/embeddings/schemas.py` | Pydantic Request/Response Models |
+
+### 6.5 FIND-Modul (coin_transactions Quelle)
 
 | Datei | Funktion |
 |-------|----------|
@@ -429,7 +478,29 @@ await close_neo4j()
 | POST | `/api/graph/sync/trigger` | Manuellen Sync ausloesen | router.py |
 | GET | `/api/graph/query?q=...&limit=100` | Read-only Cypher ausfuehren | router.py |
 
-### 7.2 Nginx Proxy-Pfade
+### 7.2 Embeddings API (`/api/embeddings/`)
+
+| Methode | Pfad | Funktion |
+|---------|------|----------|
+| GET | `/api/embeddings/health` | Service-Status, aktive Configs, Stats |
+| GET | `/api/embeddings/stats` | Gesamt-Embeddings, Strategie-Breakdown, Storage |
+| GET/POST | `/api/embeddings/configs` | Configs listen/erstellen |
+| GET/PATCH/DELETE | `/api/embeddings/configs/{id}` | Config Details/aendern/loeschen |
+| POST | `/api/embeddings/generate` | Manuelle Generation fuer Zeitraum |
+| GET | `/api/embeddings/jobs` | Jobs listen |
+| GET | `/api/embeddings/browse` | Paginierte Embedding-Liste mit Filtern |
+| POST | `/api/embeddings/search/similar` | Suche per Embedding-Vektor oder Mint |
+| GET | `/api/embeddings/search/by-mint/{mint}` | Aehnliche Patterns zu einem Coin |
+| GET | `/api/embeddings/search/by-label/{label}` | Alle Patterns eines Labels |
+| POST/GET | `/api/embeddings/labels` | Label hinzufuegen/listen |
+| POST | `/api/embeddings/labels/propagate` | Labels auf aehnliche Patterns uebertragen |
+| GET | `/api/embeddings/analysis/distribution` | Label-Verteilung |
+| GET | `/api/embeddings/analysis/clusters` | K-Means Cluster-Analyse |
+| GET | `/api/embeddings/analysis/outliers` | Ausreisser-Patterns |
+| POST | `/api/embeddings/neo4j/sync` | Manuellen SIMILAR_TO Sync ausloesen |
+| GET | `/api/embeddings/neo4j/status` | Sync-Status |
+
+### 7.3 Nginx Proxy-Pfade
 
 | Pfad | Ziel | Zweck |
 |------|------|-------|
@@ -604,8 +675,14 @@ docker compose logs -f backend 2>&1 | grep "coin_transactions"
 | **pgvector Extension fehlt** | `sql/init.sql:33`, `sql/migrate_to_pgvector.sql:17` |
 | **coin_transactions leer** | `backend/modules/find/metrics.py:197-223` (flush), `backend/modules/find/phases.py:351` (collect) |
 | **coin_transactions Schema** | `sql/init.sql:286-309` |
-| **Embedding-Tabelle Schema** | `sql/init.sql:317-339` |
-| **HNSW-Index Config** | `sql/init.sql:330-333` |
+| **Embedding-Tabelle Schema** | `sql/init.sql` (coin_pattern_embeddings) |
+| **Embedding-Pipeline** | `backend/modules/embeddings/` (8 Dateien) |
+| **Feature-Extraktion (128 Features)** | `backend/modules/embeddings/features.py` |
+| **Similarity Search** | `backend/modules/embeddings/similarity.py` |
+| **Embedding Service (Background)** | `backend/modules/embeddings/service.py` |
+| **Embedding API Endpoints** | `backend/modules/embeddings/router.py` |
+| **Embedding Configs/Jobs/Labels Schema** | `sql/migrate_embeddings_v2.sql` |
+| **HNSW-Index Config** | `sql/init.sql` (idx_coin_patterns_embedding) |
 | **Neo4j Verbindung** | `backend/modules/graph/neo4j_client.py` |
 | **Neo4j Sync Logic** | `backend/modules/graph/sync.py` |
 | **Neo4j API Endpoints** | `backend/modules/graph/router.py` |
@@ -624,17 +701,29 @@ docker compose logs -f backend 2>&1 | grep "coin_transactions"
 
 ```
 sql/
-  init.sql                              # Haupt-Schema (alle Tabellen)
+  init.sql                              # Haupt-Schema (alle Tabellen inkl. Embedding-Tabellen)
   migrate_to_pgvector.sql               # Migration fuer bestehende DBs
+  migrate_embeddings_v2.sql             # Migration: embedding_configs, jobs, labels, similarity_cache
 
 backend/
-  config.py                             # NEO4J_URI, NEO4J_SYNC_* Settings
-  main.py                               # Lifespan: init/close Neo4j + Sync
+  config.py                             # NEO4J_*, EMBEDDING_* Settings
+  main.py                               # Lifespan: alle Services starten/stoppen
   database.py                           # asyncpg Pool (shared, alle Module)
+  shared/
+    prometheus.py                       # Prometheus Metriken (inkl. embeddings_*)
   modules/
     find/
-      metrics.py                        # coin_transactions flush (Zeile 197)
-      phases.py                         # Trade-Collection vor Reset (Zeile 351)
+      metrics.py                        # coin_transactions flush
+      phases.py                         # Trade-Collection vor Reset
+    embeddings/
+      __init__.py                       # Public API
+      features.py                       # 128-Feature-Extraktion (8 Gruppen)
+      generator.py                      # Handcrafted v1 + Normalizer-Registry
+      service.py                        # Background EmbeddingService (60s)
+      similarity.py                     # pgvector HNSW Search + Neo4j Sync
+      db_queries.py                     # SQL CRUD
+      router.py                         # /api/embeddings/* (25+ Endpoints)
+      schemas.py                        # Pydantic Models
     graph/
       __init__.py                       # Modul-Init
       neo4j_client.py                   # Async Neo4j Driver Singleton
@@ -644,8 +733,16 @@ backend/
 frontend/
   nginx.conf                            # WebSocket Proxy (map, @bolt)
   src/
-    App.tsx                             # Route /graph + Sidebar-Navigation
+    services/
+      api.ts                            # API Client (inkl. embeddingsApi)
+    types/
+      embeddings.ts                     # TypeScript Interfaces
     pages/
+      Discovery.tsx                     # 8 Tabs (inkl. Similarity, Patterns, Embeddings)
+      discovery/
+        SimilaritySearch.tsx            # Mint-basierte Aehnlichkeitssuche
+        PatternBrowser.tsx              # Embedding-Browser mit Labels
+        EmbeddingConfig.tsx             # Config-Management + Jobs
       Neo4jGraph.tsx                    # Tab-Container (Browser, Explorer, Guide)
       graph/
         CypherExplorer.tsx              # Interaktiver Cypher-Client
