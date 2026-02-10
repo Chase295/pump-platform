@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Box, CircularProgress, Tabs, Tab } from '@mui/material';
 import {
   AccountTree as WorkflowsIcon,
-  MenuBook as GuideIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import WorkflowsGuide from './workflows/WorkflowsGuide';
+import FullscreenToggle from '../components/shared/FullscreenToggle';
+import useFullscreenStore from '../stores/useFullscreenStore';
 
 const N8N_CREDENTIALS = {
   emailOrLdapLoginId: 'admin@pump.local',
@@ -14,6 +16,7 @@ const N8N_CREDENTIALS = {
 const N8nWorkflows: React.FC = () => {
   const [ready, setReady] = React.useState(false);
   const [tabValue, setTabValue] = useState(0);
+  const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
 
   React.useEffect(() => {
     // Auto-login to n8n before loading iframe
@@ -27,6 +30,18 @@ const N8nWorkflows: React.FC = () => {
       .catch(() => setReady(true)); // show iframe anyway on error
   }, []);
 
+  if (isFullscreen && tabValue === 0 && ready) {
+    return (
+      <Box sx={{ width: '100%', height: '100vh' }}>
+        <iframe
+          src="/n8n/"
+          title="n8n Workflows"
+          style={{ width: '100%', height: '100%', border: 'none' }}
+        />
+      </Box>
+    );
+  }
+
   return (
     <Box>
       {/* Tab navigation */}
@@ -36,6 +51,8 @@ const N8nWorkflows: React.FC = () => {
           mb: tabValue === 1 ? 3 : 0,
           bgcolor: 'rgba(255, 255, 255, 0.02)',
           borderRadius: '8px 8px 0 0',
+          display: 'flex',
+          alignItems: 'center',
         }}
       >
         <Tabs
@@ -45,6 +62,7 @@ const N8nWorkflows: React.FC = () => {
           scrollButtons="auto"
           allowScrollButtonsMobile
           sx={{
+            flex: 1,
             '& .MuiTab-root': {
               color: 'rgba(255, 255, 255, 0.6)',
               textTransform: 'none',
@@ -60,8 +78,9 @@ const N8nWorkflows: React.FC = () => {
           }}
         >
           <Tab icon={<WorkflowsIcon />} iconPosition="start" label="Workflows" />
-          <Tab icon={<GuideIcon />} iconPosition="start" label="Setup Guide" />
+          <Tab icon={<InfoIcon />} iconPosition="start" label="Info" />
         </Tabs>
+        {tabValue === 0 && <FullscreenToggle title="n8n Workflows" />}
       </Box>
 
       {/* Tab 0: n8n iframe */}

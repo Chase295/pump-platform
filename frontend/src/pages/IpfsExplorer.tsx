@@ -25,7 +25,11 @@ import {
   Storage as StorageIcon,
   People as PeersIcon,
   Speed as SpeedIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
+import IpfsInfo from './ipfs/IpfsInfo';
+import FullscreenToggle from '../components/shared/FullscreenToggle';
+import useFullscreenStore from '../stores/useFullscreenStore';
 
 // ---- Metadata Lookup Tab ----
 const MetadataLookup: React.FC = () => {
@@ -450,6 +454,7 @@ const NodeStatus: React.FC = () => {
 const IpfsExplorer: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [iframeReady, setIframeReady] = useState(false);
+  const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
 
   // Pre-configure localStorage so the Kubo Web UI (loaded via /ipfs/<CID> on same origin)
   // finds our /api/v0/ proxy instead of trying localhost:5001
@@ -458,6 +463,18 @@ const IpfsExplorer: React.FC = () => {
     localStorage.setItem('ipfsApi', window.location.origin);
     setIframeReady(true);
   }, []);
+
+  if (isFullscreen && tabValue === 0 && iframeReady) {
+    return (
+      <Box sx={{ width: '100%', height: '100vh' }}>
+        <iframe
+          src="/ipfs-rpc/webui/"
+          title="IPFS Web UI"
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -468,6 +485,8 @@ const IpfsExplorer: React.FC = () => {
           mb: 3,
           bgcolor: 'rgba(255, 255, 255, 0.02)',
           borderRadius: '8px 8px 0 0',
+          display: 'flex',
+          alignItems: 'center',
         }}
       >
         <Tabs
@@ -477,6 +496,7 @@ const IpfsExplorer: React.FC = () => {
           scrollButtons="auto"
           allowScrollButtonsMobile
           sx={{
+            flex: 1,
             '& .MuiTab-root': {
               color: 'rgba(255, 255, 255, 0.6)',
               textTransform: 'none',
@@ -494,7 +514,9 @@ const IpfsExplorer: React.FC = () => {
           <Tab icon={<IpfsIcon />} iconPosition="start" label="IPFS Web UI" />
           <Tab icon={<SearchIcon />} iconPosition="start" label="Metadata Lookup" />
           <Tab icon={<StorageIcon />} iconPosition="start" label="Node Status" />
+          <Tab icon={<InfoIcon />} iconPosition="start" label="Info" />
         </Tabs>
+        {tabValue === 0 && <FullscreenToggle title="IPFS Web UI" />}
       </Box>
 
       {/* Tab 0: Kubo Web UI (iframe, same origin via /ipfs/<CID> gateway) */}
@@ -526,6 +548,9 @@ const IpfsExplorer: React.FC = () => {
 
       {/* Tab 2: Node Status */}
       {tabValue === 2 && <NodeStatus />}
+
+      {/* Tab 3: Info */}
+      {tabValue === 3 && <IpfsInfo />}
     </Box>
   );
 };

@@ -31,6 +31,7 @@ import {
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
   Logout as LogoutIcon,
+  FullscreenExit as FullscreenExitIcon,
 } from '@mui/icons-material';
 
 // Pages
@@ -47,6 +48,7 @@ import Login from './pages/Login';
 
 // Auth
 import useAuthStore from './stores/useAuthStore';
+import useFullscreenStore from './stores/useFullscreenStore';
 
 // Theme - Matching existing dark design across all services
 const theme = createTheme({
@@ -127,6 +129,17 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = React.useState(false);
   const authRequired = useAuthStore((s) => s.authRequired);
   const logout = useAuthStore((s) => s.logout);
+  const { isFullscreen, pageTitle, exit: exitFullscreen } = useFullscreenStore();
+
+  // ESC key exits fullscreen
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitFullscreen();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isFullscreen, exitFullscreen]);
 
   const currentDrawerWidth = collapsed ? DRAWER_COLLAPSED_WIDTH : DRAWER_WIDTH;
 
@@ -209,7 +222,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         overflow: 'auto',
       }}
     >
-      {isMobile ? (
+      {!isFullscreen && (isMobile ? (
         <Drawer
           variant="temporary"
           open={mobileOpen}
@@ -245,70 +258,103 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         >
           {drawerContent}
         </Drawer>
-      )}
+      ))}
 
       {/* Main Content */}
       <Box
         component="main"
         sx={{
-          width: { xs: '100%', md: `calc(100% - ${currentDrawerWidth}px)` },
-          ml: { xs: 0, md: `${currentDrawerWidth}px` },
+          width: isFullscreen ? '100%' : { xs: '100%', md: `calc(100% - ${currentDrawerWidth}px)` },
+          ml: isFullscreen ? 0 : { xs: 0, md: `${currentDrawerWidth}px` },
           transition: 'margin-left 0.2s ease-in-out, width 0.2s ease-in-out',
         }}
       >
         {/* Top Bar */}
-        <AppBar
-          position="static"
-          sx={{
-            background: 'rgba(26, 26, 46, 0.8)',
-            backdropFilter: 'blur(10px)',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: 'none',
-          }}
-        >
-          <Toolbar>
-            {isMobile && (
-              <IconButton
-                color="inherit"
-                edge="start"
-                onClick={() => setMobileOpen(true)}
-                sx={{ mr: 2 }}
+        {!isFullscreen && (
+          <AppBar
+            position="static"
+            sx={{
+              background: 'rgba(26, 26, 46, 0.8)',
+              backdropFilter: 'blur(10px)',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: 'none',
+            }}
+          >
+            <Toolbar>
+              {isMobile && (
+                <IconButton
+                  color="inherit"
+                  edge="start"
+                  onClick={() => setMobileOpen(true)}
+                  sx={{ mr: 2 }}
+                >
+                  <MenuIcon />
+                </IconButton>
+              )}
+              <Typography
+                variant="h6"
+                component="div"
+                sx={{ flexGrow: 1, color: '#00d4ff' }}
               >
-                <MenuIcon />
-              </IconButton>
-            )}
-            <Typography
-              variant="h6"
-              component="div"
-              sx={{ flexGrow: 1, color: '#00d4ff' }}
-            >
-              Pump Platform
-            </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.7, mr: authRequired ? 2 : 0 }}>
-              v1.0.0
-            </Typography>
-            {authRequired && (
-              <Button
-                size="small"
-                onClick={logout}
-                startIcon={<LogoutIcon />}
-                sx={{
-                  color: 'rgba(255,255,255,0.7)',
-                  textTransform: 'none',
-                  '&:hover': { color: '#ff4081' },
-                }}
-              >
-                Logout
-              </Button>
-            )}
-          </Toolbar>
-        </AppBar>
+                Pump Platform
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.7, mr: authRequired ? 2 : 0 }}>
+                v1.0.0
+              </Typography>
+              {authRequired && (
+                <Button
+                  size="small"
+                  onClick={logout}
+                  startIcon={<LogoutIcon />}
+                  sx={{
+                    color: 'rgba(255,255,255,0.7)',
+                    textTransform: 'none',
+                    '&:hover': { color: '#ff4081' },
+                  }}
+                >
+                  Logout
+                </Button>
+              )}
+            </Toolbar>
+          </AppBar>
+        )}
 
         {/* Page Content */}
-        <Box sx={{ py: { xs: 2, sm: 3, md: 4 }, px: { xs: 1, sm: 2, md: 3 } }}>
+        <Box sx={isFullscreen ? { p: 0 } : { py: { xs: 2, sm: 3, md: 4 }, px: { xs: 1, sm: 2, md: 3 } }}>
           {children}
         </Box>
       </Box>
+
+      {/* Fullscreen Overlay */}
+      {isFullscreen && (
+        <Box
+          onClick={exitFullscreen}
+          sx={{
+            position: 'fixed',
+            top: 16,
+            right: 16,
+            zIndex: 1300,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            bgcolor: 'rgba(15, 15, 35, 0.7)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(0, 212, 255, 0.3)',
+            borderRadius: 2,
+            px: 1.5,
+            py: 0.75,
+            cursor: 'pointer',
+            opacity: 0.4,
+            transition: 'opacity 0.2s ease-in-out',
+            '&:hover': { opacity: 1 },
+          }}
+        >
+          <FullscreenExitIcon sx={{ fontSize: 20, color: '#00d4ff' }} />
+          <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.8rem', userSelect: 'none' }}>
+            {pageTitle}
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 };
