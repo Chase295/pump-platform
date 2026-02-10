@@ -59,7 +59,10 @@ class GraphSyncService:
             try:
                 await run_write(cypher)
             except Exception as e:
-                logger.debug("Constraint may already exist: %s", e)
+                if "already exists" in str(e).lower() or "equivalent" in str(e).lower():
+                    logger.debug("Constraint already exists: %s", e)
+                else:
+                    logger.warning("Constraint creation failed: %s", e)
         logger.info("Neo4j constraints ensured")
 
     # ------------------------------------------------------------------
@@ -209,12 +212,12 @@ class GraphSyncService:
                 "amount_tokens": float(row["amount_tokens"]) if row["amount_tokens"] else 0.0,
                 "timestamp": row["created_at"].isoformat() if row["created_at"] else "",
             }
+            # Use MERGE with timestamp to avoid duplicates on re-sync
             cypher = f"""
                 MATCH (w:Wallet {{alias: $alias}})
                 MERGE (t:Token {{address: $mint}})
-                CREATE (w)-[r:{rel_type}]->(t)
-                SET r.amount_sol = $amount_sol, r.amount_tokens = $amount_tokens,
-                    r.timestamp = $timestamp
+                MERGE (w)-[r:{rel_type} {{timestamp: $timestamp}}]->(t)
+                SET r.amount_sol = $amount_sol, r.amount_tokens = $amount_tokens
             """
             await run_write(cypher, params)
 
@@ -276,8 +279,8 @@ class GraphSyncService:
             await run_write("""
                 MATCH (m:Model {id: $model_id})
                 MERGE (t:Token {address: $mint})
-                CREATE (m)-[r:PREDICTED]->(t)
-                SET r.probability = $probability, r.tag = $tag, r.timestamp = $timestamp
+                MERGE (m)-[r:PREDICTED {timestamp: $timestamp}]->(t)
+                SET r.probability = $probability, r.tag = $tag
             """, params)
 
         if rows:
@@ -311,13 +314,12 @@ class GraphSyncService:
                 "amount_sol": float(row["amount_sol"]) if row["amount_sol"] else 0.0,
                 "timestamp": row["created_at"].isoformat() if row["created_at"] else "",
             }
-            # Try to match existing Wallet node by address, otherwise create raw address node
+            # Try to match existing Wallet node by address, otherwise create Address node
             await run_write("""
                 MATCH (w:Wallet {alias: $alias})
-                MERGE (target {address: $to_address})
-                ON CREATE SET target:Address
-                CREATE (w)-[r:TRANSFERRED_TO]->(target)
-                SET r.amount_sol = $amount_sol, r.timestamp = $timestamp
+                MERGE (target:Address {address: $to_address})
+                MERGE (w)-[r:TRANSFERRED_TO {timestamp: $timestamp}]->(target)
+                SET r.amount_sol = $amount_sol
             """, params)
 
         if rows:

@@ -5,7 +5,9 @@ Prefix: /api/graph/
 Provides health, stats, sync status, sync trigger, and read-only Cypher queries.
 """
 
+import asyncio
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -14,6 +16,8 @@ from backend.modules.graph.neo4j_client import check_health as neo4j_health, run
 from backend.modules.graph.sync import get_graph_sync
 
 logger = logging.getLogger(__name__)
+
+QUERY_TIMEOUT_SECONDS = 30
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 
@@ -98,8 +102,7 @@ async def execute_query(
 
     Only allows MATCH/RETURN/WITH/UNWIND/CALL - no writes.
     """
-    # Safety: block write operations (check word boundaries to avoid false positives like "CREATE" in "count")
-    import re
+    # Safety: block write operations
     q_upper = q.strip().upper()
     forbidden = ["CREATE", "MERGE", "DELETE", "DETACH", "REMOVE", "DROP", "LOAD"]
     for word in forbidden:
@@ -108,13 +111,22 @@ async def execute_query(
     # SET is special - only block "SET " at word boundary (not inside "OFFSET" etc.)
     if re.search(r'\bSET\s', q_upper):
         raise HTTPException(status_code=400, detail="Write operations not allowed: SET")
+    # Block APOC write procedures and schema introspection
+    if re.search(r'\bAPOC\b', q_upper):
+        raise HTTPException(status_code=400, detail="APOC procedures not allowed in user queries")
+    if re.search(r'\b(EXPLAIN|PROFILE)\b', q_upper):
+        raise HTTPException(status_code=400, detail="EXPLAIN/PROFILE not allowed in user queries")
 
     # Append LIMIT if not present
     if "LIMIT" not in q_upper:
         q = q.rstrip().rstrip(";") + f" LIMIT {limit}"
 
     try:
-        records = await run_query(q)
+        records = await asyncio.wait_for(
+            run_query(q), timeout=QUERY_TIMEOUT_SECONDS
+        )
         return {"rows": records, "count": len(records)}
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=408, detail=f"Query timed out after {QUERY_TIMEOUT_SECONDS}s")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

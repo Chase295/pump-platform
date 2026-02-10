@@ -37,7 +37,7 @@ async def init_neo4j(uri: str, user: str = "", password: str = "") -> AsyncDrive
     if _driver is not None:
         raise RuntimeError("Neo4j driver already initialised. Call close_neo4j() first.")
 
-    auth = (user, password) if user and password else None
+    auth = (user, password) if (user or password) else None
     _driver = AsyncGraphDatabase.driver(uri, auth=auth)
 
     # Verify connectivity
@@ -102,6 +102,8 @@ async def run_write(
 ) -> None:
     """Execute a write transaction (CREATE, MERGE, DELETE).
 
+    Uses an explicit write transaction for proper commit/rollback semantics.
+
     Args:
         cypher: Cypher write query.
         params: Query parameters.
@@ -109,7 +111,9 @@ async def run_write(
     """
     driver = get_driver()
     async with driver.session(database=database) as session:
-        await session.run(cypher, params or {})
+        async def _work(tx):
+            await tx.run(cypher, params or {})
+        await session.execute_write(_work)
 
 
 async def check_health() -> bool:
