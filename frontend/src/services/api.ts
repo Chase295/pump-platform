@@ -220,4 +220,60 @@ export const buyApi = {
     api.get('/buy/transfers', { params: { wallet_alias: walletAlias, limit } }),
 };
 
+// ------------------------------------------------------------------
+// Embeddings API  (/api/embeddings/...)
+// ------------------------------------------------------------------
+export const embeddingsApi = {
+  // Health & stats
+  getHealth: () => api.get('/embeddings/health'),
+  getStats: () => api.get('/embeddings/stats'),
+
+  // Configs
+  getConfigs: () => api.get('/embeddings/configs'),
+  getConfig: (id: number) => api.get(`/embeddings/configs/${id}`),
+  createConfig: (data: Record<string, unknown>) => api.post('/embeddings/configs', data),
+  updateConfig: (id: number, data: Record<string, unknown>) => api.patch(`/embeddings/configs/${id}`, data),
+  deleteConfig: (id: number) => api.delete(`/embeddings/configs/${id}`),
+
+  // Generation
+  generate: (data: { start: string; end: string; config_id?: number }) =>
+    api.post('/embeddings/generate', data),
+  getJobs: (params?: { config_id?: number; status?: string; limit?: number }) =>
+    api.get('/embeddings/jobs', { params }),
+  getJob: (id: number) => api.get(`/embeddings/jobs/${id}`),
+
+  // Browse
+  browse: (params?: Record<string, unknown>) => api.get('/embeddings/browse', { params }),
+  getEmbedding: (id: number) => api.get(`/embeddings/browse/${id}`),
+  getEmbeddingsByMint: (mint: string, limit = 50) =>
+    api.get(`/embeddings/browse/by-mint/${mint}`, { params: { limit } }),
+
+  // Similarity search
+  searchSimilar: (data: { embedding?: number[]; mint?: string; k?: number; phase_id?: number; label?: string; min_similarity?: number }) =>
+    api.post('/embeddings/search/similar', data),
+  searchByMint: (mint: string, params?: Record<string, unknown>) =>
+    api.get(`/embeddings/search/by-mint/${mint}`, { params }),
+  searchByLabel: (label: string, params?: { k?: number; strategy?: string }) =>
+    api.get(`/embeddings/search/by-label/${label}`, { params }),
+
+  // Labels
+  addLabel: (data: { embedding_id: number; label: string; confidence?: number; source?: string; notes?: string }) =>
+    api.post('/embeddings/labels', data),
+  getLabels: () => api.get('/embeddings/labels'),
+  deleteLabel: (id: number) => api.delete(`/embeddings/labels/${id}`),
+  propagateLabels: (data: { source_label: string; min_similarity?: number; max_propagations?: number }) =>
+    api.post('/embeddings/labels/propagate', data),
+
+  // Analysis
+  getDistribution: () => api.get('/embeddings/analysis/distribution'),
+  getClusters: (params?: { k?: number; strategy?: string; limit?: number }) =>
+    api.get('/embeddings/analysis/clusters', { params }),
+  getOutliers: (params?: { strategy?: string; limit?: number }) =>
+    api.get('/embeddings/analysis/outliers', { params }),
+
+  // Neo4j
+  triggerNeo4jSync: () => api.post('/embeddings/neo4j/sync'),
+  getNeo4jStatus: () => api.get('/embeddings/neo4j/status'),
+};
+
 export default api;

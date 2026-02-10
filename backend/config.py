@@ -81,6 +81,19 @@ class Settings(BaseSettings):
     NEO4J_SYNC_ENABLED: bool = True
 
     # ------------------------------------------------------------------
+    # Embeddings module
+    # ------------------------------------------------------------------
+    EMBEDDING_ENABLED: bool = True
+    EMBEDDING_INTERVAL_SECONDS: int = 60
+    EMBEDDING_WINDOW_SECONDS: int = 300
+    EMBEDDING_BATCH_SIZE: int = 500
+    EMBEDDING_MIN_SNAPSHOTS: int = 3
+    EMBEDDING_STRATEGY: str = "handcrafted_v1"
+    EMBEDDING_SIMILARITY_THRESHOLD: float = 0.85
+    EMBEDDING_NEO4J_SYNC_ENABLED: bool = True
+    EMBEDDING_MAX_RESULTS: int = 50
+
+    # ------------------------------------------------------------------
     # Auth
     # ------------------------------------------------------------------
     AUTH_USER: str = ""

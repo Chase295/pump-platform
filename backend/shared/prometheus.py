@@ -174,6 +174,32 @@ buy_wallets_active = Gauge(
 )
 
 # =====================================================================
+# Embeddings module metrics
+# =====================================================================
+
+embeddings_generated = Counter(
+    "embeddings_generated_total",
+    "Total embeddings generated",
+    ["strategy"],
+)
+
+embeddings_generation_duration = Histogram(
+    "embeddings_generation_duration_seconds",
+    "Time to generate embedding batch",
+    buckets=[0.1, 0.5, 1, 5, 10, 30, 60],
+)
+
+embeddings_similarity_queries = Counter(
+    "embeddings_similarity_queries_total",
+    "Total similarity search queries executed",
+)
+
+embeddings_active_configs = Gauge(
+    "embeddings_active_configs",
+    "Number of active embedding configurations",
+)
+
+# =====================================================================
 # Shared / platform-wide metrics
 # =====================================================================
 

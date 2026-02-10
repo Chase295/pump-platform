@@ -12,6 +12,9 @@ import {
   ListAlt as StreamIcon,
   Settings as SettingsIcon,
   Info as InfoIcon,
+  CompareArrows as SimilarityIcon,
+  GridView as PatternIcon,
+  Hub as EmbeddingIcon,
 } from '@mui/icons-material';
 
 // Sub-components
@@ -20,6 +23,9 @@ import Phases from './discovery/Phases';
 import Streams from './discovery/Streams';
 import FindConfig from './discovery/FindConfig';
 import DiscoveryInfo from './discovery/DiscoveryInfo';
+import SimilaritySearch from './discovery/SimilaritySearch';
+import PatternBrowser from './discovery/PatternBrowser';
+import EmbeddingConfig from './discovery/EmbeddingConfig';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -92,6 +98,9 @@ export default function Discovery() {
           <Tab icon={<StreamIcon />} iconPosition="start" label="Streams" {...a11yProps(2)} />
           <Tab icon={<SettingsIcon />} iconPosition="start" label="Config" {...a11yProps(3)} />
           <Tab icon={<InfoIcon />} iconPosition="start" label="Info" {...a11yProps(4)} />
+          <Tab icon={<SimilarityIcon />} iconPosition="start" label="Similarity" {...a11yProps(5)} />
+          <Tab icon={<PatternIcon />} iconPosition="start" label="Patterns" {...a11yProps(6)} />
+          <Tab icon={<EmbeddingIcon />} iconPosition="start" label="Embeddings" {...a11yProps(7)} />
         </Tabs>
       </Box>
 
@@ -109,6 +118,15 @@ export default function Discovery() {
       </TabPanel>
       <TabPanel value={tabValue} index={4}>
         <DiscoveryInfo />
+      </TabPanel>
+      <TabPanel value={tabValue} index={5}>
+        <SimilaritySearch />
+      </TabPanel>
+      <TabPanel value={tabValue} index={6}>
+        <PatternBrowser />
+      </TabPanel>
+      <TabPanel value={tabValue} index={7}>
+        <EmbeddingConfig />
       </TabPanel>
     </Container>
   );

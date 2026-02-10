@@ -24,6 +24,7 @@ from backend.modules.training.router import router as training_router
 from backend.modules.server.router import router as server_router
 from backend.modules.buy.router import router as buy_router
 from backend.modules.graph.router import router as graph_router
+from backend.modules.embeddings.router import router as embeddings_router
 from backend.modules.auth.router import router as auth_router, _auth_enabled, _generate_token
 
 # Import module lifecycle components
@@ -37,6 +38,7 @@ from backend.modules.graph.neo4j_client import (
     init_neo4j, close_neo4j, check_health as neo4j_check_health,
 )
 from backend.modules.graph.sync import start_graph_sync, stop_graph_sync
+from backend.modules.embeddings.service import start_embedding_service, stop_embedding_service
 
 # Import Prometheus metrics
 from backend.shared.prometheus import get_metrics, platform_uptime_seconds
@@ -143,6 +145,11 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_init_neo4j_with_retry())
 
+    # 7. Start Embedding generation service
+    if settings.EMBEDDING_ENABLED:
+        await start_embedding_service(interval_seconds=settings.EMBEDDING_INTERVAL_SECONDS)
+        logger.info("Embedding service started")
+
     logger.info("Pump Platform ready on port %d", settings.API_PORT)
 
     # Start uptime tracking task
@@ -164,6 +171,7 @@ async def lifespan(app: FastAPI):
     if _job_manager:
         await _job_manager.stop()
     await stop_alert_evaluator()
+    await stop_embedding_service()
     await stop_graph_sync()
     await close_neo4j()
     await close_pool()
@@ -198,6 +206,7 @@ app.include_router(training_router)  # /api/training/...
 app.include_router(server_router)    # /api/server/...
 app.include_router(buy_router)       # /api/buy/...
 app.include_router(graph_router)     # /api/graph/...
+app.include_router(embeddings_router) # /api/embeddings/...
 
 # MCP integration - exposes all API endpoints as MCP tools
 from fastapi_mcp import FastApiMCP
@@ -237,6 +246,11 @@ async def global_health():
     except Exception:
         graph_ok = False
 
+    # Embeddings health (non-blocking)
+    from backend.modules.embeddings.service import get_embedding_service
+    emb_svc = get_embedding_service()
+    embeddings_ok = emb_svc is not None and emb_svc.running
+
     return {
         "status": "healthy" if db_ok else "degraded",
         "db_connected": db_ok,
@@ -247,6 +261,7 @@ async def global_health():
             "server": True,
             "buy": True,
             "graph": graph_ok,
+            "embeddings": embeddings_ok,
         },
     }
 
