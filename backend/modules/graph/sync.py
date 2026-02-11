@@ -1,27 +1,35 @@
 """
-PostgreSQL -> Neo4j Graph Sync Service
+PostgreSQL -> Neo4j Graph Sync Service (Orchestrator)
 
 Background task that periodically syncs entities from PostgreSQL to Neo4j.
-Pattern follows AlertEvaluator in backend/modules/server/alerts.py.
+Delegates to specialized sync modules for each phase.
 
 Sync priorities:
-  P0: Tokens + Creators + CREATED
-  P1: Wallets + HOLDS/BOUGHT/SOLD
-  P2: Models + PREDICTED (alerts only)
-  P3: Transfers + TRANSFERRED_TO
+  Base: Tokens + Creators + Wallets + Trades + Models + Predictions + Transfers
+  Phase 1: Events + Outcomes
+  Phase 2: PhaseSnapshots + PriceCheckpoints
+  Phase 3: MarketTraders + WalletClusters
+  Phase 4: SolPrice + DURING_MARKET
+  Phase 5: SocialProfile + ImageHash + Tokenomics
+  Phase 6: Significant coin_transactions
 """
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+import time
 from typing import Dict, Optional, Any
 
-from backend.database import fetch
-from backend.modules.graph.neo4j_client import run_write, run_query
+from backend.config import settings
+from backend.modules.graph.constraints import ensure_all_constraints
+from backend.modules.graph.sync_base import BaseSyncModule
+from backend.modules.graph.sync_events import EventSyncModule
+from backend.modules.graph.sync_phases import PhaseSyncModule
+from backend.modules.graph.sync_wallets import WalletSyncModule
+from backend.modules.graph.sync_market import MarketSyncModule
+from backend.modules.graph.sync_enrichment import EnrichmentSyncModule
+from backend.modules.graph.sync_transactions import TransactionSyncModule
 
 logger = logging.getLogger(__name__)
-
-BATCH_SIZE = 5000
 
 
 class GraphSyncService:
@@ -31,331 +39,108 @@ class GraphSyncService:
         self.interval_seconds = interval_seconds
         self.running = False
         self.first_run = True
-        self.last_sync: Dict[str, Optional[datetime]] = {
-            "tokens": None,
-            "wallets": None,
-            "models": None,
-            "trades": None,
-            "positions": None,
-            "predictions": None,
-            "transfers": None,
-        }
+
+        # Module instances
+        self.base = BaseSyncModule()
+        self.events = EventSyncModule()
+        self.phases = PhaseSyncModule()
+        self.wallets = WalletSyncModule()
+        self.market = MarketSyncModule()
+        self.enrichment = EnrichmentSyncModule()
+        self.transactions = TransactionSyncModule()
+
+        # Cluster detection runs on its own interval
+        self._last_cluster_run: float = 0
+
+        # Aggregate stats
         self.stats: Dict[str, int] = {
             "total_syncs": 0,
             "tokens_synced": 0,
             "wallets_synced": 0,
             "trades_synced": 0,
+            "events_detected": 0,
+            "outcomes_calculated": 0,
+            "phase_snapshots_created": 0,
+            "price_checkpoints_created": 0,
+            "market_traders_synced": 0,
+            "wallet_clusters_detected": 0,
         }
 
-    async def _ensure_constraints(self) -> None:
-        """Create uniqueness constraints on first run."""
-        constraints = [
-            "CREATE CONSTRAINT token_address IF NOT EXISTS FOR (t:Token) REQUIRE t.address IS UNIQUE",
-            "CREATE CONSTRAINT creator_address IF NOT EXISTS FOR (c:Creator) REQUIRE c.address IS UNIQUE",
-            "CREATE CONSTRAINT wallet_alias IF NOT EXISTS FOR (w:Wallet) REQUIRE w.alias IS UNIQUE",
-            "CREATE CONSTRAINT model_id IF NOT EXISTS FOR (m:Model) REQUIRE m.id IS UNIQUE",
-        ]
-        for cypher in constraints:
-            try:
-                await run_write(cypher)
-            except Exception as e:
-                if "already exists" in str(e).lower() or "equivalent" in str(e).lower():
-                    logger.debug("Constraint already exists: %s", e)
-                else:
-                    logger.warning("Constraint creation failed: %s", e)
-        logger.info("Neo4j constraints ensured")
-
-    # ------------------------------------------------------------------
-    # P0: Tokens + Creators + CREATED
-    # ------------------------------------------------------------------
-    async def _sync_tokens(self, since: Optional[str] = None) -> int:
-        """Sync discovered_coins -> Token + Creator nodes + CREATED relationship."""
-        where = ""
-        args: list = []
-        if since:
-            where = "WHERE discovered_at > $1"
-            args = [since]
-
-        query = f"""
-            SELECT token_address, name, symbol, trader_public_key,
-                   initial_buy_sol, market_cap_sol, discovered_at
-            FROM discovered_coins
-            {where}
-            ORDER BY discovered_at ASC
-            LIMIT {BATCH_SIZE}
-        """
-        rows = await fetch(query, *args)
-        if not rows:
-            return 0
-
-        for row in rows:
-            mint = row["token_address"]
-            creator = row["trader_public_key"]
-            params = {
-                "mint": mint,
-                "name": row["name"] or "",
-                "symbol": row["symbol"] or "",
-                "creator": creator or "",
-                "initial_buy_sol": float(row["initial_buy_sol"]) if row["initial_buy_sol"] else 0.0,
-                "market_cap_sol": float(row["market_cap_sol"]) if row["market_cap_sol"] else 0.0,
-                "discovered_at": row["discovered_at"].isoformat() if row["discovered_at"] else "",
-            }
-            cypher = """
-                MERGE (t:Token {address: $mint})
-                SET t.name = $name, t.symbol = $symbol,
-                    t.market_cap_sol = $market_cap_sol, t.discovered_at = $discovered_at
-                WITH t
-                MERGE (c:Creator {address: $creator})
-                MERGE (c)-[r:CREATED]->(t)
-                SET r.initial_buy_sol = $initial_buy_sol, r.timestamp = $discovered_at
-            """
-            try:
-                await run_write(cypher, params)
-            except Exception as e:
-                logger.warning("Token sync failed for %s: %s", mint[:12], e)
-
-        if rows:
-            self.last_sync["tokens"] = rows[-1]["discovered_at"]
-
-        count = len(rows)
-        self.stats["tokens_synced"] += count
-        return count
-
-    # ------------------------------------------------------------------
-    # P1: Wallets + HOLDS/BOUGHT/SOLD
-    # ------------------------------------------------------------------
-    async def _sync_wallets(self) -> int:
-        """Sync wallets table -> Wallet nodes."""
-        rows = await fetch("""
-            SELECT alias, address, type, status, virtual_sol_balance, real_sol_balance
-            FROM wallets
-        """)
-        for row in rows:
-            params = {
-                "alias": row["alias"],
-                "address": row["address"],
-                "type": row["type"],
-                "status": row["status"],
-                "virtual_balance": float(row["virtual_sol_balance"]) if row["virtual_sol_balance"] else 0.0,
-                "real_balance": float(row["real_sol_balance"]) if row["real_sol_balance"] else 0.0,
-            }
-            await run_write("""
-                MERGE (w:Wallet {alias: $alias})
-                SET w.address = $address, w.type = $type, w.status = $status,
-                    w.virtual_balance = $virtual_balance, w.real_balance = $real_balance
-            """, params)
-        self.stats["wallets_synced"] += len(rows)
-        return len(rows)
-
-    async def _sync_positions(self, since: Optional[str] = None) -> int:
-        """Sync positions -> HOLDS relationships."""
-        where = ""
-        args: list = []
-        if since:
-            where = "WHERE p.created_at > $1"
-            args = [since]
-
-        rows = await fetch(f"""
-            SELECT w.alias, p.mint, p.status, p.tokens_held, p.entry_price, p.initial_sol_spent, p.created_at
-            FROM positions p
-            JOIN wallets w ON w.id = p.wallet_id
-            {where}
-            ORDER BY p.created_at ASC
-            LIMIT {BATCH_SIZE}
-        """, *args)
-
-        for row in rows:
-            params = {
-                "alias": row["alias"],
-                "mint": row["mint"],
-                "status": row["status"],
-                "tokens_held": float(row["tokens_held"]) if row["tokens_held"] else 0.0,
-                "entry_price": float(row["entry_price"]) if row["entry_price"] else 0.0,
-                "sol_spent": float(row["initial_sol_spent"]) if row["initial_sol_spent"] else 0.0,
-            }
-            await run_write("""
-                MATCH (w:Wallet {alias: $alias})
-                MERGE (t:Token {address: $mint})
-                MERGE (w)-[r:HOLDS]->(t)
-                SET r.tokens_held = $tokens_held, r.entry_price = $entry_price,
-                    r.status = $status, r.sol_spent = $sol_spent
-            """, params)
-
-        if rows:
-            self.last_sync["positions"] = rows[-1]["created_at"]
-        return len(rows)
-
-    async def _sync_trades(self, since: Optional[str] = None) -> int:
-        """Sync trade_logs -> BOUGHT/SOLD relationships."""
-        where = ""
-        args: list = []
-        if since:
-            where = "WHERE t.created_at > $1"
-            args = [since]
-
-        rows = await fetch(f"""
-            SELECT w.alias, t.action, t.mint, t.amount_sol, t.amount_tokens, t.created_at
-            FROM trade_logs t
-            JOIN wallets w ON w.id = t.wallet_id
-            {where}
-            ORDER BY t.created_at ASC
-            LIMIT {BATCH_SIZE}
-        """, *args)
-
-        for row in rows:
-            action = row["action"]
-            rel_type = "BOUGHT" if action == "BUY" else "SOLD"
-            params = {
-                "alias": row["alias"],
-                "mint": row["mint"],
-                "amount_sol": float(row["amount_sol"]) if row["amount_sol"] else 0.0,
-                "amount_tokens": float(row["amount_tokens"]) if row["amount_tokens"] else 0.0,
-                "timestamp": row["created_at"].isoformat() if row["created_at"] else "",
-            }
-            # Use MERGE with timestamp to avoid duplicates on re-sync
-            cypher = f"""
-                MATCH (w:Wallet {{alias: $alias}})
-                MERGE (t:Token {{address: $mint}})
-                MERGE (w)-[r:{rel_type} {{timestamp: $timestamp}}]->(t)
-                SET r.amount_sol = $amount_sol, r.amount_tokens = $amount_tokens
-            """
-            await run_write(cypher, params)
-
-        if rows:
-            self.last_sync["trades"] = rows[-1]["created_at"]
-        self.stats["trades_synced"] += len(rows)
-        return len(rows)
-
-    # ------------------------------------------------------------------
-    # P2: Models + PREDICTED (alerts only)
-    # ------------------------------------------------------------------
-    async def _sync_models(self) -> int:
-        """Sync prediction_active_models -> Model nodes."""
-        rows = await fetch("""
-            SELECT id, custom_name, model_name, model_type, is_active,
-                   training_accuracy, training_f1
-            FROM prediction_active_models
-        """)
-        for row in rows:
-            params = {
-                "id": row["id"],
-                "name": row["custom_name"] or row["model_name"] or f"model_{row['id']}",
-                "model_type": row["model_type"] or "",
-                "status": "active" if row["is_active"] else "paused",
-                "accuracy": float(row["training_accuracy"]) if row.get("training_accuracy") else None,
-                "f1_score": float(row["training_f1"]) if row.get("training_f1") else None,
-            }
-            await run_write("""
-                MERGE (m:Model {id: $id})
-                SET m.name = $name, m.model_type = $model_type, m.status = $status,
-                    m.accuracy = $accuracy, m.f1_score = $f1_score
-            """, params)
-        return len(rows)
-
-    async def _sync_predictions(self, since: Optional[str] = None) -> int:
-        """Sync model_predictions (alerts only) -> PREDICTED relationships."""
-        where = "WHERE mp.tag = 'alert'"
-        args: list = []
-        if since:
-            where += " AND mp.created_at > $1"
-            args = [since]
-
-        rows = await fetch(f"""
-            SELECT mp.active_model_id, mp.coin_id, mp.probability, mp.tag, mp.created_at
-            FROM model_predictions mp
-            {where}
-            ORDER BY mp.created_at ASC
-            LIMIT {BATCH_SIZE}
-        """, *args)
-
-        for row in rows:
-            params = {
-                "model_id": row["active_model_id"],
-                "mint": row["coin_id"],
-                "probability": float(row["probability"]) if row["probability"] else 0.0,
-                "tag": row["tag"] or "",
-                "timestamp": row["created_at"].isoformat() if row["created_at"] else "",
-            }
-            await run_write("""
-                MATCH (m:Model {id: $model_id})
-                MERGE (t:Token {address: $mint})
-                MERGE (m)-[r:PREDICTED {timestamp: $timestamp}]->(t)
-                SET r.probability = $probability, r.tag = $tag
-            """, params)
-
-        if rows:
-            self.last_sync["predictions"] = rows[-1]["created_at"]
-        return len(rows)
-
-    # ------------------------------------------------------------------
-    # P3: Transfers + TRANSFERRED_TO
-    # ------------------------------------------------------------------
-    async def _sync_transfers(self, since: Optional[str] = None) -> int:
-        """Sync transfer_logs -> TRANSFERRED_TO relationships."""
-        where = ""
-        args: list = []
-        if since:
-            where = "WHERE tl.created_at > $1"
-            args = [since]
-
-        rows = await fetch(f"""
-            SELECT w.alias, tl.to_address, tl.amount_sol, tl.created_at
-            FROM transfer_logs tl
-            JOIN wallets w ON w.id = tl.from_wallet_id
-            {where}
-            ORDER BY tl.created_at ASC
-            LIMIT {BATCH_SIZE}
-        """, *args)
-
-        for row in rows:
-            params = {
-                "alias": row["alias"],
-                "to_address": row["to_address"],
-                "amount_sol": float(row["amount_sol"]) if row["amount_sol"] else 0.0,
-                "timestamp": row["created_at"].isoformat() if row["created_at"] else "",
-            }
-            # Try to match existing Wallet node by address, otherwise create Address node
-            await run_write("""
-                MATCH (w:Wallet {alias: $alias})
-                MERGE (target:Address {address: $to_address})
-                MERGE (w)-[r:TRANSFERRED_TO {timestamp: $timestamp}]->(target)
-                SET r.amount_sol = $amount_sol
-            """, params)
-
-        if rows:
-            self.last_sync["transfers"] = rows[-1]["created_at"]
-        return len(rows)
-
-    # ------------------------------------------------------------------
-    # Main sync loop
-    # ------------------------------------------------------------------
     async def run_once(self) -> Dict[str, int]:
         """Execute a single sync round."""
         results: Dict[str, int] = {}
         try:
             if self.first_run:
-                await self._ensure_constraints()
+                await ensure_all_constraints()
 
-            since_tokens = None if self.first_run else self.last_sync.get("tokens")
-            since_trades = None if self.first_run else self.last_sync.get("trades")
-            since_positions = None if self.first_run else self.last_sync.get("positions")
-            since_predictions = None if self.first_run else self.last_sync.get("predictions")
-            since_transfers = None if self.first_run else self.last_sync.get("transfers")
+            # Base sync (always runs)
+            base_results = await self.base.sync(self.first_run)
+            results.update(base_results)
+            self.stats["tokens_synced"] += base_results.get("tokens", 0)
+            self.stats["wallets_synced"] += base_results.get("wallets", 0)
+            self.stats["trades_synced"] += base_results.get("trades", 0)
 
-            # P0: Tokens + Creators
-            results["tokens"] = await self._sync_tokens(since_tokens)
+            # Phase 1: Events
+            if settings.NEO4J_SYNC_EVENTS_ENABLED:
+                try:
+                    event_results = await self.events.sync()
+                    results.update({f"events_{k}": v for k, v in event_results.items()})
+                    self.stats["events_detected"] += event_results.get("events", 0)
+                    self.stats["outcomes_calculated"] += event_results.get("outcomes", 0)
+                except Exception as e:
+                    logger.error("Event sync failed: %s", e, exc_info=True)
 
-            # P1: Wallets + Positions + Trades
-            results["wallets"] = await self._sync_wallets()
-            results["positions"] = await self._sync_positions(since_positions)
-            results["trades"] = await self._sync_trades(since_trades)
+            # Phase 2: Phases
+            if settings.NEO4J_SYNC_PHASES_ENABLED:
+                try:
+                    phase_results = await self.phases.sync()
+                    results.update(phase_results)
+                    self.stats["phase_snapshots_created"] += phase_results.get("phase_snapshots", 0)
+                    self.stats["price_checkpoints_created"] += phase_results.get("price_checkpoints", 0)
+                except Exception as e:
+                    logger.error("Phase sync failed: %s", e, exc_info=True)
 
-            # P2: Models + Predictions
-            results["models"] = await self._sync_models()
-            results["predictions"] = await self._sync_predictions(since_predictions)
+            # Phase 3: Wallets (MarketTrader, trades, creators, funded_by)
+            if settings.NEO4J_SYNC_WALLETS_ENABLED:
+                try:
+                    wallet_results = await self.wallets.sync()
+                    results.update({f"wallet_{k}": v for k, v in wallet_results.items()})
+                    self.stats["market_traders_synced"] += wallet_results.get("market_traders", 0)
 
-            # P3: Transfers
-            results["transfers"] = await self._sync_transfers(since_transfers)
+                    # Cluster detection on its own interval
+                    now = time.monotonic()
+                    cluster_interval = settings.NEO4J_SYNC_CLUSTER_INTERVAL_SECONDS
+                    if now - self._last_cluster_run >= cluster_interval:
+                        cluster_results = await self.wallets.sync_clusters()
+                        results.update({f"cluster_{k}": v for k, v in cluster_results.items()})
+                        self.stats["wallet_clusters_detected"] += cluster_results.get("clusters", 0)
+                        self._last_cluster_run = now
+                except Exception as e:
+                    logger.error("Wallet sync failed: %s", e, exc_info=True)
+
+            # Phase 4: Market context
+            if settings.NEO4J_SYNC_MARKET_ENABLED:
+                try:
+                    market_results = await self.market.sync()
+                    results.update({f"market_{k}": v for k, v in market_results.items()})
+                except Exception as e:
+                    logger.error("Market sync failed: %s", e, exc_info=True)
+
+            # Phase 5: Enrichment
+            if settings.NEO4J_SYNC_ENRICHMENT_ENABLED:
+                try:
+                    enrichment_results = await self.enrichment.sync()
+                    results.update({f"enrichment_{k}": v for k, v in enrichment_results.items()})
+                except Exception as e:
+                    logger.error("Enrichment sync failed: %s", e, exc_info=True)
+
+            # Phase 6: Transactions (depends on MarketTrader nodes from Phase 3)
+            if settings.NEO4J_SYNC_TRANSACTIONS_ENABLED:
+                try:
+                    tx_results = await self.transactions.sync()
+                    results.update(tx_results)
+                except Exception as e:
+                    logger.error("Transaction sync failed: %s", e, exc_info=True)
 
             self.first_run = False
             self.stats["total_syncs"] += 1
@@ -393,15 +178,34 @@ class GraphSyncService:
 
     def get_status(self) -> Dict[str, Any]:
         """Return current sync status."""
+        # Collect last_sync from all modules
+        last_sync = dict(self.base.last_sync)
+        last_sync["events"] = self.events.last_sync_events
+        last_sync["outcomes"] = self.events.last_sync_outcomes
+        last_sync["social_profiles"] = self.enrichment.last_sync_social
+        last_sync["image_hashes"] = self.enrichment.last_sync_images
+        last_sync["tokenomics"] = self.enrichment.last_sync_tokenomics
+        last_sync["market_traders"] = self.wallets.last_sync_traders
+        last_sync["sol_prices"] = self.market.last_sync_prices
+        last_sync["transactions"] = self.transactions.last_sync
+
         return {
             "running": self.running,
             "first_run_done": not self.first_run,
             "last_sync_timestamps": {
                 k: v.isoformat() if v else None
-                for k, v in self.last_sync.items()
+                for k, v in last_sync.items()
             },
             "stats": self.stats,
             "interval_seconds": self.interval_seconds,
+            "feature_flags": {
+                "events": settings.NEO4J_SYNC_EVENTS_ENABLED,
+                "phases": settings.NEO4J_SYNC_PHASES_ENABLED,
+                "wallets": settings.NEO4J_SYNC_WALLETS_ENABLED,
+                "market": settings.NEO4J_SYNC_MARKET_ENABLED,
+                "enrichment": settings.NEO4J_SYNC_ENRICHMENT_ENABLED,
+                "transactions": settings.NEO4J_SYNC_TRANSACTIONS_ENABLED,
+            },
         }
 
 

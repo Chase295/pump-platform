@@ -140,6 +140,17 @@ class EmbeddingService:
                 logger.error("Error processing config %d: %s", config_id, e, exc_info=True)
                 results["errors"] += 1
 
+        # Similarity computation + Neo4j sync
+        from backend.config import settings
+        if settings.EMBEDDING_NEO4J_SYNC_ENABLED and results["created"] > 0:
+            try:
+                pairs = await compute_similarity_pairs()
+                if pairs > 0:
+                    synced = await sync_similarities_to_neo4j()
+                    logger.debug("Similarity sync: %d pairs computed, %d synced to Neo4j", pairs, synced)
+            except Exception as e:
+                logger.warning("Similarity sync failed: %s", e)
+
         # Track timing
         duration = time.monotonic() - start_time
         embeddings_generation_duration.observe(duration)

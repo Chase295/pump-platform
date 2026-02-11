@@ -45,7 +45,21 @@ async def graph_stats():
     except Exception:
         # APOC not available - use simpler queries
         node_counts = []
-        for label in ["Token", "Creator", "Wallet", "Model", "Address"]:
+        for label in [
+            "Token", "Creator", "Wallet", "Model", "Address",
+            # Phase 1: Event-System
+            "Event", "Outcome",
+            # Phase 2: Phasen-Analyse
+            "PhaseSnapshot", "PriceCheckpoint",
+            # Phase 3: Wallet-Intelligence
+            "MarketTrader", "WalletCluster",
+            # Phase 4: Marktkontext
+            "SolPrice",
+            # Phase 5: Enrichment
+            "SocialProfile", "ImageHash", "Tokenomics",
+            # Reference Nodes
+            "Phase",
+        ]:
             try:
                 result = await run_query(
                     f"MATCH (n:{label}) RETURN '{label}' AS label, count(n) AS count"
@@ -56,7 +70,21 @@ async def graph_stats():
 
     try:
         rel_counts = []
-        for rel_type in ["CREATED", "HOLDS", "BOUGHT", "SOLD", "PREDICTED", "TRANSFERRED_TO"]:
+        for rel_type in [
+            "CREATED", "HOLDS", "BOUGHT", "SOLD", "PREDICTED", "TRANSFERRED_TO", "SIMILAR_TO",
+            # Phase 1
+            "HAD_EVENT", "FOLLOWED_BY", "RESULTED_IN",
+            # Phase 2
+            "PHASE_SUMMARY", "NEXT_PHASE", "PRICE_AT", "NEXT_CHECKPOINT",
+            # Phase 3
+            "BELONGS_TO", "TRADES_WITH", "FUNDED_BY", "MARKET_BOUGHT", "MARKET_SOLD", "IS_CREATOR",
+            # Phase 4
+            "DURING_MARKET",
+            # Phase 5
+            "HAS_TWITTER", "HAS_TELEGRAM", "HAS_WEBSITE", "HAS_IMAGE", "HAS_TOKENOMICS",
+            # Gap closures
+            "HAS_DISCORD", "LAUNCHED_WITH", "CURRENT_PHASE",
+        ]:
             try:
                 result = await run_query(
                     f"MATCH ()-[r:{rel_type}]->() RETURN '{rel_type}' AS type, count(r) AS count"

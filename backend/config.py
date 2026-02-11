@@ -79,6 +79,25 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = ""
     NEO4J_SYNC_INTERVAL_SECONDS: int = 300
     NEO4J_SYNC_ENABLED: bool = True
+    NEO4J_EVENT_VOLUME_SPIKE_MULTIPLIER: float = 5.0
+    NEO4J_EVENT_WHALE_THRESHOLD_SOL: float = 1.0
+    NEO4J_EVENT_MASS_SELL_THRESHOLD: int = 10
+    NEO4J_EVENT_LIQUIDITY_DROP_PCT: float = 50.0
+    NEO4J_EVENT_OUTCOME_DELAY_MINUTES: int = 5
+
+    # Phase feature flags
+    NEO4J_SYNC_EVENTS_ENABLED: bool = True
+    NEO4J_SYNC_PHASES_ENABLED: bool = True
+    NEO4J_SYNC_WALLETS_ENABLED: bool = True
+    NEO4J_SYNC_MARKET_ENABLED: bool = True
+    NEO4J_SYNC_ENRICHMENT_ENABLED: bool = True
+    NEO4J_SYNC_TRANSACTIONS_ENABLED: bool = True
+
+    # Cluster detection interval (expensive, runs less frequently)
+    NEO4J_SYNC_CLUSTER_INTERVAL_SECONDS: int = 1800
+
+    # LAUNCHED_WITH: max time window (seconds) between tokens from same creator
+    NEO4J_LAUNCHED_WITH_WINDOW_SEC: int = 3600
 
     # ------------------------------------------------------------------
     # Embeddings module
