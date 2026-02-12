@@ -81,7 +81,7 @@ class ModelCache:
     @classmethod
     async def preload_all(cls):
         """Load all models that have a ``model_binary`` into RAM."""
-        pool = await get_pool()
+        pool = get_pool()
         rows = await pool.fetch(
             "SELECT id, name FROM ml_models WHERE model_binary IS NOT NULL AND is_deleted = FALSE"
         )

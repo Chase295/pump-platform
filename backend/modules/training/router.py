@@ -681,7 +681,7 @@ async def delete_test_result_endpoint(test_id: int):
 async def get_data_availability():
     """Return min/max timestamps from coin_metrics."""
     try:
-        pool = await get_pool()
+        pool = get_pool()
         row = await pool.fetchrow(
             "SELECT MIN(timestamp) as min_ts, MAX(timestamp) as max_ts FROM coin_metrics"
         )
