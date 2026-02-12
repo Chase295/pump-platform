@@ -1510,6 +1510,18 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================================
+-- SEED: embedding_configs (MODULE: EMBEDDINGS)
+-- ============================================================================
+
+INSERT INTO embedding_configs (id, name, strategy, window_seconds, min_snapshots, normalization) VALUES
+(1, 'default',         'handcrafted_v1', 300,  3,  'minmax'),
+(2, 'early-signals',   'handcrafted_v1', 60,   3,  'minmax'),
+(3, 'medium-patterns', 'handcrafted_v1', 900,  5,  'robust'),
+(4, 'long-term',       'handcrafted_v1', 3600, 10, 'zscore')
+ON CONFLICT (name) DO NOTHING;
+
+
+-- ============================================================================
 -- SEED: ref_model_types (MODULE: TRAINING)
 -- ============================================================================
 
