@@ -2,16 +2,7 @@ import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import type { Phase } from '../../types/find';
-
-const PHASE_COLORS: Record<number, string> = {
-  1: '#2196f3',
-  2: '#ff9800',
-  3: '#4caf50',
-  99: '#f44336',
-  100: '#9c27b0',
-};
-
-const getPhaseColor = (id: number): string => PHASE_COLORS[id] || '#607d8b';
+import { getPhaseColor } from '../../utils/phaseColors';
 
 interface PhaseDistributionChartProps {
   streamsByPhase: Record<number, number>;

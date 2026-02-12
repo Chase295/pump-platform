@@ -1496,11 +1496,16 @@ $$ LANGUAGE plpgsql;
 -- ============================================================================
 
 INSERT INTO ref_coin_phases (id, name, interval_seconds, min_age_minutes, max_age_minutes) VALUES
-(1, 'Baby Zone', 5, 0, 10),
-(2, 'Survival Zone', 30, 10, 60),
-(3, 'Mature Zone', 60, 60, 1440),
-(99, 'Finished', 0, 1440, 999999),
-(100, 'Graduated', 0, 1440, 999999)
+(1, 'Newborn', 3, 0, 2),
+(2, 'Baby', 5, 2, 8),
+(3, 'Toddler', 10, 8, 20),
+(4, 'Teen', 30, 20, 90),
+(5, 'Young', 60, 90, 240),
+(6, 'Adult', 120, 240, 1080),
+(7, 'Senior', 300, 1080, 8640),
+(8, 'Veteran', 600, 8640, 33120),
+(99, 'Finished', 0, 33120, 999999),
+(100, 'Graduated', 0, 33120, 999999)
 ON CONFLICT (id) DO NOTHING;
 
 

@@ -197,11 +197,16 @@ const CreateModel: React.FC = () => {
         setSelectedPhases(relevant.map((p: CoinPhase) => p.id));
       } catch {
         setAvailablePhases([
-          { id: 1, name: 'Baby Zone', interval_seconds: 5, max_age_minutes: 10 },
-          { id: 2, name: 'Survival Zone', interval_seconds: 15, max_age_minutes: 120 },
-          { id: 3, name: 'Mature Zone', interval_seconds: 15, max_age_minutes: 240 },
+          { id: 1, name: 'Newborn', interval_seconds: 3, max_age_minutes: 2 },
+          { id: 2, name: 'Baby', interval_seconds: 5, max_age_minutes: 8 },
+          { id: 3, name: 'Toddler', interval_seconds: 10, max_age_minutes: 20 },
+          { id: 4, name: 'Teen', interval_seconds: 30, max_age_minutes: 90 },
+          { id: 5, name: 'Young', interval_seconds: 60, max_age_minutes: 240 },
+          { id: 6, name: 'Adult', interval_seconds: 120, max_age_minutes: 1080 },
+          { id: 7, name: 'Senior', interval_seconds: 300, max_age_minutes: 8640 },
+          { id: 8, name: 'Veteran', interval_seconds: 600, max_age_minutes: 33120 },
         ]);
-        setSelectedPhases([1, 2, 3]);
+        setSelectedPhases([1, 2, 3, 4, 5, 6, 7, 8]);
       } finally {
         setPhasesLoading(false);
       }

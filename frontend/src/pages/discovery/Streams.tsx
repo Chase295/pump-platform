@@ -44,16 +44,7 @@ import { useQuery } from '@tanstack/react-query';
 import { findApi } from '../../services/api';
 import type { Stream, StreamStats, Phase } from '../../types/find';
 import DiscoveryStatCard from '../../components/discovery/DiscoveryStatCard';
-
-const PHASE_COLORS: Record<number, string> = {
-  1: '#2196f3',
-  2: '#ff9800',
-  3: '#4caf50',
-  99: '#f44336',
-  100: '#9c27b0',
-};
-
-const getPhaseColor = (id: number): string => PHASE_COLORS[id] || '#607d8b';
+import { getPhaseColor } from '../../utils/phaseColors';
 
 const fmt = (n: number | undefined | null): string => {
   if (n == null) return '--';

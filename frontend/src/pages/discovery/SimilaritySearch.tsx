@@ -30,8 +30,10 @@ import {
   Search as SearchIcon,
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
-import { embeddingsApi } from '../../services/api';
+import { useQuery } from '@tanstack/react-query';
+import { embeddingsApi, findApi } from '../../services/api';
 import type { SimilarityResult, SimilaritySearchResponse } from '../../types/embeddings';
+import type { Phase } from '../../types/find';
 
 const LABEL_COLORS: Record<string, string> = {
   pump: '#4caf50',
@@ -48,6 +50,15 @@ const SimilaritySearch: React.FC = () => {
   const [minSimilarity, setMinSimilarity] = useState(0.5);
   const [phaseFilter, setPhaseFilter] = useState<string>('');
   const [labelFilter, setLabelFilter] = useState<string>('');
+  const { data: phases } = useQuery<Phase[]>({
+    queryKey: ['find', 'phases'],
+    queryFn: async () => {
+      const res = await findApi.getPhases();
+      return res.data.phases ?? res.data;
+    },
+    staleTime: 60000,
+  });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<SimilaritySearchResponse | null>(null);
@@ -141,8 +152,8 @@ const SimilaritySearch: React.FC = () => {
                   onChange={(e) => setPhaseFilter(e.target.value)}
                 >
                   <MenuItem value="">All</MenuItem>
-                  {[1, 2, 3, 4, 5].map((p) => (
-                    <MenuItem key={p} value={String(p)}>P{p}</MenuItem>
+                  {phases?.filter((p) => p.id < 99).map((p) => (
+                    <MenuItem key={p.id} value={String(p.id)}>{p.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>

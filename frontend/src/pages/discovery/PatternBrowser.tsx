@@ -36,8 +36,9 @@ import {
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { embeddingsApi } from '../../services/api';
+import { embeddingsApi, findApi } from '../../services/api';
 import type { EmbeddingRecord, EmbeddingStats, LabelStat } from '../../types/embeddings';
+import type { Phase } from '../../types/find';
 
 const LABEL_COLORS: Record<string, string> = {
   pump: '#4caf50',
@@ -61,6 +62,16 @@ const PatternBrowser: React.FC = () => {
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<number | null>(null);
   const [newLabel, setNewLabel] = useState('');
+
+  // Phases
+  const { data: phases } = useQuery<Phase[]>({
+    queryKey: ['find', 'phases'],
+    queryFn: async () => {
+      const res = await findApi.getPhases();
+      return res.data.phases ?? res.data;
+    },
+    staleTime: 60000,
+  });
 
   // Stats
   const { data: stats } = useQuery<EmbeddingStats>({
@@ -238,8 +249,8 @@ const PatternBrowser: React.FC = () => {
                   onChange={(e) => { setPhaseFilter(e.target.value); setPage(0); }}
                 >
                   <MenuItem value="">All</MenuItem>
-                  {[1, 2, 3, 4, 5].map((p) => (
-                    <MenuItem key={p} value={String(p)}>P{p}</MenuItem>
+                  {phases?.filter((p) => p.id < 99).map((p) => (
+                    <MenuItem key={p.id} value={String(p.id)}>{p.name}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
