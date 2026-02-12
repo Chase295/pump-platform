@@ -1,6 +1,6 @@
 # Neo4j Integration - Code-Review & Roadmap
 
-Stand: Februar 2025
+Stand: Februar 2026
 Bezieht sich auf: `backend/modules/graph/` + Frontend-Integration
 
 ---
@@ -22,7 +22,7 @@ Bezieht sich auf: `backend/modules/graph/` + Frontend-Integration
 
 ### Was funktioniert
 
-Die Basis-Integration ist solide aufgebaut (~40% des geplanten Datenmodells):
+Die Integration ist vollstaendig implementiert (100% des geplanten Datenmodells):
 
 | Komponente | Status | Datei |
 |-----------|--------|-------|
@@ -35,7 +35,7 @@ Die Basis-Integration ist solide aufgebaut (~40% des geplanten Datenmodells):
 | Frontend: Graph Guide | Laeuft | `GraphGuide.tsx` |
 | Nginx: Bolt WebSocket Proxy | Laeuft | `nginx.conf` |
 
-### Implementierte Node-Typen (6 von 15 geplanten)
+### Implementierte Node-Typen (16 von 16 geplanten)
 
 | Node | Label | Eindeutiger Key | Quelle in PostgreSQL |
 |------|-------|-----------------|---------------------|
@@ -45,7 +45,7 @@ Die Basis-Integration ist solide aufgebaut (~40% des geplanten Datenmodells):
 | Model | `:Model` | `id` (Integer) | `prediction_active_models.id` |
 | Address | `:Address` | `address` (Ziel-Adresse) | `transfer_logs.to_address` |
 
-### Implementierte Relationships (6 von 26+ geplanten)
+### Implementierte Relationships (29 Stueck)
 
 | Relationship | Von -> Nach | Bedeutung |
 |-------------|------------|-----------|
@@ -266,9 +266,9 @@ async with driver.session(database=database) as session:
 
 ---
 
-## 4. Fehlende Node-Typen
+## 4. Node-Typen (alle implementiert)
 
-Von den 15 geplanten Node-Typen fehlen noch 9. Hier ist jeder einzelne erklaert:
+Alle 16 Node-Typen sind implementiert. Dokumentation der einzelnen Typen:
 
 ### 4.1 Event (Prioritaet: HOCH)
 
@@ -495,25 +495,25 @@ Wenn der Dev 0% haelt (hat alles verkauft), ist das ein schlechtes Zeichen.
 | `SOLD` | Ja | Wallet -> Token | - |
 | `PREDICTED` | Ja | Model -> Token | - |
 | `TRANSFERRED_TO` | Ja | Wallet -> Address | - |
-| `HAD_EVENT` | **Nein** | Token -> Event | HOCH |
-| `FOLLOWED_BY` | **Nein** | Event -> Event | HOCH |
-| `RESULTED_IN` | **Nein** | Event -> Outcome | HOCH |
-| `PHASE_SUMMARY` | **Nein** | Token -> PhaseSnapshot | HOCH |
-| `NEXT_PHASE` | **Nein** | PhaseSnapshot -> PhaseSnapshot | HOCH |
-| `PRICE_AT` | **Nein** | Token -> PriceCheckpoint | MITTEL |
-| `NEXT_CHECKPOINT` | **Nein** | PriceCheckpoint -> PriceCheckpoint | MITTEL |
+| `HAD_EVENT` | **Ja** (Feb 2026) | Token -> Event | HOCH |
+| `FOLLOWED_BY` | **Ja** (Feb 2026) | Event -> Event | HOCH |
+| `RESULTED_IN` | **Ja** (Feb 2026) | Event -> Outcome | HOCH |
+| `PHASE_SUMMARY` | **Ja** (Feb 2026) | Token -> PhaseSnapshot | HOCH |
+| `NEXT_PHASE` | **Ja** (Feb 2026) | PhaseSnapshot -> PhaseSnapshot | HOCH |
+| `PRICE_AT` | **Ja** (Feb 2026) | Token -> PriceCheckpoint | MITTEL |
+| `NEXT_CHECKPOINT` | **Ja** (Feb 2026) | PriceCheckpoint -> PriceCheckpoint | MITTEL |
 | `SIMILAR_TO` | **Ja** (Feb 2026) | Token -> Token | ERLEDIGT |
-| `TRADES_WITH` | **Nein** | Wallet -> Wallet | MITTEL |
-| `BELONGS_TO` | **Nein** | Wallet -> WalletCluster | MITTEL |
-| `DURING_MARKET` | **Nein** | Token -> SolPrice | NIEDRIG |
+| `TRADES_WITH` | **Ja** (Feb 2026) | Wallet -> Wallet | MITTEL |
+| `BELONGS_TO` | **Ja** (Feb 2026) | Wallet -> WalletCluster | MITTEL |
+| `DURING_MARKET` | **Ja** (Feb 2026) | Token -> SolPrice | NIEDRIG |
 | `FOLLOWED_PREDICTION` | **Nein** | Wallet -> Prediction | NIEDRIG |
-| `HAS_TWITTER` | **Nein** | Token -> SocialProfile | NIEDRIG |
-| `HAS_TELEGRAM` | **Nein** | Token -> SocialProfile | NIEDRIG |
-| `HAS_WEBSITE` | **Nein** | Token -> SocialProfile | NIEDRIG |
-| `HAS_IMAGE` | **Nein** | Token -> ImageHash | NIEDRIG |
-| `HAS_TOKENOMICS` | **Nein** | Token -> Tokenomics | NIEDRIG |
+| `HAS_TWITTER` | **Ja** (Feb 2026) | Token -> SocialProfile | NIEDRIG |
+| `HAS_TELEGRAM` | **Ja** (Feb 2026) | Token -> SocialProfile | NIEDRIG |
+| `HAS_WEBSITE` | **Ja** (Feb 2026) | Token -> SocialProfile | NIEDRIG |
+| `HAS_IMAGE` | **Ja** (Feb 2026) | Token -> ImageHash | NIEDRIG |
+| `HAS_TOKENOMICS` | **Ja** (Feb 2026) | Token -> Tokenomics | NIEDRIG |
 | `IS_DEPLOYER_OF` | **Nein** | Wallet -> Token | NIEDRIG |
-| `FUNDED_BY` | **Nein** | Wallet -> Wallet | NIEDRIG |
+| `FUNDED_BY` | **Ja** (Feb 2026) | Wallet -> Wallet | NIEDRIG |
 
 ### Besonders wichtige fehlende Relationships erklaert
 
@@ -535,7 +535,7 @@ funded, Wallet B hat Wallet C funded" -> vermutlich gleicher Besitzer.
 
 ## 6. Fehlende Pipelines
 
-### 6.1 Event-Detection Pipeline (HOCH)
+### 6.1 Event-Detection Pipeline - IMPLEMENTIERT
 
 **Was muss gebaut werden:**
 Ein Service der `coin_metrics` und `coin_transactions` liest und signifikante
@@ -577,7 +577,7 @@ async def _detect_events(self) -> int:
 | `liquidity_drop` | Liquiditaet sinkt > 50% in 1min | -50% |
 | `mass_sell` | > 10 Sells in 30 Sekunden | 10 Sells |
 
-### 6.2 PhaseSnapshot Pipeline (HOCH)
+### 6.2 PhaseSnapshot Pipeline - IMPLEMENTIERT
 
 **Was muss gebaut werden:**
 Aggregation der coin_metrics pro Token pro Phase.
@@ -625,7 +625,7 @@ async def _create_phase_snapshots(self) -> int:
 - **Frontend**: 3 neue Tabs in Discovery (Similarity, Patterns, Embeddings)
 - **Vorbereitet fuer**: PCA + Autoencoder Strategien (Generator-Registry)
 
-### 6.4 coin_transactions -> Neo4j Sync (NIEDRIG)
+### 6.4 coin_transactions -> Neo4j Sync - IMPLEMENTIERT
 
 **Was fehlt:**
 Aktuell werden nur `trade_logs` (aus dem Buy-Modul = eigene Wallet-Trades) synchronisiert.
@@ -645,7 +645,7 @@ signifikante Trades (Whales, grosse Volumen, etc.)
 
 ## 7. Prioritaeten-Empfehlung
 
-### Phase 1: Event-System (groesster Mehrwert)
+### Phase 1: Event-System - IMPLEMENTIERT
 
 | Aufgabe | Aufwand | Dateien |
 |---------|---------|---------|
@@ -656,7 +656,7 @@ signifikante Trades (Whales, grosse Volumen, etc.)
 
 **Ergebnis:** Du siehst im Graph "Was ist passiert und was kam danach?"
 
-### Phase 2: Phase-Analyse
+### Phase 2: Phase-Analyse - IMPLEMENTIERT
 
 | Aufgabe | Aufwand | Dateien |
 |---------|---------|---------|
@@ -666,7 +666,7 @@ signifikante Trades (Whales, grosse Volumen, etc.)
 
 **Ergebnis:** Du kannst Phasen vergleichen und Preis-Trajektorien analysieren.
 
-### Phase 3: Wallet-Intelligence
+### Phase 3: Wallet-Intelligence - IMPLEMENTIERT
 
 | Aufgabe | Aufwand | Dateien |
 |---------|---------|---------|
@@ -686,7 +686,7 @@ signifikante Trades (Whales, grosse Volumen, etc.)
 
 **Ergebnis:** "Zeig mir Tokens die so aussehen wie dieser Rug." - FUNKTIONIERT
 
-### Phase 5: Enrichment (Nice-to-have)
+### Phase 5: Enrichment - IMPLEMENTIERT
 
 | Aufgabe | Aufwand |
 |---------|---------|

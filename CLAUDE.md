@@ -13,8 +13,8 @@ Unified crypto token trading platform consolidating discovery, ML training, pred
   - `backend/modules/training/` - ML model training (XGBoost, job queue)
   - `backend/modules/server/` - ML predictions, alerts, n8n webhooks
   - `backend/modules/buy/` - Trading execution, wallet management, positions
-  - `backend/modules/embeddings/` - pgvector embedding pipeline, similarity search, auto-labeling
-  - `backend/modules/graph/` - Neo4j graph sync, Cypher query API
+  - `backend/modules/embeddings/` - pgvector embedding pipeline, similarity search, auto-labeling, Neo4j SIMILAR_TO sync
+  - `backend/modules/graph/` - Neo4j graph sync (16 Node-Types, 29 Rel-Types, 15 Constraints), Cypher query API
 - **Frontend**: React + TypeScript + MUI at `frontend/`
   - Pages: Dashboard, Discovery, Training, Predictions, Trading
   - State: Zustand stores, @tanstack/react-query
@@ -51,13 +51,14 @@ Core tables (all in `sql/init.sql`):
 - `active_models`, `predictions`, `model_predictions`, `alert_evaluations` - Server module
 - `wallets`, `positions`, `trade_logs`, `transfer_logs` - Buy module
 - `exchange_rates` - SOL/USD rates
+- `coin_streams` - Active token tracking (phase, ATH, current status)
 
 ## Background Tasks (started in lifespan)
 1. **CoinStreamer** - WebSocket connection to pumpportal.fun for new token events, saves to coin_metrics + coin_transactions
 2. **JobManager** - Polls job queue for training/test/compare jobs
 3. **AlertEvaluator** - Evaluates prediction accuracy, sends n8n webhooks
-4. **EmbeddingService** - Generates 128-dim embeddings from coin_metrics + coin_transactions every 60s, with auto-labeling
-5. **GraphSyncService** - Syncs PostgreSQL data to Neo4j every 300s
+4. **EmbeddingService** - Generates 128-dim embeddings from coin_metrics + coin_transactions every 60s, with auto-labeling + similarity cache
+5. **GraphSyncService** - Syncs PostgreSQL data to Neo4j every 300s (7 sync modules: base, events, phases, wallets, market, enrichment, transactions)
 6. **Uptime tracker** - Updates Prometheus gauge every 10s
 
 ## Key Patterns

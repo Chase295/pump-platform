@@ -31,7 +31,9 @@ pump-platform/
 │       ├── find/             # Token-Discovery (WebSocket-Streaming)
 │       ├── training/         # ML-Modell-Training (XGBoost)
 │       ├── server/           # Vorhersagen & Alerts
-│       └── buy/              # Trading-Ausfuehrung
+│       ├── buy/              # Trading-Ausfuehrung
+│       ├── embeddings/       # pgvector Embedding-Pipeline
+│       └── graph/            # Neo4j Graph-Sync
 ├── frontend/                  # React + TypeScript + MUI
 │   ├── Dockerfile
 │   ├── nginx.conf
@@ -41,7 +43,12 @@ pump-platform/
 ├── sql/
 │   ├── init.sql              # Datenbank-Schema (alle Tabellen)
 │   ├── migrate_to_pgvector.sql  # Migration: pgvector + coin_transactions
-│   └── migrate_to_timescaledb.sql # Migration: TimescaleDB Hypertables
+│   ├── migrate_to_timescaledb.sql # Migration: TimescaleDB Hypertables
+│   └── migrate_embeddings_v2.sql  # Migration: Embeddings Pipeline v2
+├── docs/                      # Detaillierte Dokumentation
+│   ├── vectordb-and-graph.md  # pgvector + Neo4j Doku
+│   ├── neo4j-review-und-roadmap.md
+│   └── neo4j-graph-erweiterung.md
 ├── docker-compose.yml         # Docker Compose Stack
 ├── .env.example              # Umgebungsvariablen-Vorlage
 └── .mcp.json                 # MCP-Server-Konfiguration
@@ -55,6 +62,8 @@ pump-platform/
 | Training | XGBoost-Modell-Training mit Job-Queue | `/api/training/` |
 | Server | ML-Vorhersagen, Alert-Evaluierung, n8n-Webhooks | `/api/server/` |
 | Buy | Trading-Ausfuehrung, Wallet-Verwaltung, Positionen | `/api/buy/` |
+| Embeddings | pgvector Embedding-Pipeline, Similarity Search, Auto-Labeling | `/api/embeddings/` |
+| Graph | Neo4j Graph-Sync (16 Nodes, 29 Rels), Cypher Query API | `/api/graph/` |
 
 ## Datenbank
 
@@ -72,6 +81,9 @@ docker exec -i pump-platform-db psql -U pump -d pump_platform < sql/migrate_to_p
 
 # TimescaleDB Hypertables (fuer bestehende DBs)
 docker exec -i pump-platform-db psql -U pump -d pump_platform < sql/migrate_to_timescaledb.sql
+
+# Embeddings Pipeline v2 (fuer bestehende DBs)
+docker exec -i pump-platform-db psql -U pump -d pump_platform < sql/migrate_embeddings_v2.sql
 ```
 
 ## Konfiguration

@@ -1,7 +1,7 @@
 # Neo4j Graph-Datenbank Erweiterung - Vollstaendige Implementierungs-Anleitung
 
 Stand: Februar 2026
-Bezieht sich auf: `backend/modules/graph/sync.py`, `router.py`, `neo4j_client.py`
+Bezieht sich auf: `backend/modules/graph/` (12 Dateien: sync.py, sync_base.py, sync_events.py, sync_phases.py, sync_wallets.py, sync_market.py, sync_enrichment.py, sync_transactions.py, constraints.py, neo4j_client.py, router.py)
 
 ---
 
@@ -23,7 +23,7 @@ Bezieht sich auf: `backend/modules/graph/sync.py`, `router.py`, `neo4j_client.py
 
 ## 1. IST-Zustand
 
-### Nodes (6 Stueck)
+### Nodes (16 Stueck) - IMPLEMENTIERT
 
 | Node | Label | Key | Quelle |
 |------|-------|-----|--------|
@@ -33,7 +33,7 @@ Bezieht sich auf: `backend/modules/graph/sync.py`, `router.py`, `neo4j_client.py
 | Model | `:Model` | `id` | `prediction_active_models.id` |
 | Address | `:Address` | `address` | `transfer_logs.to_address` |
 
-### Relationships (7 Stueck)
+### Relationships (29 Stueck) - IMPLEMENTIERT
 
 | Relationship | Von -> Nach | Key-Property |
 |-------------|------------|--------------|
@@ -45,7 +45,7 @@ Bezieht sich auf: `backend/modules/graph/sync.py`, `router.py`, `neo4j_client.py
 | `TRANSFERRED_TO` | Wallet -> Address | `timestamp` |
 | `SIMILAR_TO` | Token -> Token | `embedding_a_id, embedding_b_id` |
 
-### Constraints (4 Stueck)
+### Constraints (15 Stueck) - IMPLEMENTIERT
 
 ```cypher
 CREATE CONSTRAINT token_address IF NOT EXISTS FOR (t:Token) REQUIRE t.address IS UNIQUE
@@ -56,9 +56,9 @@ CREATE CONSTRAINT model_id IF NOT EXISTS FOR (m:Model) REQUIRE m.id IS UNIQUE
 
 ---
 
-## 2. SOLL-Zustand
+## 2. SOLL-Zustand (ERREICHT)
 
-### Alle Nodes (15 Stueck) - 6 existieren, 9 neu
+### Alle Nodes (16 Stueck) - ALLE IMPLEMENTIERT
 
 | # | Node | Label | Key | Quelle | Status |
 |---|------|-------|-----|--------|--------|
@@ -67,18 +67,18 @@ CREATE CONSTRAINT model_id IF NOT EXISTS FOR (m:Model) REQUIRE m.id IS UNIQUE
 | 3 | Wallet | `:Wallet` | `alias` | `wallets` | EXISTIERT |
 | 4 | Model | `:Model` | `id` | `prediction_active_models` | EXISTIERT |
 | 5 | Address | `:Address` | `address` | `transfer_logs` | EXISTIERT |
-| 6 | **Event** | `:Event` | `id` (mint+type+timestamp) | `coin_metrics` + `coin_transactions` | **NEU** |
-| 7 | **Outcome** | `:Outcome` | `event_id` | Berechnet nach Event | **NEU** |
-| 8 | **PhaseSnapshot** | `:PhaseSnapshot` | `mint + phase_id` | `coin_metrics` aggregiert | **NEU** |
-| 9 | **PriceCheckpoint** | `:PriceCheckpoint` | `mint + minutes` | `coin_metrics` punktuell | **NEU** |
-| 10 | **WalletCluster** | `:WalletCluster` | `cluster_id` | `coin_transactions` analysiert | **NEU** |
-| 11 | **SolPrice** | `:SolPrice` | `timestamp` (gerundet auf Stunde) | `exchange_rates` | **NEU** |
-| 12 | **SocialProfile** | `:SocialProfile` | `url` | `discovered_coins.twitter_url` etc. | **NEU** |
-| 13 | **ImageHash** | `:ImageHash` | `hash` | `discovered_coins.image_hash` | **NEU** |
-| 14 | **Tokenomics** | `:Tokenomics` | `mint` | `discovered_coins` Felder | **NEU** |
-| 15 | **MarketTrader** | `:MarketTrader` | `address` | `coin_transactions.trader_public_key` | **NEU** |
+| 6 | **Event** | `:Event` | `id` (mint+type+timestamp) | `coin_metrics` + `coin_transactions` | **IMPLEMENTIERT** |
+| 7 | **Outcome** | `:Outcome` | `event_id` | Berechnet nach Event | **IMPLEMENTIERT** |
+| 8 | **PhaseSnapshot** | `:PhaseSnapshot` | `mint + phase_id` | `coin_metrics` aggregiert | **IMPLEMENTIERT** |
+| 9 | **PriceCheckpoint** | `:PriceCheckpoint` | `mint + minutes` | `coin_metrics` punktuell | **IMPLEMENTIERT** |
+| 10 | **WalletCluster** | `:WalletCluster` | `cluster_id` | `coin_transactions` analysiert | **IMPLEMENTIERT** |
+| 11 | **SolPrice** | `:SolPrice` | `timestamp` (gerundet auf Stunde) | `exchange_rates` | **IMPLEMENTIERT** |
+| 12 | **SocialProfile** | `:SocialProfile` | `url` | `discovered_coins.twitter_url` etc. | **IMPLEMENTIERT** |
+| 13 | **ImageHash** | `:ImageHash` | `hash` | `discovered_coins.image_hash` | **IMPLEMENTIERT** |
+| 14 | **Tokenomics** | `:Tokenomics` | `mint` | `discovered_coins` Felder | **IMPLEMENTIERT** |
+| 15 | **MarketTrader** | `:MarketTrader` | `address` | `coin_transactions.trader_public_key` | **IMPLEMENTIERT** |
 
-### Alle Relationships (26 Stueck) - 7 existieren, 19 neu
+### Alle Relationships (29 Stueck) - ALLE IMPLEMENTIERT
 
 | # | Relationship | Von -> Nach | Status |
 |---|-------------|------------|--------|
@@ -89,29 +89,29 @@ CREATE CONSTRAINT model_id IF NOT EXISTS FOR (m:Model) REQUIRE m.id IS UNIQUE
 | 5 | `PREDICTED` | Model -> Token | EXISTIERT |
 | 6 | `TRANSFERRED_TO` | Wallet -> Address | EXISTIERT |
 | 7 | `SIMILAR_TO` | Token -> Token | EXISTIERT |
-| 8 | **`HAD_EVENT`** | Token -> Event | **NEU** |
-| 9 | **`FOLLOWED_BY`** | Event -> Event | **NEU** |
-| 10 | **`RESULTED_IN`** | Event -> Outcome | **NEU** |
-| 11 | **`PHASE_SUMMARY`** | Token -> PhaseSnapshot | **NEU** |
-| 12 | **`NEXT_PHASE`** | PhaseSnapshot -> PhaseSnapshot | **NEU** |
-| 13 | **`PRICE_AT`** | Token -> PriceCheckpoint | **NEU** |
-| 14 | **`NEXT_CHECKPOINT`** | PriceCheckpoint -> PriceCheckpoint | **NEU** |
-| 15 | **`BELONGS_TO`** | MarketTrader -> WalletCluster | **NEU** |
-| 16 | **`TRADES_WITH`** | MarketTrader -> MarketTrader | **NEU** |
-| 17 | **`FUNDED_BY`** | Wallet -> Wallet | **NEU** |
-| 18 | **`DURING_MARKET`** | Token -> SolPrice | **NEU** |
-| 19 | **`HAS_TWITTER`** | Token -> SocialProfile | **NEU** |
-| 20 | **`HAS_TELEGRAM`** | Token -> SocialProfile | **NEU** |
-| 21 | **`HAS_WEBSITE`** | Token -> SocialProfile | **NEU** |
-| 22 | **`HAS_IMAGE`** | Token -> ImageHash | **NEU** |
-| 23 | **`HAS_TOKENOMICS`** | Token -> Tokenomics | **NEU** |
-| 24 | **`MARKET_BOUGHT`** | MarketTrader -> Token | **NEU** |
-| 25 | **`MARKET_SOLD`** | MarketTrader -> Token | **NEU** |
-| 26 | **`IS_CREATOR`** | MarketTrader -> Token | **NEU** |
+| 8 | **`HAD_EVENT`** | Token -> Event | **IMPLEMENTIERT** |
+| 9 | **`FOLLOWED_BY`** | Event -> Event | **IMPLEMENTIERT** |
+| 10 | **`RESULTED_IN`** | Event -> Outcome | **IMPLEMENTIERT** |
+| 11 | **`PHASE_SUMMARY`** | Token -> PhaseSnapshot | **IMPLEMENTIERT** |
+| 12 | **`NEXT_PHASE`** | PhaseSnapshot -> PhaseSnapshot | **IMPLEMENTIERT** |
+| 13 | **`PRICE_AT`** | Token -> PriceCheckpoint | **IMPLEMENTIERT** |
+| 14 | **`NEXT_CHECKPOINT`** | PriceCheckpoint -> PriceCheckpoint | **IMPLEMENTIERT** |
+| 15 | **`BELONGS_TO`** | MarketTrader -> WalletCluster | **IMPLEMENTIERT** |
+| 16 | **`TRADES_WITH`** | MarketTrader -> MarketTrader | **IMPLEMENTIERT** |
+| 17 | **`FUNDED_BY`** | Wallet -> Wallet | **IMPLEMENTIERT** |
+| 18 | **`DURING_MARKET`** | Token -> SolPrice | **IMPLEMENTIERT** |
+| 19 | **`HAS_TWITTER`** | Token -> SocialProfile | **IMPLEMENTIERT** |
+| 20 | **`HAS_TELEGRAM`** | Token -> SocialProfile | **IMPLEMENTIERT** |
+| 21 | **`HAS_WEBSITE`** | Token -> SocialProfile | **IMPLEMENTIERT** |
+| 22 | **`HAS_IMAGE`** | Token -> ImageHash | **IMPLEMENTIERT** |
+| 23 | **`HAS_TOKENOMICS`** | Token -> Tokenomics | **IMPLEMENTIERT** |
+| 24 | **`MARKET_BOUGHT`** | MarketTrader -> Token | **IMPLEMENTIERT** |
+| 25 | **`MARKET_SOLD`** | MarketTrader -> Token | **IMPLEMENTIERT** |
+| 26 | **`IS_CREATOR`** | MarketTrader -> Token | **IMPLEMENTIERT** |
 
 ---
 
-## 3. Phase 1: Event-System
+## 3. Phase 1: Event-System - IMPLEMENTIERT
 
 ### 3.1 Zweck
 
@@ -520,7 +520,7 @@ ORDER BY anzahl DESC
 
 ---
 
-## 4. Phase 2: Phasen-Analyse
+## 4. Phase 2: Phasen-Analyse - IMPLEMENTIERT
 
 ### 4.1 Zweck
 
@@ -779,7 +779,7 @@ RETURN avg(pc.price_change_from_start_pct) AS avg_price_change,
 
 ---
 
-## 5. Phase 3: Wallet-Intelligence
+## 5. Phase 3: Wallet-Intelligence - IMPLEMENTIERT
 
 ### 5.1 Zweck
 
@@ -980,7 +980,7 @@ ORDER BY chain_length DESC
 
 ---
 
-## 6. Phase 4: Marktkontext
+## 6. Phase 4: Marktkontext - IMPLEMENTIERT
 
 ### 6.1 SolPrice Node
 
@@ -1038,7 +1038,7 @@ MERGE (t)-[:DURING_MARKET]->(sp)
 
 ---
 
-## 7. Phase 5: Enrichment
+## 7. Phase 5: Enrichment - IMPLEMENTIERT
 
 ### 7.1 SocialProfile Node
 
@@ -1242,7 +1242,7 @@ ORDER BY tk.top_10_holders_pct DESC
 
 ---
 
-## 8. Phase 6: coin_transactions Sync
+## 8. Phase 6: coin_transactions Sync - IMPLEMENTIERT
 
 ### 8.1 Zweck
 
@@ -1302,9 +1302,9 @@ FOREACH (_ IN CASE WHEN $tx_type = 'sell' THEN [1] ELSE [] END |
 
 ---
 
-## 9. Constraints und Indexes (Gesamtliste)
+## 9. Constraints und Indexes (Gesamtliste) - IMPLEMENTIERT
 
-### Alle Constraints nach Implementierung (13 Stueck)
+### Alle Constraints (15 Stueck) - IMPLEMENTIERT
 
 ```cypher
 -- Existierend (4)
@@ -1336,7 +1336,7 @@ CREATE CONSTRAINT tokenomics_mint IF NOT EXISTS FOR (tk:Tokenomics) REQUIRE tk.m
 
 ---
 
-## 10. Router-Erweiterung
+## 10. Router-Erweiterung - IMPLEMENTIERT
 
 ### Stats-Endpoint erweitern
 
@@ -1422,7 +1422,7 @@ self.stats = {
 - "Welche Tokens haelt Wallet Y?"
 - "Welches Modell hat Token Z vorhergesagt?"
 
-### Nachher (SOLL)
+### Nachher (IMPLEMENTIERT)
 
 ```
 15 Node-Typen:   + Event, Outcome, PhaseSnapshot, PriceCheckpoint,
@@ -1463,6 +1463,29 @@ self.stats = {
 | **6: Market-Trades** | 2-3h | MITTEL - Signifikante Markt-Trades | `sync.py` |
 
 **Gesamt: ~16-23 Stunden Implementierungsaufwand**
+
+---
+
+---
+
+## Implementierungs-Status
+
+Alle 6 Phasen wurden im Februar 2026 implementiert:
+
+| Phase | Status | Sync-Modul |
+|-------|--------|------------|
+| Phase 1: Event-System | IMPLEMENTIERT | `sync_events.py` |
+| Phase 2: Phasen-Analyse | IMPLEMENTIERT | `sync_phases.py` |
+| Phase 3: Wallet-Intelligence | IMPLEMENTIERT | `sync_wallets.py` |
+| Phase 4: Marktkontext | IMPLEMENTIERT | `sync_market.py` |
+| Phase 5: Enrichment | IMPLEMENTIERT | `sync_enrichment.py` |
+| Phase 6: coin_transactions | IMPLEMENTIERT | `sync_transactions.py` |
+
+**Zusaetzliche Gap-Closures (Feb 2026):**
+- `sync_base.py`: Token-Properties erweitert (19 statt 4), Creator-Aggregates (7 neue Felder), Phase-Nodes, LAUNCHED_WITH, CURRENT_PHASE
+- `constraints.py`: Ausgelagert aus sync.py, 15 Constraints
+- Bug-Fix: `cs.mint` → `cs.token_address` in Token-Sync JOIN
+- Bug-Fix: `phase_id` → `id AS phase_id` in Phase-Sync SQL
 
 ---
 

@@ -79,7 +79,7 @@ class BaseSyncModule:
                 dc.bonding_curve_key, dc.description,
                 cs.ath_price_sol, cs.ath_timestamp, cs.current_phase_id
             FROM discovered_coins dc
-            LEFT JOIN coin_streams cs ON dc.token_address = cs.mint
+            LEFT JOIN coin_streams cs ON dc.token_address = cs.token_address
             {where}
             ORDER BY dc.discovered_at ASC
             LIMIT {BATCH_SIZE}
@@ -209,9 +209,9 @@ class BaseSyncModule:
     # ------------------------------------------------------------------
     async def _sync_phases(self) -> int:
         rows = await fetch("""
-            SELECT phase_id, interval_seconds, max_age_minutes
+            SELECT id AS phase_id, name, interval_seconds, max_age_minutes
             FROM ref_coin_phases
-            ORDER BY phase_id
+            ORDER BY id
         """)
         if not rows:
             return 0
@@ -220,13 +220,15 @@ class BaseSyncModule:
         for row in rows:
             params = {
                 "phase_id": int(row["phase_id"]),
+                "name": row["name"] or "",
                 "interval_seconds": int(row["interval_seconds"]) if row["interval_seconds"] is not None else None,
                 "max_age_minutes": int(row["max_age_minutes"]) if row["max_age_minutes"] is not None else None,
             }
             try:
                 await run_write("""
                     MERGE (p:Phase {phase_id: $phase_id})
-                    SET p.interval_seconds = $interval_seconds,
+                    SET p.name = $name,
+                        p.interval_seconds = $interval_seconds,
                         p.max_age_minutes = $max_age_minutes
                 """, params)
                 count += 1

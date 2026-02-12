@@ -42,10 +42,9 @@ Das System verwendet **drei Datenbanken** mit unterschiedlichen Aufgaben:
                    |   (Graph Database)    |
                    +----------+------------+
                               |
-                   Beziehungsanalyse:
-                   Creator -> Token
-                   Wallet -> BOUGHT/SOLD -> Token
-                   Model -> PREDICTED -> Token
+                   16 Node-Types, 29 Relationships, 15 Constraints
+                   Token, Creator, Wallet, Model, Phase, Event, Outcome...
+                   CREATED, BOUGHT, SOLD, HAD_EVENT, SIMILAR_TO...
 ```
 
 ### Datenbanktypen und ihre Rollen
@@ -282,27 +281,43 @@ async def flush_transactions_batch(trades_data, status):
 
 ### 3.4 Daten in Neo4j (Graph Export)
 
-**Quelle:** `backend/modules/graph/sync.py`
+**Quelle:** `backend/modules/graph/` (7 Sync-Module)
 **Richtung:** PostgreSQL --> Neo4j (Einweg-Sync, alle 300s)
 
-| Prioritaet | PostgreSQL-Tabelle | Neo4j Node/Relationship | Sync-Methode |
-|-----------|-------------------|------------------------|-------------|
-| P0 | `discovered_coins` | `:Token`, `:Creator`, `-[:CREATED]->` | Inkrementell nach `discovered_at` |
-| P1 | `wallets` | `:Wallet` | Vollsync (alle Wallets) |
-| P1 | `positions` | `-[:HOLDS]->` | Inkrementell nach `created_at` |
-| P1 | `trade_logs` | `-[:BOUGHT]->`, `-[:SOLD]->` | Inkrementell nach `created_at` |
-| P2 | `prediction_active_models` | `:Model` | Vollsync |
-| P2 | `model_predictions` | `-[:PREDICTED]->` | Nur Alerts, inkrementell |
-| P3 | `transfer_logs` | `-[:TRANSFERRED_TO]->` | Inkrementell nach `created_at` |
+**Sync-Module:**
+| Modul | Datei | Sync-Inhalt |
+|-------|-------|-------------|
+| Base | `sync_base.py` | Token, Creator, Phase, Wallet, Position, Trade, Model, Prediction, Transfer |
+| Events | `sync_events.py` | Event-Detection (volume_spike, whale_entry, dev_sold, price_ath, mass_sell, liquidity_drop), Outcome-Berechnung |
+| Phases | `sync_phases.py` | PhaseSnapshot-Aggregation, PriceCheckpoint-Berechnung |
+| Wallets | `sync_wallets.py` | MarketTrader aus coin_transactions, WalletCluster-Detection, FUNDED_BY |
+| Market | `sync_market.py` | SolPrice-Kontext, DURING_MARKET-Verknuepfung |
+| Enrichment | `sync_enrichment.py` | SocialProfile, ImageHash, Tokenomics aus discovered_coins |
+| Transactions | `sync_transactions.py` | Signifikante Markt-Trades (Whale + grosse Trades) |
 
-**Neo4j Graph-Modell:**
+**Neo4j Graph-Modell (16 Node-Types, 29 Relationships):**
+
+Node-Types:
 ```
-(:Creator {address}) -[:CREATED {initial_buy_sol, timestamp}]-> (:Token {address, name, symbol})
-(:Wallet  {alias})   -[:BOUGHT  {amount_sol, amount_tokens}]-> (:Token)
-(:Wallet  {alias})   -[:SOLD    {amount_sol, amount_tokens}]-> (:Token)
-(:Wallet  {alias})   -[:HOLDS   {tokens_held, entry_price}]->  (:Token)
-(:Model   {id,name}) -[:PREDICTED {probability, tag}]->        (:Token)
-(:Wallet  {alias})   -[:TRANSFERRED_TO {amount_sol}]->         (:Address {address})
+Token, Creator, Wallet, Model, Address, Phase,
+Event, Outcome, PhaseSnapshot, PriceCheckpoint,
+MarketTrader, WalletCluster, SolPrice,
+SocialProfile, ImageHash, Tokenomics
+```
+
+Kern-Relationships:
+```
+(:Creator) -[:CREATED]-> (:Token)
+(:Token)   -[:HAD_EVENT]-> (:Event) -[:RESULTED_IN]-> (:Outcome)
+(:Token)   -[:PHASE_SUMMARY]-> (:PhaseSnapshot) -[:NEXT_PHASE]-> (:PhaseSnapshot)
+(:Token)   -[:CURRENT_PHASE]-> (:Phase)
+(:Token)   -[:SIMILAR_TO]-> (:Token)
+(:Wallet)  -[:BOUGHT|SOLD|HOLDS]-> (:Token)
+(:Model)   -[:PREDICTED]-> (:Token)
+(:MarketTrader) -[:MARKET_BOUGHT|MARKET_SOLD]-> (:Token)
+(:Token)   -[:HAS_TWITTER|HAS_TELEGRAM|HAS_WEBSITE]-> (:SocialProfile)
+(:Token)   -[:HAS_TOKENOMICS]-> (:Tokenomics)
+(:Token)   -[:DURING_MARKET]-> (:SolPrice)
 ```
 
 ---
@@ -350,13 +365,35 @@ const boltUrl = `${boltScheme}://${boltHost}:${boltPort}`;
 
 Funktioniert mit jedem Hostname/Port/Protokoll automatisch.
 
-### 4.3 Uniqueness Constraints (automatisch bei erstem Sync)
+### 4.3 Uniqueness Constraints (15 Stueck, automatisch bei erstem Sync)
+
+**Datei:** `backend/modules/graph/constraints.py`
 
 ```cypher
+-- Core (5)
 CREATE CONSTRAINT token_address IF NOT EXISTS FOR (t:Token) REQUIRE t.address IS UNIQUE
 CREATE CONSTRAINT creator_address IF NOT EXISTS FOR (c:Creator) REQUIRE c.address IS UNIQUE
 CREATE CONSTRAINT wallet_alias IF NOT EXISTS FOR (w:Wallet) REQUIRE w.alias IS UNIQUE
 CREATE CONSTRAINT model_id IF NOT EXISTS FOR (m:Model) REQUIRE m.id IS UNIQUE
+CREATE CONSTRAINT phase_phase_id IF NOT EXISTS FOR (p:Phase) REQUIRE p.phase_id IS UNIQUE
+
+-- Events (2)
+CREATE CONSTRAINT event_id IF NOT EXISTS FOR (e:Event) REQUIRE e.id IS UNIQUE
+CREATE CONSTRAINT outcome_event_id IF NOT EXISTS FOR (o:Outcome) REQUIRE o.event_id IS UNIQUE
+
+-- Phases (2)
+CREATE CONSTRAINT phase_snapshot_key IF NOT EXISTS FOR (ps:PhaseSnapshot) REQUIRE ps.id IS UNIQUE
+CREATE CONSTRAINT price_checkpoint_key IF NOT EXISTS FOR (pc:PriceCheckpoint) REQUIRE pc.id IS UNIQUE
+
+-- Wallet-Intelligence (2)
+CREATE CONSTRAINT market_trader_address IF NOT EXISTS FOR (mt:MarketTrader) REQUIRE mt.address IS UNIQUE
+CREATE CONSTRAINT wallet_cluster_id IF NOT EXISTS FOR (wc:WalletCluster) REQUIRE wc.cluster_id IS UNIQUE
+
+-- Market + Enrichment (4)
+CREATE CONSTRAINT sol_price_timestamp IF NOT EXISTS FOR (sp:SolPrice) REQUIRE sp.timestamp IS UNIQUE
+CREATE CONSTRAINT social_profile_url IF NOT EXISTS FOR (sp:SocialProfile) REQUIRE sp.url IS UNIQUE
+CREATE CONSTRAINT image_hash_unique IF NOT EXISTS FOR (ih:ImageHash) REQUIRE ih.hash IS UNIQUE
+CREATE CONSTRAINT tokenomics_mint IF NOT EXISTS FOR (tk:Tokenomics) REQUIRE tk.mint IS UNIQUE
 ```
 
 ---
@@ -408,7 +445,15 @@ CREATE CONSTRAINT model_id IF NOT EXISTS FOR (m:Model) REQUIRE m.id IS UNIQUE
 | `backend/modules/graph/__init__.py` | Modul-Init |
 | `backend/modules/graph/neo4j_client.py` | Async Neo4j Driver (Singleton) |
 | `backend/modules/graph/router.py` | FastAPI Router (`/api/graph/`) |
-| `backend/modules/graph/sync.py` | PostgreSQL -> Neo4j Sync Service |
+| `backend/modules/graph/constraints.py` | 15 Uniqueness Constraints |
+| `backend/modules/graph/sync.py` | Orchestrator: startet alle 7 Sync-Module |
+| `backend/modules/graph/sync_base.py` | Token, Creator, Phase, Wallet, Position, Trade, Model, Prediction, Transfer |
+| `backend/modules/graph/sync_events.py` | Event-Detection + Outcome-Berechnung |
+| `backend/modules/graph/sync_phases.py` | PhaseSnapshot + PriceCheckpoint |
+| `backend/modules/graph/sync_wallets.py` | MarketTrader, WalletCluster, FUNDED_BY |
+| `backend/modules/graph/sync_market.py` | SolPrice, DURING_MARKET |
+| `backend/modules/graph/sync_enrichment.py` | SocialProfile, ImageHash, Tokenomics |
+| `backend/modules/graph/sync_transactions.py` | Signifikante Markt-Trades nach Neo4j |
 
 ### 6.2 neo4j_client.py - Driver-Management
 
@@ -429,12 +474,21 @@ is_healthy = await check_health()
 await close_neo4j()
 ```
 
-### 6.3 sync.py - Graph Sync Service
+### 6.3 sync.py - Graph Sync Orchestrator
+
+**Architektur:** 7 Sync-Module werden sequentiell ausgefuehrt:
+1. `sync_base.py` - Token, Creator, Phase, Wallet, Position, Trade, Model, Prediction, Transfer
+2. `sync_events.py` - Event-Detection (6 Typen) + Outcome-Berechnung + Event-Verkettung
+3. `sync_phases.py` - PhaseSnapshot-Aggregation + PriceCheckpoint-Berechnung
+4. `sync_wallets.py` - MarketTrader + WalletCluster + FUNDED_BY
+5. `sync_market.py` - SolPrice + DURING_MARKET
+6. `sync_enrichment.py` - SocialProfile + ImageHash + Tokenomics
+7. `sync_transactions.py` - Signifikante Markt-Trades (Whale + grosse Trades)
 
 **Lifecycle:**
 1. `main.py` startet `_init_neo4j_with_retry()` als asyncio Task (12 Versuche, 10s Delay)
 2. Nach erfolgreicher Verbindung: `start_graph_sync(interval_seconds=300)`
-3. Erster Sync: Constraints erstellen + Vollsync aller Daten
+3. Erster Sync: 15 Constraints erstellen (`constraints.py`) + Vollsync aller 7 Module
 4. Folgende Syncs: Inkrementell (nur neue Daten seit letztem Sync)
 5. Shutdown: `stop_graph_sync()` + `close_neo4j()`
 
@@ -442,6 +496,7 @@ await close_neo4j()
 - Max 5000 Entities pro Sync-Runde pro Typ
 - Fehler sind non-fatal (Sync laeuft weiter)
 - Statistiken via `get_graph_sync().get_status()`
+- Typischer Sync-Lauf: ~30k Entities in ~30s
 
 ### 6.4 Embeddings-Modul (Embedding Pipeline)
 
@@ -684,7 +739,7 @@ docker compose logs -f backend 2>&1 | grep "coin_transactions"
 | **Embedding Configs/Jobs/Labels Schema** | `sql/migrate_embeddings_v2.sql` |
 | **HNSW-Index Config** | `sql/init.sql` (idx_coin_patterns_embedding) |
 | **Neo4j Verbindung** | `backend/modules/graph/neo4j_client.py` |
-| **Neo4j Sync Logic** | `backend/modules/graph/sync.py` |
+| **Neo4j Sync Logic** | `backend/modules/graph/sync.py` (Orchestrator) + `sync_base.py`, `sync_events.py`, `sync_phases.py`, `sync_wallets.py`, `sync_market.py`, `sync_enrichment.py`, `sync_transactions.py` |
 | **Neo4j API Endpoints** | `backend/modules/graph/router.py` |
 | **Neo4j Lifecycle (Start/Stop)** | `backend/main.py:128-168` |
 | **Neo4j Config** | `backend/config.py:77-81`, `docker-compose.yml` (neo4j service) |
@@ -727,8 +782,16 @@ backend/
     graph/
       __init__.py                       # Modul-Init
       neo4j_client.py                   # Async Neo4j Driver Singleton
+      constraints.py                    # 15 Uniqueness Constraints
       router.py                         # /api/graph/* Endpoints
-      sync.py                           # PostgreSQL -> Neo4j Sync Service
+      sync.py                           # Orchestrator (startet alle 7 Module)
+      sync_base.py                      # Token, Creator, Phase, Wallet, Trade, Model...
+      sync_events.py                    # Event-Detection + Outcomes
+      sync_phases.py                    # PhaseSnapshot + PriceCheckpoint
+      sync_wallets.py                   # MarketTrader, WalletCluster
+      sync_market.py                    # SolPrice, DURING_MARKET
+      sync_enrichment.py                # Social, Image, Tokenomics
+      sync_transactions.py              # Signifikante Markt-Trades
 
 frontend/
   nginx.conf                            # WebSocket Proxy (map, @bolt)
