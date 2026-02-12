@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 import joblib
 
 from backend.config import settings
+from backend.database import get_pool
 from backend.modules.training.db_queries import (
     get_next_pending_job,
     update_job_status,
@@ -32,6 +33,8 @@ from backend.modules.training.trainer import (
     train_model,
     test_model,
     ModelCache,
+    tune_hyperparameters_sync,
+    create_model_instance,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,8 @@ async def process_job(job_id: int) -> None:
             await process_test_job(job)
         elif job_type == "COMPARE":
             await process_compare_job(job)
+        elif job_type == "TUNE":
+            await process_tune_job(job)
         else:
             raise ValueError(f"Unknown job type: {job_type}")
 
@@ -113,6 +118,15 @@ async def process_train_job(job: Dict[str, Any]) -> None:
         min_percent_change = tb.get("min_percent_change")
         direction = tb.get("direction", "up")
 
+    # Extract new feature source flags
+    use_graph_features = False
+    use_embedding_features = False
+    use_transaction_features = False
+    if params and isinstance(params, dict):
+        use_graph_features = params.get("use_graph_features", False)
+        use_embedding_features = params.get("use_embedding_features", False)
+        use_transaction_features = params.get("use_transaction_features", False)
+
     # Progress 10%
     await update_job_status(job_id, status="RUNNING", progress=0.1, progress_msg="Loading training data...")
 
@@ -140,6 +154,9 @@ async def process_train_job(job: Dict[str, Any]) -> None:
             min_percent_change=min_percent_change,
             direction=direction,
             original_requested_features=original_requested_features,
+            use_graph_features=use_graph_features,
+            use_embedding_features=use_embedding_features,
+            use_transaction_features=use_transaction_features,
         )
         logger.info(
             "Job %d training done: accuracy=%.4f, f1=%.4f",
@@ -200,6 +217,11 @@ async def process_train_job(job: Dict[str, Any]) -> None:
         target_direction=job.get("train_target_direction"),
         use_flag_features=use_flag_features,
         model_binary=training_result.get("model_data"),
+        best_iteration=training_result.get("best_iteration"),
+        best_score=training_result.get("best_score"),
+        low_importance_features=training_result.get("low_importance_features"),
+        shap_values=training_result.get("shap_values"),
+        early_stopping_rounds=training_result.get("early_stopping_rounds"),
     )
 
     # Put deserialized model into cache
@@ -421,6 +443,175 @@ async def process_compare_job(job: Dict[str, Any]) -> None:
         progress_msg=f"Comparison done: {len(model_ids)} models compared",
     )
     logger.info("COMPARE job %d done: comparison %d, winner model %d", job_id, comparison_id, winner_id)
+
+
+async def process_tune_job(job: Dict[str, Any]) -> None:
+    """Process a TUNE job: find optimal hyperparameters for a model."""
+    job_id = job["id"]
+    tune_model_id = job.get("tune_model_id")
+    strategy = job.get("tune_strategy", "random")
+    n_iterations = job.get("tune_n_iterations", 20)
+    param_space = job.get("tune_param_space")
+
+    if not tune_model_id:
+        raise ValueError("tune_model_id is required for TUNE jobs")
+
+    logger.info("Processing TUNE job %d for model %d", job_id, tune_model_id)
+
+    from backend.modules.training.db_queries import get_model as db_get_model
+    model_record = await db_get_model(tune_model_id)
+    if not model_record or model_record.get("is_deleted"):
+        raise ValueError(f"Model {tune_model_id} not found or deleted")
+
+    await update_job_status(job_id, status="RUNNING", progress=0.1, progress_msg="Loading data for tuning...")
+
+    # Load data using the original model's config
+    from backend.modules.training.features import load_training_data
+    from backend.modules.training.trainer import prepare_features_for_training
+
+    features = model_record["features"]
+    phases = model_record["phases"]
+    params = model_record.get("params", {}) or {}
+    model_type = model_record["model_type"]
+    target_var = model_record["target_variable"]
+    use_time_based = model_record.get("target_operator") is None
+    use_engineered = params.get("use_engineered_features", False)
+
+    features_for_loading, features_for_training = prepare_features_for_training(
+        features=features, target_var=target_var, use_time_based=use_time_based,
+    )
+
+    data = await load_training_data(
+        train_start=model_record["train_start"],
+        train_end=model_record["train_end"],
+        features=features_for_loading,
+        phases=phases,
+        include_ath=use_engineered,
+    )
+    if len(data) == 0:
+        raise ValueError("No training data found for tuning!")
+
+    await update_job_status(job_id, status="RUNNING", progress=0.2, progress_msg="Creating labels...")
+
+    # Create labels
+    from backend.modules.training.features import create_time_based_labels, create_rule_based_labels
+    from backend.modules.training.db_queries import get_phase_intervals
+
+    if use_time_based:
+        tb = params.get("_time_based", {})
+        phase_intervals = await get_phase_intervals()
+        labels = create_time_based_labels(
+            data, target_var,
+            tb.get("future_minutes", 5),
+            tb.get("min_percent_change", 2.0),
+            tb.get("direction", "up"),
+            phase_intervals,
+        )
+    else:
+        labels = create_rule_based_labels(
+            data, target_var,
+            model_record["target_operator"],
+            float(model_record["target_value"]),
+        )
+
+    available_features = [f for f in features_for_training if f in data.columns]
+    X = data[available_features]
+    y = labels.values
+
+    await update_job_status(job_id, status="RUNNING", progress=0.3, progress_msg=f"Tuning ({n_iterations} iterations)...")
+
+    # Run tuning in executor
+    loop = asyncio.get_running_loop()
+    tune_result = await loop.run_in_executor(
+        None, tune_hyperparameters_sync,
+        model_type, X, y, strategy, n_iterations, param_space, params,
+    )
+
+    await update_job_status(job_id, status="RUNNING", progress=0.7, progress_msg="Training model with best params...")
+
+    # Train a new model with the best params
+    best_params = {**params, **tune_result["best_params"]}
+    tb_config = params.get("_time_based", {})
+    training_result = await train_model(
+        model_type=model_type,
+        features=features,
+        target_var=target_var,
+        target_operator=model_record.get("target_operator"),
+        target_value=float(model_record["target_value"]) if model_record.get("target_value") else None,
+        train_start=model_record["train_start"],
+        train_end=model_record["train_end"],
+        phases=phases,
+        params=best_params,
+        model_storage_path=settings.MODEL_STORAGE_PATH,
+        use_time_based=use_time_based,
+        future_minutes=tb_config.get("future_minutes"),
+        min_percent_change=tb_config.get("min_percent_change"),
+        direction=tb_config.get("direction", "up"),
+    )
+
+    await update_job_status(job_id, status="RUNNING", progress=0.9, progress_msg="Saving tuned model...")
+
+    # Store the tuned model
+    train_start_dt = model_record["train_start"]
+    train_end_dt = model_record["train_end"]
+    original_name = model_record.get("name", f"Model_{tune_model_id}")
+    tuned_name = f"{original_name}_tuned"
+
+    model_id = await db_create_model(
+        name=tuned_name,
+        model_type=model_type,
+        target_variable=target_var,
+        train_start=train_start_dt,
+        train_end=train_end_dt,
+        target_operator=model_record.get("target_operator"),
+        target_value=float(model_record["target_value"]) if model_record.get("target_value") else None,
+        features=training_result.get("features", features),
+        phases=phases,
+        params=best_params,
+        training_accuracy=training_result["accuracy"],
+        training_f1=training_result["f1"],
+        training_precision=training_result["precision"],
+        training_recall=training_result["recall"],
+        feature_importance=training_result["feature_importance"],
+        model_file_path=training_result["model_path"],
+        status="READY",
+        cv_scores=training_result.get("cv_scores"),
+        cv_overfitting_gap=training_result.get("cv_overfitting_gap"),
+        roc_auc=training_result.get("roc_auc"),
+        mcc=training_result.get("mcc"),
+        fpr=training_result.get("fpr"),
+        fnr=training_result.get("fnr"),
+        confusion_matrix=training_result.get("confusion_matrix"),
+        simulated_profit_pct=training_result.get("simulated_profit_pct"),
+        model_binary=training_result.get("model_data"),
+        best_iteration=training_result.get("best_iteration"),
+        best_score=training_result.get("best_score"),
+        low_importance_features=training_result.get("low_importance_features"),
+        shap_values=training_result.get("shap_values"),
+        early_stopping_rounds=training_result.get("early_stopping_rounds"),
+        description=f"Tuned from model {tune_model_id} ({strategy}, {n_iterations} iterations)",
+    )
+
+    # Cache the model
+    model_data_bytes = training_result.get("model_data")
+    if model_data_bytes:
+        model_obj = joblib.load(io.BytesIO(model_data_bytes))
+        ModelCache.put(model_id, model_obj)
+
+    # Store tune results in job
+    pool = get_pool()
+    from backend.modules.training.db_queries import to_jsonb
+    await pool.execute(
+        "UPDATE ml_jobs SET tune_results = $1::jsonb, result_model_id = $2 WHERE id = $3",
+        to_jsonb(tune_result), model_id, job_id,
+    )
+
+    await update_job_status(
+        job_id, status="COMPLETED", progress=1.0,
+        result_model_id=model_id,
+        progress_msg=f"Tuned model created (ID: {model_id}, best F1: {tune_result['best_score']:.4f})",
+    )
+    logger.info("TUNE job %d done: new model %d", job_id, model_id)
 
 
 # ============================================================================

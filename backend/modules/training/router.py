@@ -25,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from backend.config import settings
-from backend.database import get_pool, fetchrow
+from backend.database import get_pool, fetch, fetchrow
 from backend.modules.training.schemas import (
     TrainModelRequest,
     UpdateModelRequest,
@@ -157,8 +157,8 @@ async def _create_model_job(request: TrainModelRequest):
     if not request.features:
         errors.append("features list must not be empty")
 
-    if request.model_type != "xgboost":
-        errors.append(f"model_type must be 'xgboost', not '{request.model_type}'")
+    if request.model_type not in ("xgboost", "lightgbm"):
+        errors.append(f"model_type must be 'xgboost' or 'lightgbm', not '{request.model_type}'")
 
     if request.cv_splits is not None and not (2 <= request.cv_splits <= 10):
         errors.append(f"cv_splits must be between 2 and 10")
@@ -189,6 +189,16 @@ async def _create_model_job(request: TrainModelRequest):
         final_params["use_market_context"] = True
     if request.exclude_features:
         final_params["exclude_features"] = request.exclude_features
+    if request.early_stopping_rounds > 0:
+        final_params["early_stopping_rounds"] = request.early_stopping_rounds
+    if request.compute_shap:
+        final_params["compute_shap"] = True
+    if request.use_graph_features:
+        final_params["use_graph_features"] = True
+    if request.use_embedding_features:
+        final_params["use_embedding_features"] = True
+    if request.use_transaction_features:
+        final_params["use_transaction_features"] = True
 
     use_flag = final_params.get("use_flag_features", True)
 
@@ -330,6 +340,36 @@ async def compare_models_job(
     return CreateJobResponse(
         job_id=job_id,
         message=f"Compare job created for {len(parsed)} models: {parsed}",
+        status="PENDING",
+    )
+
+
+@router.post("/models/{model_id}/tune", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+async def tune_model(
+    model_id: int,
+    strategy: str = Query("random", description="Tuning strategy: 'random'"),
+    n_iterations: int = Query(20, description="Number of tuning iterations (10-100)", ge=10, le=100),
+):
+    """Create a TUNE job to find optimal hyperparameters for a model."""
+    model = await get_model(model_id)
+    if not model or model.get("is_deleted"):
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    if model.get("status") != "READY":
+        raise HTTPException(status_code=400, detail="Model must be READY for tuning")
+
+    pool = get_pool()
+    job_id = await pool.fetchval(
+        """
+        INSERT INTO ml_jobs (job_type, priority, tune_model_id, tune_strategy, tune_n_iterations, status)
+        VALUES ('TUNE', 5, $1, $2, $3, 'PENDING')
+        RETURNING id
+        """,
+        model_id, strategy, n_iterations,
+    )
+
+    return CreateJobResponse(
+        job_id=job_id,
+        message=f"Tune job created for model {model_id} ({strategy}, {n_iterations} iterations)",
         status="PENDING",
     )
 
@@ -528,14 +568,43 @@ async def get_available_features(include_flags: bool = Query(True, description="
     if include_flags:
         flag_features = get_flag_feature_names(engineered_features)
 
+    graph_features = [
+        "creator_total_tokens", "creator_avg_risk_score",
+        "creator_any_graduated", "creator_is_serial",
+        "wallet_cluster_count", "avg_cluster_risk",
+        "similar_token_count", "similar_tokens_graduated_pct",
+    ]
+
+    embedding_features = [
+        "similarity_to_pumps", "similarity_to_rugs",
+        "max_pump_similarity", "max_rug_similarity",
+        "nearest_pattern_label", "nearest_pattern_similarity",
+    ]
+
+    transaction_features = [
+        "tx_wallet_concentration", "tx_top3_holder_pct",
+        "tx_unique_traders", "tx_buy_sell_ratio",
+        "tx_avg_time_between_trades", "tx_burst_count",
+        "tx_whale_pct", "tx_quick_reversal_count",
+    ]
+
+    total = (len(base_features) + len(engineered_features) + len(flag_features)
+             + len(graph_features) + len(embedding_features) + len(transaction_features))
+
     return {
         "base": sorted(base_features),
         "engineered": sorted(engineered_features),
         "flag_features": sorted(flag_features) if include_flags else [],
-        "total": len(base_features) + len(engineered_features) + len(flag_features),
+        "graph": sorted(graph_features),
+        "embedding": sorted(embedding_features),
+        "transaction": sorted(transaction_features),
+        "total": total,
         "base_count": len(base_features),
         "engineered_count": len(engineered_features),
         "flag_count": len(flag_features),
+        "graph_count": len(graph_features),
+        "embedding_count": len(embedding_features),
+        "transaction_count": len(transaction_features),
     }
 
 
@@ -671,6 +740,25 @@ async def delete_test_result_endpoint(test_id: int):
     if deleted:
         return {"message": f"Test result {test_id} deleted"}
     raise HTTPException(status_code=500, detail="Delete failed")
+
+
+# ============================================================
+# Training Settings Endpoints
+# ============================================================
+
+@router.get("/settings")
+async def get_training_settings():
+    """Get all training settings."""
+    from backend.modules.training.auto_retrain import get_all_training_settings
+    return await get_all_training_settings()
+
+
+@router.patch("/settings")
+async def update_training_settings_endpoint(updates: Dict[str, Any]):
+    """Update training settings."""
+    from backend.modules.training.auto_retrain import update_training_settings
+    result = await update_training_settings(updates)
+    return {"message": "Settings updated", "settings": result}
 
 
 # ============================================================

@@ -30,6 +30,7 @@ from backend.modules.auth.router import router as auth_router, _auth_enabled, _g
 # Import module lifecycle components
 from backend.modules.find.streamer import CoinStreamer
 from backend.modules.training.jobs import JobManager
+from backend.modules.training.auto_retrain import AutoRetrainManager
 from backend.modules.server.alerts import start_alert_evaluator, stop_alert_evaluator
 from backend.modules.server.predictor import preload_all_models
 
@@ -80,6 +81,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 # Module-level references for lifecycle management
 _streamer: CoinStreamer | None = None
 _job_manager: JobManager | None = None
+_auto_retrain: AutoRetrainManager | None = None
 
 START_TIME = time.time()
 
@@ -87,7 +89,7 @@ START_TIME = time.time()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle: startup and shutdown."""
-    global _streamer, _job_manager
+    global _streamer, _job_manager, _auto_retrain
 
     # Configure logging
     logging.basicConfig(
@@ -115,6 +117,11 @@ async def lifespan(app: FastAPI):
     _job_manager = JobManager()
     await _job_manager.start()
     logger.info("Training job manager started")
+
+    # 3b. Start Auto-Retrain manager (background)
+    _auto_retrain = AutoRetrainManager()
+    await _auto_retrain.start()
+    logger.info("Auto-retrain manager started")
 
     # 4. Start Server module alert evaluator
     await start_alert_evaluator(interval_seconds=settings.POLLING_INTERVAL_SECONDS)
@@ -170,6 +177,8 @@ async def lifespan(app: FastAPI):
         await _streamer.stop()
     if _job_manager:
         await _job_manager.stop()
+    if _auto_retrain:
+        await _auto_retrain.stop()
     await stop_alert_evaluator()
     await stop_embedding_service()
     await stop_graph_sync()

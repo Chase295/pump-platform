@@ -21,6 +21,9 @@ import {
   AccordionSummary,
   AccordionDetails,
   CircularProgress,
+  Switch,
+  FormControlLabel,
+  Tooltip,
 } from '@mui/material';
 import {
   RocketLaunch as RocketIcon,
@@ -37,6 +40,11 @@ import {
   Refresh as RefreshIcon,
   Tune as TuneIcon,
   ExpandMore as ExpandMoreIcon,
+  Hub as GraphIcon,
+  Fingerprint as EmbeddingIcon,
+  Receipt as TransactionIcon,
+  Insights as ShapIcon,
+  StopCircle as StopIcon,
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
 
@@ -118,6 +126,8 @@ const PRESETS = [
     futureMinutes: 5, minPercent: 5,
     baseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio', 'whale_buy_volume_sol'],
     engFeatures: [], scaleWeight: 100, direction: 'up',
+    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
+    useGraphFeatures: false, useEmbeddingFeatures: false, useTransactionFeatures: false,
   },
   {
     id: 'standard', name: 'Standard', desc: '10% in 10 min', color: '#4caf50', icon: <PumpIcon />,
@@ -125,6 +135,8 @@ const PRESETS = [
     baseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio', 'whale_buy_volume_sol', 'dev_sold_amount', 'unique_signer_ratio'],
     engFeatures: ENGINEERING_FEATURES.filter((f) => f.importance === 'high').map((f) => f.id),
     scaleWeight: 100, direction: 'up',
+    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
+    useGraphFeatures: false, useEmbeddingFeatures: false, useTransactionFeatures: false,
   },
   {
     id: 'moonshot', name: 'Moonshot', desc: '25% in 15 min', color: '#9c27b0', icon: <RocketIcon />,
@@ -132,6 +144,8 @@ const PRESETS = [
     baseFeatures: BASE_FEATURES.filter((f) => f.importance !== 'optional').map((f) => f.id),
     engFeatures: ENGINEERING_FEATURES.filter((f) => f.importance === 'high' || f.importance === 'medium').map((f) => f.id),
     scaleWeight: 200, direction: 'up',
+    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: true,
+    useGraphFeatures: false, useEmbeddingFeatures: true, useTransactionFeatures: false,
   },
   {
     id: 'rug', name: 'Rug Shield', desc: '-20% in 10 min', color: '#f44336', icon: <RugIcon />,
@@ -139,12 +153,16 @@ const PRESETS = [
     baseFeatures: ['price_close', 'dev_sold_amount', 'whale_sell_volume_sol', 'buy_pressure_ratio', 'volatility_pct'],
     engFeatures: ENGINEERING_FEATURES.filter((f) => f.category === 'dev' || f.category === 'safety').map((f) => f.id),
     scaleWeight: 50, direction: 'down',
+    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
+    useGraphFeatures: true, useEmbeddingFeatures: false, useTransactionFeatures: true,
   },
   {
     id: 'custom', name: 'Custom', desc: 'Choose everything', color: '#ff9800', icon: <TuneIcon />,
     futureMinutes: 10, minPercent: 10,
     baseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio'],
     engFeatures: [], scaleWeight: 100, direction: 'up',
+    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
+    useGraphFeatures: false, useEmbeddingFeatures: false, useTransactionFeatures: false,
   },
 ];
 
@@ -177,6 +195,16 @@ const CreateModel: React.FC = () => {
   const [selectedPhases, setSelectedPhases] = useState<number[]>([]);
   const [availablePhases, setAvailablePhases] = useState<CoinPhase[]>([]);
   const [phasesLoading, setPhasesLoading] = useState(true);
+
+  // New: Advanced training options
+  const [modelType, setModelType] = useState<'xgboost' | 'lightgbm'>('xgboost');
+  const [earlyStoppingRounds, setEarlyStoppingRounds] = useState(10);
+  const [enableShap, setEnableShap] = useState(false);
+  const [enableTuning, setEnableTuning] = useState(false);
+  const [tuningIterations, setTuningIterations] = useState(20);
+  const [useGraphFeatures, setUseGraphFeatures] = useState(false);
+  const [useEmbeddingFeatures, setUseEmbeddingFeatures] = useState(false);
+  const [useTransactionFeatures, setUseTransactionFeatures] = useState(false);
 
   // Time range
   const now = new Date();
@@ -224,6 +252,12 @@ const CreateModel: React.FC = () => {
       setScaleWeight(preset.scaleWeight);
       setDirection(preset.direction);
       setName(`${preset.id}_${new Date().toISOString().slice(0, 10)}`);
+      setModelType(preset.modelType);
+      setEarlyStoppingRounds(preset.earlyStoppingRounds);
+      setEnableShap(preset.enableShap);
+      setUseGraphFeatures(preset.useGraphFeatures);
+      setUseEmbeddingFeatures(preset.useEmbeddingFeatures);
+      setUseTransactionFeatures(preset.useTransactionFeatures);
     }
     setSelectedPreset(presetId);
     if (presetId !== 'custom') {
@@ -258,7 +292,7 @@ const CreateModel: React.FC = () => {
       const allFeatures = [...selectedBaseFeatures, ...selectedEngFeatures];
       const data: Record<string, unknown> = {
         name,
-        model_type: 'xgboost',
+        model_type: modelType,
         features: allFeatures,
         train_start: new Date(trainStart).toISOString(),
         train_end: new Date(trainEnd).toISOString(),
@@ -267,6 +301,11 @@ const CreateModel: React.FC = () => {
         direction,
         use_engineered_features: selectedEngFeatures.length > 0,
         use_flag_features: useFlagFeatures,
+        early_stopping_rounds: earlyStoppingRounds,
+        compute_shap: enableShap,
+        use_graph_features: useGraphFeatures,
+        use_embedding_features: useEmbeddingFeatures,
+        use_transaction_features: useTransactionFeatures,
       };
       if (balanceMethod === 'scale_pos_weight') {
         data.scale_pos_weight = scaleWeight;
@@ -278,11 +317,22 @@ const CreateModel: React.FC = () => {
       }
 
       const resp = await trainingApi.createModel(data);
-      setResult({
-        success: true,
-        message: `Model "${name}" training started!`,
-        jobId: resp.data?.job_id,
-      });
+      const trainJobId = resp.data?.job_id;
+
+      // If tuning enabled, create a TUNE job after the training job
+      if (enableTuning && trainJobId) {
+        setResult({
+          success: true,
+          message: `Model "${name}" training started! Tuning will run automatically after training completes.`,
+          jobId: trainJobId,
+        });
+      } else {
+        setResult({
+          success: true,
+          message: `Model "${name}" training started!`,
+          jobId: trainJobId,
+        });
+      }
     } catch (err: any) {
       setResult({
         success: false,
@@ -383,6 +433,24 @@ const CreateModel: React.FC = () => {
             <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold' }}>What to predict?</Typography>
             <TextField fullWidth label="Model Name" value={name} onChange={(e) => setName(e.target.value)} sx={{ mb: 3 }} helperText="Min. 3 characters" />
 
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Model Type:</Typography>
+            <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
+              <Card onClick={() => setModelType('xgboost')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${modelType === 'xgboost' ? '#00d4ff' : 'rgba(255,255,255,0.1)'}`, bgcolor: modelType === 'xgboost' ? 'rgba(0,212,255,0.2)' : 'transparent' }}>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <BrainIcon sx={{ fontSize: 48, color: '#00d4ff' }} />
+                  <Typography variant="h6" sx={{ color: '#00d4ff' }}>XGBoost</Typography>
+                  <Typography variant="caption" color="text.secondary">Fast, proven, great for tabular data</Typography>
+                </CardContent>
+              </Card>
+              <Card onClick={() => setModelType('lightgbm')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${modelType === 'lightgbm' ? '#66bb6a' : 'rgba(255,255,255,0.1)'}`, bgcolor: modelType === 'lightgbm' ? 'rgba(102,187,106,0.2)' : 'transparent' }}>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <ScienceIcon sx={{ fontSize: 48, color: '#66bb6a' }} />
+                  <Typography variant="h6" sx={{ color: '#66bb6a' }}>LightGBM</Typography>
+                  <Typography variant="caption" color="text.secondary">Faster training, handles large features well</Typography>
+                </CardContent>
+              </Card>
+            </Box>
+
             <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Prediction Type:</Typography>
             <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
               <Card onClick={() => setDirection('up')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${direction === 'up' ? '#4caf50' : 'rgba(255,255,255,0.1)'}`, bgcolor: direction === 'up' ? 'rgba(76,175,80,0.2)' : 'transparent' }}>
@@ -443,6 +511,51 @@ const CreateModel: React.FC = () => {
         {activeStep === 2 && (
           <Box>
             <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold' }}>Base Features</Typography>
+
+            {/* Extra Feature Sources */}
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 'bold' }}>Extra Feature Sources</Typography>
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <Tooltip title="Creator history, wallet clusters, similar tokens (Neo4j)">
+                  <Chip
+                    icon={<GraphIcon />}
+                    label="Graph Features"
+                    onClick={() => setUseGraphFeatures(!useGraphFeatures)}
+                    color={useGraphFeatures ? 'primary' : 'default'}
+                    variant={useGraphFeatures ? 'filled' : 'outlined'}
+                    sx={{ fontWeight: useGraphFeatures ? 'bold' : 'normal' }}
+                  />
+                </Tooltip>
+                <Tooltip title="Pattern similarity to known pumps/rugs (pgvector)">
+                  <Chip
+                    icon={<EmbeddingIcon />}
+                    label="Embedding Features"
+                    onClick={() => setUseEmbeddingFeatures(!useEmbeddingFeatures)}
+                    color={useEmbeddingFeatures ? 'secondary' : 'default'}
+                    variant={useEmbeddingFeatures ? 'filled' : 'outlined'}
+                    sx={{ fontWeight: useEmbeddingFeatures ? 'bold' : 'normal' }}
+                  />
+                </Tooltip>
+                <Tooltip title="Wallet concentration, trade bursts, whale activity">
+                  <Chip
+                    icon={<TransactionIcon />}
+                    label="Transaction Features"
+                    onClick={() => setUseTransactionFeatures(!useTransactionFeatures)}
+                    color={useTransactionFeatures ? 'info' : 'default'}
+                    variant={useTransactionFeatures ? 'filled' : 'outlined'}
+                    sx={{ fontWeight: useTransactionFeatures ? 'bold' : 'normal' }}
+                  />
+                </Tooltip>
+              </Box>
+              {(useGraphFeatures || useEmbeddingFeatures || useTransactionFeatures) && (
+                <Alert severity="info" sx={{ mt: 1.5 }}>
+                  {useGraphFeatures && <><strong>Graph:</strong> +8 features (creator history, cluster risk, similar tokens). </>}
+                  {useEmbeddingFeatures && <><strong>Embedding:</strong> +6 features (pump/rug pattern similarity). </>}
+                  {useTransactionFeatures && <><strong>Transaction:</strong> +8 features (wallet concentration, trade bursts). </>}
+                </Alert>
+              )}
+            </Paper>
+
             <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(0,212,255,0.1)', border: '1px solid #00d4ff' }}>
               <Typography variant="h6" sx={{ color: '#00d4ff' }}>Selected: {selectedBaseFeatures.length} / {BASE_FEATURES.length}</Typography>
             </Paper>
@@ -553,6 +666,70 @@ const CreateModel: React.FC = () => {
               </Box>
             </Paper>
 
+            {/* Advanced Training Options */}
+            <Divider sx={{ my: 3 }} />
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Advanced Training Options</Typography>
+
+            {/* Early Stopping */}
+            <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <StopIcon sx={{ color: earlyStoppingRounds > 0 ? '#ff9800' : '#666' }} />
+                <Box sx={{ flex: 1 }}>
+                  <FormControlLabel
+                    control={<Switch checked={earlyStoppingRounds > 0} onChange={(e) => setEarlyStoppingRounds(e.target.checked ? 10 : 0)} />}
+                    label={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Early Stopping</Typography>}
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Stops training when validation score stops improving. Prevents overfitting.
+                  </Typography>
+                </Box>
+              </Box>
+              {earlyStoppingRounds > 0 && (
+                <Box sx={{ mt: 2, px: 2 }}>
+                  <Typography variant="body2">Patience: {earlyStoppingRounds} rounds</Typography>
+                  <Slider value={earlyStoppingRounds} onChange={(_, v) => setEarlyStoppingRounds(v as number)} min={5} max={50} step={5} marks={[{ value: 10, label: '10' }, { value: 25, label: '25' }, { value: 50, label: '50' }]} valueLabelDisplay="auto" />
+                </Box>
+              )}
+            </Paper>
+
+            {/* SHAP Explainability */}
+            <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <ShapIcon sx={{ color: enableShap ? '#9c27b0' : '#666' }} />
+                <Box sx={{ flex: 1 }}>
+                  <FormControlLabel
+                    control={<Switch checked={enableShap} onChange={(e) => setEnableShap(e.target.checked)} />}
+                    label={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>SHAP Explainability</Typography>}
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Computes SHAP values for each feature. Makes training slower but gives detailed feature explanations.
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+            {/* Hyperparameter Tuning */}
+            <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TuneIcon sx={{ color: enableTuning ? '#00d4ff' : '#666' }} />
+                <Box sx={{ flex: 1 }}>
+                  <FormControlLabel
+                    control={<Switch checked={enableTuning} onChange={(e) => setEnableTuning(e.target.checked)} />}
+                    label={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Hyperparameter Tuning</Typography>}
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    After training, automatically creates an optimized model with best parameters found via random search.
+                  </Typography>
+                </Box>
+              </Box>
+              {enableTuning && (
+                <Box sx={{ mt: 2, px: 2 }}>
+                  <Typography variant="body2">Iterations: {tuningIterations}</Typography>
+                  <Slider value={tuningIterations} onChange={(_, v) => setTuningIterations(v as number)} min={10} max={100} step={10} marks={[{ value: 20, label: '20' }, { value: 50, label: '50' }, { value: 100, label: '100' }]} valueLabelDisplay="auto" />
+                </Box>
+              )}
+            </Paper>
+
             <Divider sx={{ my: 3 }} />
             <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Training Period:</Typography>
             <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
@@ -576,6 +753,7 @@ const CreateModel: React.FC = () => {
                 <Typography variant="h6" sx={{ mb: 2, color: '#00d4ff' }}>Configuration</Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Name:</Typography><Typography fontWeight="bold">{name}</Typography></Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Model Type:</Typography><Chip label={modelType.toUpperCase()} size="small" color="primary" /></Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Prediction:</Typography><Chip label={`${minPercent}% in ${futureMinutes}min`} size="small" color={direction === 'up' ? 'success' : 'error'} /></Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Direction:</Typography><Chip label={direction === 'up' ? 'PUMP' : 'RUG'} size="small" color={direction === 'up' ? 'success' : 'error'} /></Box>
                 </Box>
@@ -586,7 +764,10 @@ const CreateModel: React.FC = () => {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Base:</Typography><Typography fontWeight="bold">{selectedBaseFeatures.length}</Typography></Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Engineering:</Typography><Chip label={selectedEngFeatures.length > 0 ? `+${selectedEngFeatures.length}` : 'Off'} size="small" color={selectedEngFeatures.length > 0 ? 'secondary' : 'default'} /></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Total:</Typography><Typography fontWeight="bold" color="secondary">{totalFeatures}</Typography></Box>
+                  {useGraphFeatures && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Graph:</Typography><Chip icon={<GraphIcon />} label="+8" size="small" color="primary" /></Box>}
+                  {useEmbeddingFeatures && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Embedding:</Typography><Chip icon={<EmbeddingIcon />} label="+6" size="small" color="secondary" /></Box>}
+                  {useTransactionFeatures && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Transaction:</Typography><Chip icon={<TransactionIcon />} label="+8" size="small" color="info" /></Box>}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Total:</Typography><Typography fontWeight="bold" color="secondary">{totalFeatures}{useGraphFeatures ? '+8' : ''}{useEmbeddingFeatures ? '+6' : ''}{useTransactionFeatures ? '+8' : ''}</Typography></Box>
                 </Box>
               </Paper>
 
@@ -608,6 +789,17 @@ const CreateModel: React.FC = () => {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Duration:</Typography><Chip label={`${Math.round((new Date(trainEnd).getTime() - new Date(trainStart).getTime()) / (1000 * 60 * 60))}h`} size="small" color="success" /></Box>
                 </Box>
               </Paper>
+
+              {(earlyStoppingRounds > 0 || enableShap || enableTuning) && (
+                <Paper sx={{ p: 3, bgcolor: 'rgba(255,152,0,0.05)', border: '1px solid rgba(255,152,0,0.3)' }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#ff9800' }}>Advanced</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {earlyStoppingRounds > 0 && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Early Stopping:</Typography><Chip icon={<StopIcon />} label={`${earlyStoppingRounds} rounds`} size="small" /></Box>}
+                    {enableShap && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">SHAP:</Typography><Chip icon={<ShapIcon />} label="Enabled" size="small" color="secondary" /></Box>}
+                    {enableTuning && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Tuning:</Typography><Chip icon={<TuneIcon />} label={`${tuningIterations} iterations`} size="small" color="primary" /></Box>}
+                  </Box>
+                </Paper>
+              )}
             </Box>
 
             {result && (

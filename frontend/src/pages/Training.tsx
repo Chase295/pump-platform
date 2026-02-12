@@ -6,6 +6,7 @@ import {
   Assessment as TestResultsIcon,
   CompareArrows as CompareIcon,
   Work as JobsIcon,
+  Settings as SettingsIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
 
@@ -19,6 +20,7 @@ import Comparisons from './training/Comparisons';
 import CompareDetails from './training/CompareDetails';
 import Jobs from './training/Jobs';
 import TrainingInfo from './training/TrainingInfo';
+import TrainingSettings from './training/TrainingSettings';
 
 const subNavItems = [
   { path: '/training', label: 'Models', icon: <ModelsIcon />, end: true },
@@ -26,6 +28,7 @@ const subNavItems = [
   { path: '/training/test-results', label: 'Test Results', icon: <TestResultsIcon /> },
   { path: '/training/comparisons', label: 'Comparisons', icon: <CompareIcon /> },
   { path: '/training/jobs', label: 'Jobs', icon: <JobsIcon /> },
+  { path: '/training/settings', label: 'Settings', icon: <SettingsIcon /> },
   { path: '/training/info', label: 'Info', icon: <InfoIcon /> },
 ];
 
@@ -40,7 +43,8 @@ export default function Training() {
     if (path.startsWith('/training/test-results')) return 2;
     if (path.startsWith('/training/comparisons')) return 3;
     if (path.startsWith('/training/jobs')) return 4;
-    if (path.startsWith('/training/info')) return 5;
+    if (path.startsWith('/training/settings')) return 5;
+    if (path.startsWith('/training/info')) return 6;
     // Model details pages - keep Models tab active
     if (path.startsWith('/training/models')) return 0;
     return 0;
@@ -101,6 +105,7 @@ export default function Training() {
         <Route path="comparisons" element={<Comparisons />} />
         <Route path="comparisons/:id" element={<CompareDetails />} />
         <Route path="jobs" element={<Jobs />} />
+        <Route path="settings" element={<TrainingSettings />} />
         <Route path="info" element={<TrainingInfo />} />
       </Routes>
     </Box>

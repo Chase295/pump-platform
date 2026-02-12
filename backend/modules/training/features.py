@@ -64,6 +64,9 @@ async def load_training_data(
     phases: Optional[List[int]] = None,
     include_ath: bool = True,
     include_flags: bool = True,
+    use_graph_features: bool = False,
+    use_embedding_features: bool = False,
+    use_transaction_features: bool = False,
 ) -> pd.DataFrame:
     """Load training data from coin_metrics with the requested features."""
     pool = get_pool()
@@ -143,6 +146,42 @@ async def load_training_data(
             logger.info("Generating engineering features...")
             data = add_pump_detection_features(data, include_flags=include_flags)
             logger.info("%d columns after engineering", len(data.columns))
+
+        # --- Graph features (Neo4j) ---
+        if use_graph_features and 'mint' in data.columns and len(data) > 0:
+            try:
+                from backend.modules.training.graph_features import compute_graph_features, GRAPH_FEATURE_NAMES
+                unique_mints = data['mint'].unique().tolist()
+                graph_feats = await compute_graph_features(unique_mints)
+                for feat_name in GRAPH_FEATURE_NAMES:
+                    data[feat_name] = data['mint'].map(lambda m: graph_feats.get(m, {}).get(feat_name, 0.0))
+                logger.info("Graph features added: %d features for %d mints", len(GRAPH_FEATURE_NAMES), len(unique_mints))
+            except Exception as e:
+                logger.warning("Graph features failed: %s", e)
+
+        # --- Embedding features (pgvector similarity) ---
+        if use_embedding_features and 'mint' in data.columns and len(data) > 0:
+            try:
+                from backend.modules.training.embedding_features import compute_embedding_features, EMBEDDING_FEATURE_NAMES
+                unique_mints = data['mint'].unique().tolist()
+                emb_feats = await compute_embedding_features(unique_mints)
+                for feat_name in EMBEDDING_FEATURE_NAMES:
+                    data[feat_name] = data['mint'].map(lambda m: emb_feats.get(m, {}).get(feat_name, 0.0))
+                logger.info("Embedding features added: %d features for %d mints", len(EMBEDDING_FEATURE_NAMES), len(unique_mints))
+            except Exception as e:
+                logger.warning("Embedding features failed: %s", e)
+
+        # --- Transaction features ---
+        if use_transaction_features and 'mint' in data.columns and len(data) > 0:
+            try:
+                from backend.modules.training.transaction_features import compute_transaction_features, TRANSACTION_FEATURE_NAMES
+                unique_mints = data['mint'].unique().tolist()
+                tx_feats = await compute_transaction_features(unique_mints)
+                for feat_name in TRANSACTION_FEATURE_NAMES:
+                    data[feat_name] = data['mint'].map(lambda m: tx_feats.get(m, {}).get(feat_name, 0.0))
+                logger.info("Transaction features added: %d features for %d mints", len(TRANSACTION_FEATURE_NAMES), len(unique_mints))
+            except Exception as e:
+                logger.warning("Transaction features failed: %s", e)
 
         return data
 

@@ -17,7 +17,7 @@ from pydantic import BaseModel, validator, Field
 class TrainModelRequest(BaseModel):
     """Request for model training."""
     name: str = Field(..., description="Model name (unique)")
-    model_type: str = Field(..., description="Model type: only 'xgboost'")
+    model_type: str = Field(..., description="Model type: 'xgboost' or 'lightgbm'")
     features: List[str] = Field(..., description="List of feature names")
     phases: Optional[List[int]] = Field(None, description="List of coin phases (e.g. [1, 2, 3])")
     params: Optional[Dict[str, Any]] = Field(None, description="Hyperparameters (optional)")
@@ -45,6 +45,17 @@ class TrainModelRequest(BaseModel):
     # Market context (phase 2)
     use_market_context: bool = Field(False, description="Use market context for training")
 
+    # Early Stopping
+    early_stopping_rounds: int = Field(10, description="Early stopping rounds (0=disabled)")
+
+    # SHAP
+    compute_shap: bool = Field(False, description="Compute SHAP values after training")
+
+    # Feature categories
+    use_graph_features: bool = Field(False, description="Include Neo4j graph features")
+    use_embedding_features: bool = Field(False, description="Include embedding similarity features")
+    use_transaction_features: bool = Field(False, description="Include transaction-level features")
+
     # Feature exclusion (phase 2)
     exclude_features: Optional[List[str]] = Field(None, description="Features to exclude")
 
@@ -55,8 +66,9 @@ class TrainModelRequest(BaseModel):
 
     @validator('model_type', allow_reuse=True)
     def validate_model_type(cls, v):
-        if v != 'xgboost':
-            raise ValueError(f"model_type must be 'xgboost', not '{v}'.")
+        allowed = ('xgboost', 'lightgbm')
+        if v not in allowed:
+            raise ValueError(f"model_type must be one of {allowed}, not '{v}'.")
         return v
 
     @validator('operator')
@@ -174,6 +186,11 @@ class ModelResponse(BaseModel):
     cv_overfitting_gap: Optional[float] = None
     model_file_path: Optional[str] = None
     description: Optional[str] = None
+    best_iteration: Optional[int] = None
+    best_score: Optional[float] = None
+    low_importance_features: Optional[List[str]] = None
+    shap_values: Optional[Dict[str, float]] = None
+    early_stopping_rounds: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -309,6 +326,11 @@ class JobResponse(BaseModel):
     compare_start: Optional[datetime] = None
     compare_end: Optional[datetime] = None
     result_comparison_id: Optional[int] = None
+    tune_model_id: Optional[int] = None
+    tune_strategy: Optional[str] = None
+    tune_n_iterations: Optional[int] = None
+    tune_param_space: Optional[Dict[str, Any]] = None
+    tune_results: Optional[Dict[str, Any]] = None
     result_model: Optional[ModelResponse] = None
     result_test: Optional[TestResultResponse] = None
     result_comparison: Optional[ComparisonResponse] = None

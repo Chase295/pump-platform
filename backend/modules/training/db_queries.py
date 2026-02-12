@@ -129,6 +129,11 @@ async def create_model(
     target_direction: Optional[str] = None,
     use_flag_features: Optional[bool] = None,
     model_binary: Optional[bytes] = None,
+    best_iteration: Optional[int] = None,
+    best_score: Optional[float] = None,
+    low_importance_features: Optional[List[str]] = None,
+    shap_values: Optional[Dict[str, Any]] = None,
+    early_stopping_rounds: Optional[int] = None,
 ) -> int:
     """Insert a new model into ml_models. Returns the new model id."""
     pool = get_pool()
@@ -151,6 +156,8 @@ async def create_model(
     fi_jsonb = to_jsonb(feature_importance)
     cv_jsonb = to_jsonb(cv_scores)
     cm_jsonb = to_jsonb(confusion_matrix)
+    low_imp_jsonb = to_jsonb(low_importance_features)
+    shap_jsonb = to_jsonb(shap_values)
 
     max_retries = 2
     retry_count = 0
@@ -169,7 +176,9 @@ async def create_model(
                     cv_scores, cv_overfitting_gap,
                     roc_auc, mcc, fpr, fnr, confusion_matrix, simulated_profit_pct,
                     future_minutes, price_change_percent, target_direction,
-                    use_flag_features, model_binary
+                    use_flag_features, model_binary,
+                    best_iteration, best_score, low_importance_features,
+                    shap_values, early_stopping_rounds
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8,
                     $9::jsonb, $10::jsonb, $11::jsonb,
@@ -177,7 +186,9 @@ async def create_model(
                     $19::jsonb, $20,
                     $21, $22, $23, $24, $25::jsonb, $26,
                     $27, $28, $29,
-                    $30, $31::bytea
+                    $30, $31::bytea,
+                    $32, $33, $34::jsonb,
+                    $35::jsonb, $36
                 ) RETURNING id
                 """,
                 name, model_type, status,
@@ -190,6 +201,8 @@ async def create_model(
                 roc_auc, mcc, fpr, fnr, cm_jsonb, simulated_profit_pct,
                 future_minutes, price_change_percent, target_direction,
                 use_flag_features, model_binary,
+                best_iteration, best_score, low_imp_jsonb,
+                shap_jsonb, early_stopping_rounds,
             )
             logger.info("Model created: %s (ID: %d)", name, model_id)
             return model_id
@@ -249,6 +262,7 @@ async def get_model(model_id: int) -> Optional[Dict[str, Any]]:
     jsonb_fields = [
         'features', 'phases', 'params', 'feature_importance',
         'cv_scores', 'confusion_matrix',
+        'low_importance_features', 'shap_values',
     ]
     return convert_jsonb_fields(d, jsonb_fields, direction="from")
 
@@ -303,7 +317,7 @@ async def list_models(
         *params,
     )
     result = []
-    jsonb_fields = ['features', 'phases', 'params', 'feature_importance', 'cv_scores', 'confusion_matrix']
+    jsonb_fields = ['features', 'phases', 'params', 'feature_importance', 'cv_scores', 'confusion_matrix', 'low_importance_features', 'shap_values']
     for row in rows:
         d = dict(row)
         d.pop('model_binary', None)
@@ -605,7 +619,7 @@ async def get_job(job_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     d = dict(row)
-    jsonb_fields = ['train_features', 'train_phases', 'train_params', 'compare_model_ids']
+    jsonb_fields = ['train_features', 'train_phases', 'train_params', 'compare_model_ids', 'tune_param_space', 'tune_results']
     return convert_jsonb_fields(d, jsonb_fields, direction="from")
 
 
@@ -706,7 +720,7 @@ async def get_next_pending_job() -> Optional[Dict[str, Any]]:
     if not row:
         return None
     d = dict(row)
-    jsonb_fields = ['train_features', 'train_phases', 'train_params', 'compare_model_ids']
+    jsonb_fields = ['train_features', 'train_phases', 'train_params', 'compare_model_ids', 'tune_param_space', 'tune_results']
     return convert_jsonb_fields(d, jsonb_fields, direction="from")
 
 

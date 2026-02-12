@@ -103,6 +103,10 @@ export const trainingApi = {
     api.get('/training/queue', { params }),
   getJob: (id: number) => api.get(`/training/queue/${id}`),
 
+  // Tuning
+  tuneModel: (id: number, data: { strategy?: string; n_iterations?: number }) =>
+    api.post(`/training/models/${id}/tune`, null, { params: data }),
+
   // Testing & comparison
   testModel: (id: number, data: { test_start: string; test_end: string }) =>
     api.post(`/training/models/${id}/test`, data),
@@ -120,6 +124,11 @@ export const trainingApi = {
     api.get('/training/features', { params: { include_flags: includeFlags } }),
   getDataAvailability: () => api.get('/training/data-availability'),
   getPhases: () => api.get('/training/phases'),
+
+  // Settings
+  getSettings: () => api.get('/training/settings'),
+  updateSettings: (updates: Record<string, unknown>) =>
+    api.patch('/training/settings', updates),
 
   // System
   getHealth: () => api.get('/training/health'),

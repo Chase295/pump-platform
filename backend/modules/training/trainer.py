@@ -44,7 +44,7 @@ from backend.modules.training.features import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# XGBoost import (soft dependency)
+# ML imports (soft dependencies)
 # ---------------------------------------------------------------------------
 XGBOOST_AVAILABLE = False
 XGBClassifier = None
@@ -53,6 +53,14 @@ try:
     XGBOOST_AVAILABLE = True
 except Exception:
     logger.warning("XGBoost not available; training will fail if attempted.")
+
+LIGHTGBM_AVAILABLE = False
+LGBMClassifier = None
+try:
+    from lightgbm import LGBMClassifier  # type: ignore
+    LIGHTGBM_AVAILABLE = True
+except Exception:
+    logger.warning("LightGBM not available; lightgbm training will fail if attempted.")
 
 # ---------------------------------------------------------------------------
 # Default features
@@ -122,28 +130,43 @@ class ModelCache:
 # ============================================================================
 
 def create_model_instance(model_type: str, params: Dict[str, Any]) -> Any:
-    """Instantiate an XGBoost model with the given hyper-parameters."""
-    if model_type != "xgboost":
-        raise ValueError(f"Unknown model type: {model_type}. Only 'xgboost' is supported.")
-    if not XGBOOST_AVAILABLE:
-        raise ValueError("XGBoost is not available in this environment.")
-
+    """Instantiate an XGBoost or LightGBM model with the given hyper-parameters."""
     excluded_keys = {
         "n_estimators", "max_depth", "learning_rate", "random_state",
         "min_samples_split", "class_weight",
         "_time_based", "use_engineered_features", "feature_engineering_windows",
         "use_smote", "use_timeseries_split", "cv_splits",
         "use_market_context", "exclude_features", "use_flag_features",
+        "early_stopping_rounds", "compute_shap",
+        "use_graph_features", "use_embedding_features", "use_transaction_features",
     }
-    extra = {k: v for k, v in params.items() if k not in excluded_keys}
-    return XGBClassifier(
-        n_estimators=params.get("n_estimators", 100),
-        max_depth=params.get("max_depth", 6),
-        learning_rate=params.get("learning_rate", 0.1),
-        random_state=params.get("random_state", 42),
-        eval_metric="logloss",
-        **extra,
-    )
+    extra = {k: v for k, v in params.items() if k not in excluded_keys and not isinstance(v, (dict, list, bool))}
+
+    if model_type == "lightgbm":
+        if not LIGHTGBM_AVAILABLE:
+            raise ValueError("LightGBM is not available in this environment.")
+        return LGBMClassifier(
+            n_estimators=params.get("n_estimators", 100),
+            max_depth=params.get("max_depth", 6),
+            learning_rate=params.get("learning_rate", 0.1),
+            random_state=params.get("random_state", 42),
+            verbose=-1,
+            **extra,
+        )
+
+    if model_type == "xgboost":
+        if not XGBOOST_AVAILABLE:
+            raise ValueError("XGBoost is not available in this environment.")
+        return XGBClassifier(
+            n_estimators=params.get("n_estimators", 100),
+            max_depth=params.get("max_depth", 6),
+            learning_rate=params.get("learning_rate", 0.1),
+            random_state=params.get("random_state", 42),
+            eval_metric="logloss",
+            **extra,
+        )
+
+    raise ValueError(f"Unknown model type: {model_type}. Supported: 'xgboost', 'lightgbm'.")
 
 
 # ============================================================================
@@ -404,8 +427,55 @@ def train_model_sync(
     # ------------------------------------------------------------------
     # 4. Train
     # ------------------------------------------------------------------
+    # Auto scale_pos_weight if not set and data is imbalanced
+    if "scale_pos_weight" not in params:
+        n_pos = int(y_final_train.sum())
+        n_neg = len(y_final_train) - n_pos
+        if n_pos > 0 and n_neg / n_pos > 5:
+            auto_weight = n_neg / n_pos
+            params["scale_pos_weight"] = auto_weight
+            logger.info("Auto scale_pos_weight=%.1f (ratio: %d:%d)", auto_weight, n_neg, n_pos)
+
     model = create_model_instance(model_type, params)
-    model.fit(X_final_train, y_final_train)
+
+    # Early stopping
+    early_stopping_rounds = params.get("early_stopping_rounds", 0)
+    best_iteration = None
+    best_score = None
+
+    if early_stopping_rounds > 0 and len(X_final_train) > 100:
+        split_idx = int(len(X_final_train) * 0.8)
+        X_tr, X_val = X_final_train.iloc[:split_idx], X_final_train.iloc[split_idx:]
+        y_tr, y_val = y_final_train[:split_idx], y_final_train[split_idx:]
+
+        try:
+            if model_type == "xgboost":
+                model.set_params(early_stopping_rounds=early_stopping_rounds)
+                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
+            elif model_type == "lightgbm":
+                model.fit(
+                    X_tr, y_tr,
+                    eval_set=[(X_val, y_val)],
+                    callbacks=[__import__('lightgbm').early_stopping(early_stopping_rounds, verbose=False)],
+                )
+
+            best_iteration = getattr(model, 'best_iteration_', getattr(model, 'best_iteration', None))
+            best_score_attr = getattr(model, 'best_score_', getattr(model, 'best_score', None))
+            if isinstance(best_score_attr, dict):
+                for ds in best_score_attr.values():
+                    for metric_val in ds.values():
+                        best_score = metric_val
+                        break
+                    break
+            elif best_score_attr is not None:
+                best_score = float(best_score_attr)
+            logger.info("Early stopping: best_iteration=%s, best_score=%s", best_iteration, best_score)
+        except Exception as es_exc:
+            logger.warning("Early stopping failed, training without: %s", es_exc)
+            model = create_model_instance(model_type, params)
+            model.fit(X_final_train, y_final_train)
+    else:
+        model.fit(X_final_train, y_final_train)
 
     if not hasattr(model, "feature_names_in_") or model.feature_names_in_ is None:
         try:
@@ -452,6 +522,26 @@ def train_model_sync(
     if hasattr(model, "feature_importances_"):
         feature_importance = dict(zip(available_features, model.feature_importances_.tolist()))
 
+    # Low importance features
+    low_importance = [f for f, imp in feature_importance.items() if imp < 0.005] if feature_importance else []
+
+    # SHAP values
+    shap_summary = None
+    if params.get("compute_shap", False):
+        try:
+            import shap
+            explainer = shap.TreeExplainer(model)
+            shap_vals = explainer.shap_values(X_final_test)
+            if isinstance(shap_vals, list):
+                shap_vals = shap_vals[1]  # positive class
+            shap_summary = dict(zip(
+                available_features,
+                np.abs(shap_vals).mean(axis=0).tolist()
+            ))
+            logger.info("SHAP values computed for %d features", len(shap_summary))
+        except Exception as e:
+            logger.warning("SHAP computation failed: %s", e)
+
     # ------------------------------------------------------------------
     # 6. Save model
     # ------------------------------------------------------------------
@@ -487,6 +577,11 @@ def train_model_sync(
         "num_samples": len(data),
         "num_features": len(available_features),
         "features": list(dict.fromkeys(available_features)),
+        "best_iteration": best_iteration,
+        "best_score": float(best_score) if best_score is not None else None,
+        "low_importance_features": low_importance,
+        "shap_values": shap_summary,
+        "early_stopping_rounds": early_stopping_rounds if early_stopping_rounds > 0 else None,
     }
 
     if cv_results is not None:
@@ -528,6 +623,9 @@ async def train_model(
     min_percent_change: Optional[float] = None,
     direction: str = "up",
     original_requested_features: Optional[List[str]] = None,
+    use_graph_features: bool = False,
+    use_embedding_features: bool = False,
+    use_transaction_features: bool = False,
 ) -> Dict[str, Any]:
     """Async wrapper: loads data, then delegates CPU work to executor."""
 
@@ -574,6 +672,9 @@ async def train_model(
         features=features_for_loading,
         phases=phases,
         include_ath=include_ath,
+        use_graph_features=use_graph_features,
+        use_embedding_features=use_embedding_features,
+        use_transaction_features=use_transaction_features,
     )
     if len(data) == 0:
         raise ValueError("No training data found!")
@@ -813,3 +914,75 @@ async def test_model(
         test_start, test_end, use_engineered, eng_windows, is_time_based, params,
     )
     return result
+
+
+# ============================================================================
+# HYPERPARAMETER TUNING
+# ============================================================================
+
+DEFAULT_PARAM_SPACE_XGBOOST = {
+    "n_estimators": [50, 100, 200, 300],
+    "max_depth": [3, 4, 6, 8, 10],
+    "learning_rate": [0.01, 0.05, 0.1, 0.2],
+    "min_child_weight": [1, 3, 5, 7],
+    "subsample": [0.6, 0.8, 1.0],
+    "colsample_bytree": [0.6, 0.8, 1.0],
+}
+
+DEFAULT_PARAM_SPACE_LIGHTGBM = {
+    "n_estimators": [50, 100, 200, 300],
+    "max_depth": [3, 4, 6, 8, 10],
+    "learning_rate": [0.01, 0.05, 0.1, 0.2],
+    "num_leaves": [15, 31, 63, 127],
+    "subsample": [0.6, 0.8, 1.0],
+    "colsample_bytree": [0.6, 0.8, 1.0],
+}
+
+
+def tune_hyperparameters_sync(
+    model_type: str,
+    X_train: pd.DataFrame,
+    y_train: np.ndarray,
+    strategy: str = "random",
+    n_iterations: int = 20,
+    param_space: Optional[Dict] = None,
+    base_params: Optional[Dict] = None,
+) -> Dict[str, Any]:
+    """Synchronous hyperparameter tuning using RandomizedSearchCV."""
+    from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
+
+    if param_space is None:
+        param_space = (DEFAULT_PARAM_SPACE_LIGHTGBM if model_type == "lightgbm"
+                       else DEFAULT_PARAM_SPACE_XGBOOST)
+
+    base = base_params or {}
+    model = create_model_instance(model_type, base)
+
+    tscv = TimeSeriesSplit(n_splits=3)
+
+    search = RandomizedSearchCV(
+        estimator=model,
+        param_distributions=param_space,
+        n_iter=n_iterations,
+        scoring="f1",
+        cv=tscv,
+        random_state=42,
+        n_jobs=-1,
+        verbose=0,
+    )
+    search.fit(X_train, y_train)
+
+    all_results = []
+    for i in range(len(search.cv_results_["params"])):
+        all_results.append({
+            "params": search.cv_results_["params"][i],
+            "mean_score": float(search.cv_results_["mean_test_score"][i]),
+            "std_score": float(search.cv_results_["std_test_score"][i]),
+        })
+    all_results.sort(key=lambda x: x["mean_score"], reverse=True)
+
+    return {
+        "best_params": search.best_params_,
+        "best_score": float(search.best_score_),
+        "all_results": all_results[:20],
+    }

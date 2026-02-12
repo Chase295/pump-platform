@@ -45,6 +45,13 @@ export interface ModelResponse {
   price_change_percent?: number;
   min_percent_change?: number;
   target_direction?: string;
+
+  // Advanced training features
+  best_iteration?: number;
+  best_score?: number;
+  low_importance_features?: string[];
+  shap_values?: Record<string, number>;
+  early_stopping_rounds?: number;
 }
 
 // ============================================================

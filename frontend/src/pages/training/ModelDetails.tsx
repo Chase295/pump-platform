@@ -26,6 +26,7 @@ import {
   TextField,
   Tooltip,
   IconButton,
+  Slider,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -37,6 +38,10 @@ import {
   PlayArrow as PlayArrowIcon,
   Delete as DeleteIcon,
   Code as CodeIcon,
+  Tune as TuneIcon,
+  Insights as ShapIcon,
+  Warning as WarningIcon,
+  StopCircle as StopIcon,
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
 import StatusChip from '../../components/training/StatusChip';
@@ -73,6 +78,11 @@ const ModelDetails: React.FC = () => {
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Tune dialog
+  const [tuneDialogOpen, setTuneDialogOpen] = useState(false);
+  const [tuneIterations, setTuneIterations] = useState(20);
+  const [isTuning, setIsTuning] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -150,6 +160,24 @@ const ModelDetails: React.FC = () => {
     a.href = dataUri;
     a.download = `model_${model.id}_${model.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
     a.click();
+  };
+
+  const handleTuneModel = async () => {
+    if (!model) return;
+    try {
+      setIsTuning(true);
+      setError(null);
+      const resp = await trainingApi.tuneModel(model.id, {
+        strategy: 'random',
+        n_iterations: tuneIterations,
+      });
+      setTestSuccess(`Tune job created! Job ID: ${resp.data.job_id}. Check Jobs tab for progress.`);
+      setTuneDialogOpen(false);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || 'Tune failed');
+    } finally {
+      setIsTuning(false);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -270,6 +298,11 @@ const ModelDetails: React.FC = () => {
                 <CopyIcon />
               </IconButton>
             </Tooltip>
+            {model.status === 'READY' && (
+              <Button variant="contained" startIcon={<TuneIcon />} onClick={() => setTuneDialogOpen(true)} size="small" sx={{ bgcolor: '#ff9800', '&:hover': { bgcolor: '#f57c00' } }}>
+                Tune
+              </Button>
+            )}
             <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownload} size="small">
               Download .pkl
             </Button>
@@ -315,6 +348,7 @@ const ModelDetails: React.FC = () => {
           <Tab label="Overview" />
           <Tab label="Performance" />
           <Tab label="Features" />
+          <Tab label="Explainability" icon={<ShapIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
           <Tab label="Testing" />
           <Tab label="Raw Data" />
         </Tabs>
@@ -469,6 +503,19 @@ const ModelDetails: React.FC = () => {
                   {model.params?.scale_pos_weight && (
                     <Chip label={`scale_pos_weight: ${model.params.scale_pos_weight}`} size="small" variant="outlined" />
                   )}
+                  {(model.early_stopping_rounds ?? 0) > 0 && (
+                    <Box sx={{ mt: 1, p: 1.5, bgcolor: 'rgba(255,152,0,0.1)', borderRadius: 1, border: '1px solid rgba(255,152,0,0.2)' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <StopIcon sx={{ color: '#ff9800', fontSize: 18 }} />
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#ff9800' }}>Early Stopping</Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {model.best_iteration
+                          ? `Stopped at iteration ${model.best_iteration} / ${model.params?.n_estimators || '?'} (best score: ${model.best_score?.toFixed(4) || 'N/A'})`
+                          : `Patience: ${model.early_stopping_rounds} rounds`}
+                      </Typography>
+                    </Box>
+                  )}
                 </Box>
               </CardContent>
             </Card>
@@ -618,24 +665,29 @@ const ModelDetails: React.FC = () => {
                 </Typography>
                 {sortedFeatureImportance.length > 0 ? (
                   <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-                    {sortedFeatureImportance.slice(0, 20).map(([feature, importance]) => (
-                      <Box key={feature} sx={{ mb: 1 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                          <Typography variant="caption">{feature}</Typography>
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>{(importance * 100).toFixed(2)}%</Typography>
+                    {sortedFeatureImportance.slice(0, 20).map(([feature, importance]) => {
+                      const isLowImportance = importance < 0.005;
+                      return (
+                        <Box key={feature} sx={{ mb: 1 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="caption" sx={{ color: isLowImportance ? '#f44336' : 'inherit' }}>
+                              {feature} {isLowImportance && <WarningIcon sx={{ fontSize: 12, verticalAlign: 'middle', color: '#f44336' }} />}
+                            </Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: isLowImportance ? '#f44336' : 'inherit' }}>{(importance * 100).toFixed(2)}%</Typography>
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.min(importance * 100 / (sortedFeatureImportance[0]?.[1] || 1) * 100, 100)}
+                            sx={{
+                              height: 6,
+                              borderRadius: 3,
+                              bgcolor: 'rgba(255,255,255,0.05)',
+                              '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: isLowImportance ? '#f44336' : '#00d4ff' },
+                            }}
+                          />
                         </Box>
-                        <LinearProgress
-                          variant="determinate"
-                          value={Math.min(importance * 100 / (sortedFeatureImportance[0]?.[1] || 1) * 100, 100)}
-                          sx={{
-                            height: 6,
-                            borderRadius: 3,
-                            bgcolor: 'rgba(255,255,255,0.05)',
-                            '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: '#00d4ff' },
-                          }}
-                        />
-                      </Box>
-                    ))}
+                      );
+                    })}
                   </Box>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
@@ -645,11 +697,85 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
+
+          {/* Low importance warning */}
+          {model.low_importance_features && model.low_importance_features.length > 0 && (
+            <Grid size={12}>
+              <Alert severity="warning" icon={<WarningIcon />}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {model.low_importance_features.length} features have less than 0.5% importance
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Consider training a new model without these features for a leaner, potentially better model:
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {model.low_importance_features.map((f: string) => (
+                    <Chip key={f} label={f} size="small" color="warning" variant="outlined" />
+                  ))}
+                </Box>
+              </Alert>
+            </Grid>
+          )}
         </Grid>
       </TabPanel>
 
-      {/* Tab 3: Testing */}
+      {/* Tab 3: Explainability (SHAP) */}
       <TabPanel value={activeTab} index={3}>
+        {model.shap_values ? (
+          <Grid container spacing={3}>
+            <Grid size={12}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ color: '#9c27b0' }}>
+                    <ShapIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    SHAP Feature Impact (Top 20)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    SHAP values show <strong>how much</strong> each feature pushes the prediction up or down.
+                    Unlike feature importance (which shows how often a feature is used), SHAP reveals the <strong>direction and magnitude</strong> of each feature&apos;s contribution.
+                  </Typography>
+                  <Box sx={{ maxHeight: 600, overflow: 'auto' }}>
+                    {Object.entries(model.shap_values as Record<string, number>)
+                      .sort(([, a], [, b]) => b - a)
+                      .slice(0, 20)
+                      .map(([feature, shapValue]) => {
+                        const maxShap = Math.max(...Object.values(model.shap_values as Record<string, number>));
+                        const barPct = maxShap > 0 ? (shapValue / maxShap) * 100 : 0;
+                        return (
+                          <Box key={feature} sx={{ mb: 1.5 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                              <Typography variant="body2">{feature}</Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#9c27b0' }}>
+                                {shapValue.toFixed(4)}
+                              </Typography>
+                            </Box>
+                            <LinearProgress
+                              variant="determinate"
+                              value={Math.min(barPct, 100)}
+                              sx={{
+                                height: 10,
+                                borderRadius: 5,
+                                bgcolor: 'rgba(255,255,255,0.05)',
+                                '& .MuiLinearProgress-bar': { borderRadius: 5, bgcolor: '#9c27b0' },
+                              }}
+                            />
+                          </Box>
+                        );
+                      })}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        ) : (
+          <Alert severity="info">
+            No SHAP values available. Enable &quot;SHAP Explainability&quot; when creating a model to see feature impact analysis.
+          </Alert>
+        )}
+      </TabPanel>
+
+      {/* Tab 4: Testing */}
+      <TabPanel value={activeTab} index={4}>
         <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>
@@ -697,8 +823,8 @@ const ModelDetails: React.FC = () => {
         </Card>
       </TabPanel>
 
-      {/* Tab 4: Raw Data */}
-      <TabPanel value={activeTab} index={4}>
+      {/* Tab 5: Raw Data */}
+      <TabPanel value={activeTab} index={5}>
         <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -739,6 +865,44 @@ const ModelDetails: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleDelete} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Tune dialog */}
+      <Dialog open={tuneDialogOpen} onClose={() => setTuneDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TuneIcon sx={{ color: '#ff9800' }} /> Hyperparameter Tuning
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Creates a new optimized model by searching for the best hyperparameters using random search.
+            The original model configuration (features, time range, target) is kept.
+          </Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Iterations: {tuneIterations}</Typography>
+          <Slider
+            value={tuneIterations}
+            onChange={(_, v) => setTuneIterations(v as number)}
+            min={10}
+            max={100}
+            step={10}
+            marks={[{ value: 10, label: '10' }, { value: 20, label: '20' }, { value: 50, label: '50' }, { value: 100, label: '100' }]}
+            valueLabelDisplay="auto"
+          />
+          <Typography variant="caption" color="text.secondary">
+            More iterations = better results but longer training time.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTuneDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleTuneModel}
+            variant="contained"
+            disabled={isTuning}
+            startIcon={isTuning ? <CircularProgress size={16} /> : <TuneIcon />}
+            sx={{ bgcolor: '#ff9800', '&:hover': { bgcolor: '#f57c00' } }}
+          >
+            {isTuning ? 'Creating...' : 'Start Tuning'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
