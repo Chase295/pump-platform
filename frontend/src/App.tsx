@@ -32,6 +32,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   Logout as LogoutIcon,
   FullscreenExit as FullscreenExitIcon,
+  Fingerprint as FingerprintIcon,
 } from '@mui/icons-material';
 
 // Pages
@@ -44,6 +45,7 @@ import RealTrading from './pages/RealTrading';
 import N8nWorkflows from './pages/N8nWorkflows';
 import Neo4jGraph from './pages/Neo4jGraph';
 import IpfsExplorer from './pages/IpfsExplorer';
+import Embeddings from './pages/Embeddings';
 import Login from './pages/Login';
 
 // Auth
@@ -109,6 +111,7 @@ const theme = createTheme({
 const navItems = [
   { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
   { path: '/discovery', label: 'Discovery', icon: <SearchIcon /> },
+  { path: '/embeddings', label: 'Embeddings', icon: <FingerprintIcon /> },
   { path: '/training', label: 'Training', icon: <ModelTrainingIcon /> },
   { path: '/predictions', label: 'Predictions', icon: <AnalyticsIcon /> },
   { path: '/test-trading', label: 'Test Trading', icon: <ScienceIcon /> },
@@ -424,6 +427,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/discovery" element={<Discovery />} />
+            <Route path="/embeddings/*" element={<Embeddings />} />
             <Route path="/training/*" element={<Training />} />
             <Route path="/predictions/*" element={<Predictions />} />
             <Route path="/test-trading/*" element={<TestTrading />} />

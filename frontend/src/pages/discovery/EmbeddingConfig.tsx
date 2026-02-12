@@ -4,7 +4,6 @@ import {
   Box,
   Card,
   CardContent,
-  CardHeader,
   Chip,
   Button,
   Alert,
@@ -32,12 +31,17 @@ import {
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
-  Sync as SyncIcon,
   PlayArrow as PlayIcon,
+  PlayCircleOutline as PlayCircleIcon,
+  Settings as SettingsIcon,
+  GridView as GridViewIcon,
+  Cached as CachedIcon,
+  Hub as HubIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { embeddingsApi } from '../../services/api';
 import type { EmbeddingConfig as ConfigType, EmbeddingHealth, EmbeddingJob, Neo4jSyncStatus } from '../../types/embeddings';
+import DiscoveryStatCard from '../../components/discovery/DiscoveryStatCard';
 
 const EmbeddingConfigPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -118,223 +122,621 @@ const EmbeddingConfigPage: React.FC = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['embeddings'] }),
   });
 
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h`;
+  };
+
   return (
     <Box>
-      {/* Service Status */}
+      {/* System Status Bar */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          mb: 2,
+          p: 1.5,
+          bgcolor: 'rgba(0, 212, 255, 0.03)',
+          border: '1px solid rgba(0, 212, 255, 0.15)',
+          borderRadius: 1,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: health?.service_running ? '#4caf50' : '#f44336',
+              animation: health?.service_running ? 'pulse 2s ease-in-out infinite' : 'none',
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.5 },
+              },
+            }}
+          />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            Service: {health?.status || 'Unknown'}
+          </Typography>
+        </Box>
+        {health?.last_run && (
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+            Last run: {new Date(health.last_run).toLocaleString()}
+          </Typography>
+        )}
+        {health?.stats && (
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+            Errors: {(health.stats.total_errors as number) || 0}
+          </Typography>
+        )}
+      </Box>
+
+      {/* Service Status Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Card sx={{ bgcolor: '#1a1a2e' }}>
-            <CardHeader title="Embedding Service" sx={{ pb: 0 }} />
-            <CardContent>
-              {health ? (
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <Chip
-                      label={health.status}
-                      size="small"
-                      sx={{ bgcolor: health.service_running ? '#4caf50' : '#f44336', color: '#fff' }}
-                    />
-                    <Typography variant="body2" color="text.secondary">
-                      {health.active_configs} active config(s) | {health.total_embeddings.toLocaleString()} embeddings
-                    </Typography>
-                  </Box>
-                  {health.last_run && (
-                    <Typography variant="body2" color="text.secondary">
-                      Last run: {new Date(health.last_run).toLocaleString()}
-                    </Typography>
-                  )}
-                </Box>
-              ) : (
-                <CircularProgress size={20} />
-              )}
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <DiscoveryStatCard
+            label="Service Status"
+            value={health?.service_running ? 'Running' : 'Stopped'}
+            sublabel={health?.status}
+            icon={<PlayCircleIcon />}
+            accentColor={health?.service_running ? '76, 175, 80' : '244, 67, 54'}
+            loading={!health}
+          />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Card sx={{ bgcolor: '#1a1a2e' }}>
-            <CardHeader
-              title="Neo4j Sync"
-              action={
-                <Button
-                  size="small"
-                  startIcon={<SyncIcon />}
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                  sx={{ color: '#00d4ff' }}
-                >
-                  Sync Now
-                </Button>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <DiscoveryStatCard
+            label="Active Configs"
+            value={health?.active_configs ?? '-'}
+            sublabel="configurations"
+            icon={<SettingsIcon />}
+            accentColor="156, 39, 176"
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <DiscoveryStatCard
+            label="Total Embeddings"
+            value={health?.total_embeddings?.toLocaleString() ?? '-'}
+            sublabel="vectors"
+            icon={<GridViewIcon />}
+            accentColor="0, 212, 255"
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <DiscoveryStatCard
+            label="Total Runs"
+            value={(health?.stats?.total_runs as number)?.toLocaleString() ?? '-'}
+            sublabel="generations"
+            icon={<CachedIcon />}
+            accentColor="33, 150, 243"
+            loading={!health}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+          <Box sx={{ position: 'relative', height: '100%' }}>
+            <DiscoveryStatCard
+              label="Neo4j Sync"
+              value={
+                neo4jStatus ? `${neo4jStatus.synced}/${neo4jStatus.total_pairs}` : '-'
               }
-              sx={{ pb: 0 }}
+              sublabel={neo4jStatus?.pending ? `${neo4jStatus.pending} pending` : 'synced'}
+              icon={<HubIcon />}
+              accentColor={
+                neo4jStatus?.pending && neo4jStatus.pending > 0
+                  ? '255, 152, 0'
+                  : '76, 175, 80'
+              }
+              loading={!neo4jStatus}
             />
-            <CardContent>
-              {neo4jStatus ? (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Synced: {neo4jStatus.synced} / {neo4jStatus.total_pairs} pairs
-                  </Typography>
-                  {neo4jStatus.pending > 0 && (
-                    <Typography variant="body2" sx={{ color: '#ff9800' }}>
-                      {neo4jStatus.pending} pending
-                    </Typography>
-                  )}
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary">Loading...</Typography>
-              )}
-            </CardContent>
-          </Card>
+            <Button
+              size="small"
+              startIcon={syncMutation.isPending ? <CircularProgress size={12} /> : <RefreshIcon />}
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                fontSize: '0.7rem',
+                minWidth: 'auto',
+                px: 1,
+                py: 0.5,
+                color: '#00d4ff',
+                bgcolor: 'rgba(0, 212, 255, 0.1)',
+                '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.2)' },
+              }}
+            >
+              Sync
+            </Button>
+          </Box>
         </Grid>
       </Grid>
 
-      {/* Configs */}
-      <Card sx={{ mb: 3, bgcolor: '#1a1a2e' }}>
-        <CardHeader
-          title="Embedding Configurations"
-          action={
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                size="small"
-                startIcon={<PlayIcon />}
-                onClick={() => setGenerateDialogOpen(true)}
-                sx={{ color: '#00d4ff' }}
-              >
-                Generate
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setCreateDialogOpen(true)}
-                sx={{ bgcolor: '#00d4ff', '&:hover': { bgcolor: '#00b8d4' } }}
-              >
-                New Config
-              </Button>
-            </Box>
-          }
-        />
+      {/* Configs Table */}
+      <Card
+        sx={{
+          mb: 3,
+          bgcolor: 'rgba(0, 212, 255, 0.03)',
+          border: '1px solid rgba(0, 212, 255, 0.15)',
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            p: 2,
+            borderBottom: '1px solid rgba(0, 212, 255, 0.15)',
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: '0.7rem',
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              color: 'rgba(255,255,255,0.5)',
+              fontWeight: 600,
+            }}
+          >
+            Embedding Configurations
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              startIcon={<PlayIcon />}
+              onClick={() => setGenerateDialogOpen(true)}
+              sx={{
+                color: '#00d4ff',
+                borderColor: '#00d4ff',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 212, 255, 0.1)',
+                  borderColor: '#00d4ff',
+                },
+              }}
+              variant="outlined"
+            >
+              Generate
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateDialogOpen(true)}
+              sx={{
+                bgcolor: '#00d4ff',
+                color: '#000',
+                '&:hover': { bgcolor: '#00b8d4' },
+              }}
+            >
+              New Config
+            </Button>
+          </Box>
+        </Box>
         <CardContent sx={{ p: 0 }}>
           {configsLoading ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}><CircularProgress size={24} /></Box>
-          ) : (
-            <TableContainer component={Paper} sx={{ bgcolor: 'transparent' }}>
-              <Table size="small">
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <CircularProgress size={24} sx={{ color: '#00d4ff' }} />
+            </Box>
+          ) : configs && configs.length > 0 ? (
+            <TableContainer component={Paper} sx={{ bgcolor: 'transparent', boxShadow: 'none' }}>
+              <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Strategy</TableCell>
-                    <TableCell>Window</TableCell>
-                    <TableCell>Normalization</TableCell>
-                    <TableCell align="right">Embeddings</TableCell>
-                    <TableCell>Last Run</TableCell>
-                    <TableCell>Active</TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Name
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Strategy
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Window
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Phases
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Norm
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Embeddings
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Last Run
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Active
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {configs?.map((cfg: ConfigType) => (
-                    <TableRow key={cfg.id} hover>
-                      <TableCell>{cfg.name}</TableCell>
-                      <TableCell>
-                        <Chip label={cfg.strategy} size="small" variant="outlined" />
+                  {configs.map((cfg: ConfigType) => (
+                    <TableRow
+                      key={cfg.id}
+                      sx={{
+                        '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
+                        '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.05)' },
+                      }}
+                    >
+                      <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                        {cfg.name}
                       </TableCell>
-                      <TableCell>{cfg.window_seconds}s</TableCell>
-                      <TableCell>{cfg.normalization}</TableCell>
-                      <TableCell align="right">{cfg.total_embeddings.toLocaleString()}</TableCell>
                       <TableCell>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          {cfg.last_run_at ? new Date(cfg.last_run_at).toLocaleString() : 'Never'}
+                        <Chip
+                          label={cfg.strategy}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(156, 39, 176, 0.2)',
+                            color: '#ce93d8',
+                            fontSize: '0.7rem',
+                            height: 20,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.85rem' }}>
+                        {formatDuration(cfg.window_seconds)}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.85rem' }}>
+                        {cfg.phases ? cfg.phases.join(', ') : 'All'}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.85rem' }}>{cfg.normalization}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>
+                        {cfg.total_embeddings.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: '0.75rem' }}
+                        >
+                          {cfg.last_run_at
+                            ? new Date(cfg.last_run_at).toLocaleString()
+                            : 'Never'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Switch
                           checked={cfg.is_active}
-                          onChange={(e) => toggleMutation.mutate({ id: cfg.id, active: e.target.checked })}
+                          onChange={(e) =>
+                            toggleMutation.mutate({ id: cfg.id, active: e.target.checked })
+                          }
                           size="small"
-                          sx={{ '& .Mui-checked': { color: '#00d4ff' } }}
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': {
+                              color: '#00d4ff',
+                            },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              bgcolor: '#00d4ff',
+                            },
+                          }}
                         />
                       </TableCell>
                     </TableRow>
                   ))}
-                  {configs?.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} align="center">
-                        <Typography color="text.secondary" sx={{ py: 2 }}>
-                          No configs yet. Create one to start generating embeddings.
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
                 </TableBody>
               </Table>
             </TableContainer>
+          ) : (
+            <Box sx={{ p: 4, textAlign: 'center' }}>
+              <Typography color="text.secondary" sx={{ mb: 2 }}>
+                No embedding configurations yet.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Create your first configuration to start generating embeddings for pattern
+                similarity search.
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateDialogOpen(true)}
+                sx={{
+                  bgcolor: '#00d4ff',
+                  color: '#000',
+                  '&:hover': { bgcolor: '#00b8d4' },
+                }}
+              >
+                Create First Config
+              </Button>
+            </Box>
           )}
         </CardContent>
       </Card>
 
-      {/* Jobs */}
+      {/* Jobs Table */}
       {jobs && jobs.length > 0 && (
-        <Card sx={{ bgcolor: '#1a1a2e' }}>
-          <CardHeader
-            title="Recent Jobs"
-            action={
-              <Button
-                size="small"
-                startIcon={<RefreshIcon />}
-                onClick={() => queryClient.invalidateQueries({ queryKey: ['embeddings', 'jobs'] })}
-                sx={{ color: '#00d4ff' }}
-              >
-                Refresh
-              </Button>
-            }
-          />
+        <Card
+          sx={{
+            bgcolor: 'rgba(0, 212, 255, 0.03)',
+            border: '1px solid rgba(0, 212, 255, 0.15)',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              p: 2,
+              borderBottom: '1px solid rgba(0, 212, 255, 0.15)',
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                color: 'rgba(255,255,255,0.5)',
+                fontWeight: 600,
+              }}
+            >
+              Recent Jobs
+            </Typography>
+            <Button
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={() =>
+                queryClient.invalidateQueries({ queryKey: ['embeddings', 'jobs'] })
+              }
+              sx={{
+                color: '#00d4ff',
+                fontSize: '0.75rem',
+                '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.1)' },
+              }}
+            >
+              Refresh
+            </Button>
+          </Box>
           <CardContent sx={{ p: 0 }}>
-            <TableContainer component={Paper} sx={{ bgcolor: 'transparent' }}>
-              <Table size="small">
+            <TableContainer component={Paper} sx={{ bgcolor: 'transparent', boxShadow: 'none' }}>
+              <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>ID</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Period</TableCell>
-                    <TableCell align="right">Created</TableCell>
-                    <TableCell align="right">Completed</TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      ID
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Type
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Status
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Period
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Created
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Completed
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        bgcolor: '#1a1a2e',
+                        fontSize: '0.7rem',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Embeddings
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {jobs.map((job: EmbeddingJob) => (
-                    <TableRow key={job.id} hover>
-                      <TableCell>{job.id}</TableCell>
-                      <TableCell>{job.job_type}</TableCell>
+                    <TableRow
+                      key={job.id}
+                      sx={{
+                        '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
+                        '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.05)' },
+                      }}
+                    >
+                      <TableCell sx={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>
+                        {job.id}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.85rem' }}>{job.job_type}</TableCell>
                       <TableCell>
-                        <Chip
-                          label={job.status}
-                          size="small"
-                          sx={{
-                            bgcolor: job.status === 'COMPLETED' ? '#4caf50'
-                              : job.status === 'RUNNING' ? '#2196f3'
-                              : job.status === 'FAILED' ? '#f44336'
-                              : '#9e9e9e',
-                            color: '#fff',
-                            fontSize: '0.7rem',
-                          }}
-                        />
-                        {job.status === 'RUNNING' && (
-                          <LinearProgress sx={{ mt: 0.5 }} />
-                        )}
+                        <Box>
+                          <Chip
+                            label={job.status}
+                            size="small"
+                            sx={{
+                              bgcolor:
+                                job.status === 'COMPLETED'
+                                  ? 'rgba(76, 175, 80, 0.2)'
+                                  : job.status === 'RUNNING'
+                                  ? 'rgba(33, 150, 243, 0.2)'
+                                  : job.status === 'FAILED'
+                                  ? 'rgba(244, 67, 54, 0.2)'
+                                  : 'rgba(158, 158, 158, 0.2)',
+                              color:
+                                job.status === 'COMPLETED'
+                                  ? '#4caf50'
+                                  : job.status === 'RUNNING'
+                                  ? '#2196f3'
+                                  : job.status === 'FAILED'
+                                  ? '#f44336'
+                                  : '#9e9e9e',
+                              fontSize: '0.7rem',
+                              height: 20,
+                            }}
+                          />
+                          {job.status === 'RUNNING' && (
+                            <LinearProgress
+                              sx={{
+                                mt: 0.5,
+                                height: 2,
+                                bgcolor: 'rgba(33, 150, 243, 0.1)',
+                                '& .MuiLinearProgress-bar': { bgcolor: '#2196f3' },
+                              }}
+                            />
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                          {new Date(job.process_start).toLocaleDateString()} - {new Date(job.process_end).toLocaleDateString()}
+                          {new Date(job.process_start).toLocaleDateString()} -{' '}
+                          {new Date(job.process_end).toLocaleDateString()}
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: '0.75rem' }}
+                        >
                           {new Date(job.created_at).toLocaleString()}
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: '0.75rem' }}
+                        >
                           {job.completed_at ? new Date(job.completed_at).toLocaleString() : '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          variant="body2"
+                          sx={{ fontSize: '0.85rem', fontFamily: 'monospace', color: '#00d4ff' }}
+                        >
+                          {job.embeddings_created.toLocaleString()}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -347,7 +749,12 @@ const EmbeddingConfigPage: React.FC = () => {
       )}
 
       {/* Create Config Dialog */}
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>New Embedding Configuration</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -366,7 +773,9 @@ const EmbeddingConfigPage: React.FC = () => {
                 onChange={(e) => setNewConfig({ ...newConfig, strategy: e.target.value })}
               >
                 <MenuItem value="handcrafted_v1">Handcrafted v1</MenuItem>
-                <MenuItem value="pca_v1" disabled>PCA v1 (coming soon)</MenuItem>
+                <MenuItem value="pca_v1" disabled>
+                  PCA v1 (coming soon)
+                </MenuItem>
               </Select>
             </FormControl>
             <TextField
@@ -374,14 +783,18 @@ const EmbeddingConfigPage: React.FC = () => {
               type="number"
               label="Window (seconds)"
               value={newConfig.window_seconds}
-              onChange={(e) => setNewConfig({ ...newConfig, window_seconds: parseInt(e.target.value) || 300 })}
+              onChange={(e) =>
+                setNewConfig({ ...newConfig, window_seconds: parseInt(e.target.value) || 300 })
+              }
             />
             <TextField
               fullWidth
               type="number"
               label="Min Snapshots"
               value={newConfig.min_snapshots}
-              onChange={(e) => setNewConfig({ ...newConfig, min_snapshots: parseInt(e.target.value) || 3 })}
+              onChange={(e) =>
+                setNewConfig({ ...newConfig, min_snapshots: parseInt(e.target.value) || 3 })
+              }
             />
             <FormControl fullWidth>
               <InputLabel>Normalization</InputLabel>
@@ -411,7 +824,12 @@ const EmbeddingConfigPage: React.FC = () => {
       </Dialog>
 
       {/* Generate Dialog */}
-      <Dialog open={generateDialogOpen} onClose={() => setGenerateDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={generateDialogOpen}
+        onClose={() => setGenerateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Generate Embeddings</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
@@ -443,7 +861,9 @@ const EmbeddingConfigPage: React.FC = () => {
               >
                 <MenuItem value="">All active configs</MenuItem>
                 {configs?.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
