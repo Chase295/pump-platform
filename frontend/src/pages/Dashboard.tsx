@@ -21,11 +21,12 @@ import {
   Analytics as AnalyticsIcon,
   Science as ScienceIcon,
   AccountBalance as RealTradingIcon,
+  Fingerprint as FingerprintIcon,
   Storage as StorageIcon,
   ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { findApi, trainingApi, serverApi, buyApi } from '../services/api';
+import { findApi, trainingApi, serverApi, buyApi, embeddingsApi } from '../services/api';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -341,6 +342,33 @@ export default function Dashboard() {
     queryKey: ['dashboard', 'buy', 'wallets', 'REAL'],
     queryFn: async () => {
       const res = await buyApi.getWallets('REAL');
+      return res.data;
+    },
+    ...QUERY_OPTS,
+  });
+
+  // ----- Embeddings: health + stats -----
+  const {
+    data: embeddingsHealth,
+    isLoading: embeddingsHealthLoading,
+    isError: embeddingsHealthError,
+  } = useQuery({
+    queryKey: ['dashboard', 'embeddings', 'health'],
+    queryFn: async () => {
+      const res = await embeddingsApi.getHealth();
+      return res.data;
+    },
+    ...QUERY_OPTS,
+  });
+
+  const {
+    data: embeddingsStats,
+    isLoading: embeddingsStatsLoading,
+    isError: embeddingsStatsError,
+  } = useQuery({
+    queryKey: ['dashboard', 'embeddings', 'stats'],
+    queryFn: async () => {
+      const res = await embeddingsApi.getStats();
       return res.data;
     },
     ...QUERY_OPTS,
@@ -674,7 +702,58 @@ export default function Dashboard() {
         </Grid>
 
         {/* -------------------------------------------------------------- */}
-        {/* Card 4: Test Trading                                              */}
+        {/* Card 4: Embeddings                                                */}
+        {/* -------------------------------------------------------------- */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <ModuleCard
+            title="Embeddings"
+            icon={<FingerprintIcon sx={{ color: '#00bcd4', fontSize: 24 }} />}
+            accentColor="0, 188, 212"
+            linkTo="/embeddings"
+            isLoading={embeddingsHealthLoading && embeddingsStatsLoading}
+            isError={embeddingsHealthError && embeddingsStatsError}
+          >
+            <StatLine
+              label="Total Embeddings"
+              value={fmt(embeddingsStats?.total_embeddings)}
+            />
+            <StatLine
+              label="Labeled"
+              value={fmt(embeddingsStats?.total_labeled)}
+              color="#4caf50"
+            />
+            <StatLine
+              label="Active Configs"
+              value={fmt(embeddingsHealth?.active_configs)}
+            />
+            <StatLine
+              label="Service"
+              value={
+                <Chip
+                  label={embeddingsHealth?.service_running ? 'Running' : 'Stopped'}
+                  size="small"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.7rem',
+                    bgcolor: embeddingsHealth?.service_running
+                      ? 'rgba(76, 175, 80, 0.2)'
+                      : 'rgba(244, 67, 54, 0.2)',
+                    color: embeddingsHealth?.service_running ? '#4caf50' : '#f44336',
+                  }}
+                />
+              }
+            />
+            {embeddingsStats?.storage_size_mb != null && (
+              <StatLine
+                label="Storage"
+                value={`${embeddingsStats.storage_size_mb.toFixed(1)} MB`}
+              />
+            )}
+          </ModuleCard>
+        </Grid>
+
+        {/* -------------------------------------------------------------- */}
+        {/* Card 5: Test Trading                                              */}
         {/* -------------------------------------------------------------- */}
         <Grid size={{ xs: 12, md: 6 }}>
           <ModuleCard
@@ -706,7 +785,7 @@ export default function Dashboard() {
         </Grid>
 
         {/* -------------------------------------------------------------- */}
-        {/* Card 5: Real Trading                                              */}
+        {/* Card 6: Real Trading                                              */}
         {/* -------------------------------------------------------------- */}
         <Grid size={{ xs: 12, md: 6 }}>
           <ModuleCard
