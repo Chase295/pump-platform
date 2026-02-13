@@ -33,6 +33,7 @@ from backend.modules.training.jobs import JobManager
 from backend.modules.training.auto_retrain import AutoRetrainManager
 from backend.modules.server.alerts import start_alert_evaluator, stop_alert_evaluator
 from backend.modules.server.predictor import preload_all_models
+from backend.modules.server.scanner import start_prediction_scanner, stop_prediction_scanner
 
 # Import graph module lifecycle
 from backend.modules.graph.neo4j_client import (
@@ -134,6 +135,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Model preload failed (non-fatal): %s", e)
 
+    # 5b. Start prediction scanner (polls coin_metrics and runs predictions)
+    await start_prediction_scanner()
+    logger.info("Prediction scanner started")
+
     # 6. Initialize Neo4j graph database (background retry - Neo4j may start slower)
     async def _init_neo4j_with_retry(max_retries: int = 12, delay: int = 10):
         for attempt in range(1, max_retries + 1):
@@ -180,6 +185,7 @@ async def lifespan(app: FastAPI):
     if _auto_retrain:
         await _auto_retrain.stop()
     await stop_alert_evaluator()
+    await stop_prediction_scanner()
     await stop_embedding_service()
     await stop_graph_sync()
     await close_neo4j()

@@ -115,8 +115,8 @@ const PredictionsOverview: React.FC = () => {
     onError: (error: any) => {
       const detail = error?.response?.data?.detail;
       let msg = 'Error toggling model status';
-      if (detail?.includes('Modell-Datei nicht gefunden')) {
-        msg = 'Model cannot be activated because the model file is missing. Please re-import.';
+      if (detail?.includes('not found') || detail?.includes('nicht gefunden')) {
+        msg = 'Model activation failed. The model may need to be re-imported.';
       } else if (detail) {
         msg = detail;
       }

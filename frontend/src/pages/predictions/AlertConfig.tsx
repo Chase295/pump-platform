@@ -137,6 +137,27 @@ const AlertConfig: React.FC = () => {
     },
   });
 
+  // Save max log entries
+  const saveMaxLogMutation = useMutation({
+    mutationFn: () =>
+      serverApi.updateMaxLogEntries(modelId, {
+        max_log_entries_per_coin_negative: currentMaxLogNegative,
+        max_log_entries_per_coin_positive: currentMaxLogPositive,
+        max_log_entries_per_coin_alert: currentMaxLogAlert,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['server', 'model', modelId] });
+      setSnackbar({ open: true, message: 'Max log entries saved successfully', severity: 'success' });
+    },
+    onError: (err: any) => {
+      setSnackbar({
+        open: true,
+        message: `Error: ${err.response?.data?.detail || err.message}`,
+        severity: 'error',
+      });
+    },
+  });
+
   const toggleSendMode = (mode: string) => {
     const current = [...currentSendMode];
     if (current.includes(mode)) {
@@ -190,9 +211,9 @@ const AlertConfig: React.FC = () => {
       </Breadcrumbs>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2, mb: 4 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, fontSize: { xs: '1.3rem', sm: '2rem' } }}>
             Alert Configuration
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -204,7 +225,7 @@ const AlertConfig: React.FC = () => {
         </Button>
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' }, gap: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
         {/* Alert Threshold */}
         <Card variant="outlined">
           <CardContent>
@@ -414,12 +435,24 @@ const AlertConfig: React.FC = () => {
               helperText="0 = unlimited"
               size="small"
             />
+
+            <Box sx={{ mt: 3 }}>
+              <Button
+                variant="contained"
+                startIcon={saveMaxLogMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                onClick={() => saveMaxLogMutation.mutate()}
+                disabled={saveMaxLogMutation.isPending}
+                sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1976d2' } }}
+              >
+                {saveMaxLogMutation.isPending ? 'Saving...' : 'Save Log Settings'}
+              </Button>
+            </Box>
           </CardContent>
         </Card>
       </Box>
 
       {/* Save Alert Config Button */}
-      <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+      <Box sx={{ mt: 3, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
         <Button
           variant="contained"
           size="large"

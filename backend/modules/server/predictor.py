@@ -148,6 +148,9 @@ async def prepare_features(
     """
     Prepare features for prediction.
 
+    Loads base features from coin_metrics and computes extra-source features
+    (graph, embedding, transaction) if the model was trained with them.
+
     Args:
         coin_id: Coin mint address
         model_config: Model configuration
@@ -179,10 +182,44 @@ async def prepare_features(
     if not row:
         raise ValueError(f"No metrics found for coin {coin_id}")
 
-    # Extract features from metrics
+    # Compute extra-source features if model was trained with them
+    params = model_config.get('params', {}) or {}
+    extra_features: Dict[str, float] = {}
+
+    if params.get('use_graph_features'):
+        try:
+            from backend.modules.training.graph_features import compute_graph_features
+            graph_data = await compute_graph_features([coin_id])
+            extra_features.update(graph_data.get(coin_id, {}))
+        except Exception as e:
+            logger.warning(f"Failed to compute graph features for {coin_id[:8]}...: {e}")
+
+    if params.get('use_embedding_features'):
+        try:
+            from backend.modules.training.embedding_features import compute_embedding_features
+            emb_data = await compute_embedding_features([coin_id])
+            extra_features.update(emb_data.get(coin_id, {}))
+        except Exception as e:
+            logger.warning(f"Failed to compute embedding features for {coin_id[:8]}...: {e}")
+
+    if params.get('use_transaction_features'):
+        try:
+            from backend.modules.training.transaction_features import compute_transaction_features
+            tx_data = await compute_transaction_features([coin_id])
+            extra_features.update(tx_data.get(coin_id, {}))
+        except Exception as e:
+            logger.warning(f"Failed to compute transaction features for {coin_id[:8]}...: {e}")
+
+    # Extract features from metrics + extra sources
     feature_values = []
     for feature in required_features:
+        # Try coin_metrics first
         value = row.get(feature)
+
+        # Then try extra-source features
+        if value is None and feature in extra_features:
+            value = extra_features[feature]
+
         if value is None:
             # Try to compute missing features if possible
             if feature == 'price_vs_ath_pct' and row.get('price_close') and row.get('ath_price_sol'):

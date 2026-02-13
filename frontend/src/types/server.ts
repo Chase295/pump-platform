@@ -199,10 +199,17 @@ export interface PredictionMarker {
   timestamp: string;
   prediction_timestamp?: string;
   evaluation_timestamp?: string;
+  evaluated_at?: string;
   prediction: number;
   probability: number;
   alert_threshold: number;
   is_alert: boolean;
+  evaluation_result?: string;
+  actual_price_change_pct?: number;
+  ath_highest_pct?: number;
+  ath_lowest_pct?: number;
+  price_close_at_prediction?: number;
+  price_close_at_evaluation?: number;
 }
 
 // Evaluation marker for charts

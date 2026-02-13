@@ -75,6 +75,43 @@ docker compose up -d          # Start all services
 docker compose logs -f backend  # Watch backend logs
 ```
 
-## MCP Integration
-All API endpoints auto-exposed as MCP tools via fastapi-mcp.
-Config: `.mcp.json` (points to http://localhost:3000/mcp)
+## MCP Integration (Model Context Protocol)
+
+All API endpoints are automatically exposed as MCP tools for AI assistants (Claude Code, Cursor, etc.).
+
+### How it works
+- **Library**: `fastapi-mcp 0.4.0` (auto-generates tools from OpenAPI spec)
+- **Transport**: SSE (Server-Sent Events)
+- **Backend endpoint**: `/mcp` (GET = SSE stream, POST `/mcp/messages/` = JSON-RPC)
+- **Nginx proxy**: `frontend/nginx.conf` proxies `/mcp` → `backend:8000` (with SSE support, buffering disabled, 1h timeout)
+- **Auth**: `/mcp` is NOT behind the Bearer token middleware (only `/api/*` routes are protected)
+
+### Setup
+1. Copy `.mcp.json.example` to `.mcp.json` (or use the existing one in project root)
+2. Start services: `docker compose up -d`
+3. Restart your AI assistant (Claude Code: new session in project directory)
+
+### Config file location
+The `.mcp.json` must be in the directory where you start your AI assistant:
+- `pump-project/.mcp.json` — works when starting from project root
+- `pump-project/pump-platform/.mcp.json` — works when starting from pump-platform/
+
+### Available tool modules
+All `/api/*` routes become MCP tools automatically:
+- **Find** (Discovery): coin streams, metrics, phases, config
+- **Training**: models, jobs, test results, comparisons, features, data availability
+- **Server** (Predictions): active models, predictions, alerts, alert config
+- **Buy** (Trading): wallets, positions, trades, transfers, dashboard
+- **Embeddings**: configs, generation, similarity search, labels
+- **Graph**: Neo4j health, stats, sync, Cypher queries
+
+### Verify MCP is running
+```bash
+curl -s -m 3 -N http://localhost:3000/mcp
+# Expected: event: endpoint\ndata: /mcp/messages/?session_id=...
+
+curl -s -X POST http://localhost:3000/mcp/messages/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+# Expected: {"detail":"session_id is required"} (correct — session comes from SSE)
+```

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     WS_PING_INTERVAL: int = 20
     WS_PING_TIMEOUT: int = 5
     WS_CONNECTION_TIMEOUT: int = 30
-    COIN_CACHE_SECONDS: int = 120
+    COIN_CACHE_SECONDS: int = 360
     COIN_CACHE_MAX_SIZE: int = 5000
     BATCH_SIZE: int = 10
     BATCH_TIMEOUT: int = 30

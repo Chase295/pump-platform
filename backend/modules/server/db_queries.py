@@ -10,7 +10,6 @@ from backend.database instead of acquiring pool connections directly.
 
 import json
 import logging
-import os
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta, timezone
 
@@ -173,29 +172,31 @@ async def get_active_models(include_inactive: bool = False) -> List[Dict[str, An
     """
     pool = get_pool()
 
-    where_clause = "WHERE is_active = true" if not include_inactive else ""
+    where_clause = "WHERE pam.is_active = true" if not include_inactive else ""
 
     rows = await pool.fetch(f"""
         SELECT
-            id, model_id, model_name, model_type,
-            target_variable, target_operator, target_value,
-            future_minutes, price_change_percent, target_direction,
-            features, phases, params,
-            local_model_path, model_file_url,
-            is_active, last_prediction_at, total_predictions,
-            downloaded_at, activated_at, created_at, updated_at,
-            custom_name, alert_threshold,
-            n8n_webhook_url, n8n_send_mode, n8n_enabled,
-            ignore_bad_seconds, ignore_positive_seconds, ignore_alert_seconds,
-            coin_filter_mode, coin_whitelist,
-            min_scan_interval_seconds,
-            max_log_entries_per_coin_negative, max_log_entries_per_coin_positive, max_log_entries_per_coin_alert,
-            send_ignored_to_n8n,
-            training_accuracy, training_f1, training_precision, training_recall,
-            roc_auc, mcc, confusion_matrix, simulated_profit_pct
-        FROM prediction_active_models
+            pam.id, pam.model_id, pam.model_name, pam.model_type,
+            pam.target_variable, pam.target_operator, pam.target_value,
+            pam.future_minutes, pam.price_change_percent, pam.target_direction,
+            pam.features, pam.phases, pam.params,
+            pam.local_model_path, pam.model_file_url,
+            pam.is_active, pam.last_prediction_at, pam.total_predictions,
+            pam.downloaded_at, pam.activated_at, pam.created_at, pam.updated_at,
+            pam.custom_name, pam.alert_threshold,
+            pam.n8n_webhook_url, pam.n8n_send_mode, pam.n8n_enabled,
+            pam.ignore_bad_seconds, pam.ignore_positive_seconds, pam.ignore_alert_seconds,
+            pam.coin_filter_mode, pam.coin_whitelist,
+            pam.min_scan_interval_seconds,
+            pam.max_log_entries_per_coin_negative, pam.max_log_entries_per_coin_positive, pam.max_log_entries_per_coin_alert,
+            pam.send_ignored_to_n8n,
+            pam.training_accuracy, pam.training_f1, pam.training_precision, pam.training_recall,
+            pam.roc_auc, pam.mcc, pam.confusion_matrix, pam.simulated_profit_pct,
+            (m.model_binary IS NOT NULL) AS has_model_binary
+        FROM prediction_active_models pam
+        LEFT JOIN ml_models m ON m.id = pam.model_id
         {where_clause}
-        ORDER BY is_active DESC, created_at DESC
+        ORDER BY pam.is_active DESC, pam.created_at DESC
     """)
 
     # Get statistics for all models in one query (more efficient)
@@ -325,7 +326,7 @@ async def get_active_models(include_inactive: bool = False) -> List[Dict[str, An
                 'negative_predictions': model_stats.get('negative', 0),
                 'alerts_count': model_alerts
             },
-            'model_file_exists': bool(row['local_model_path'] and os.path.exists(row['local_model_path']))
+            'model_file_exists': bool(row.get('has_model_binary', False))
         })
 
     return models
@@ -668,6 +669,9 @@ async def get_predictions(
     coin_id: Optional[str] = None,
     prediction: Optional[int] = None,
     min_probability: Optional[float] = None,
+    tag: Optional[str] = None,
+    status: Optional[str] = None,
+    evaluation_result: Optional[str] = None,
     limit: int = 50,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -696,6 +700,21 @@ async def get_predictions(
         params.append(min_probability)
         param_idx += 1
 
+    if tag is not None:
+        conditions.append(f"tag = ${param_idx}")
+        params.append(tag)
+        param_idx += 1
+
+    if status is not None:
+        conditions.append(f"status = ${param_idx}")
+        params.append(status)
+        param_idx += 1
+
+    if evaluation_result is not None:
+        conditions.append(f"evaluation_result = ${param_idx}")
+        params.append(evaluation_result)
+        param_idx += 1
+
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     params.extend([limit, offset])
 
@@ -707,6 +726,17 @@ async def get_predictions(
     """, *params)
 
     return [dict(row) for row in rows]
+
+
+async def delete_model_predictions(active_model_id: int) -> int:
+    """Delete all predictions for a model. Returns count deleted."""
+    pool = get_pool()
+    count = await pool.fetchval("""
+        WITH deleted AS (
+            DELETE FROM model_predictions WHERE active_model_id = $1 RETURNING 1
+        ) SELECT COUNT(*) FROM deleted
+    """, active_model_id)
+    return count or 0
 
 
 async def get_latest_prediction(coin_id: str, active_model_id: Optional[int] = None) -> Optional[Dict[str, Any]]:

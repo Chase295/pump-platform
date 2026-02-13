@@ -378,11 +378,11 @@ class CoinStreamer:
         """Flush all pending data, then cancel background tasks."""
         logger.info("CoinStreamer shutdown: flushing buffers...")
 
-        # 1. Flush discovery buffer to DB
+        # 1. Flush discovery buffer to n8n
         try:
             if self.discovery_buffer:
-                persisted = await self._persist_discovered_coins(self.discovery_buffer)
-                logger.info("Shutdown: %d discovery coins persisted", persisted)
+                await send_batch_to_n8n(self.discovery_buffer, self.status)
+                logger.info("Shutdown: %d discovery coins sent to n8n", len(self.discovery_buffer))
                 self.discovery_buffer = []
         except Exception as e:
             logger.warning("Shutdown: discovery flush failed: %s", e)
@@ -496,74 +496,21 @@ class CoinStreamer:
         logger.info("New coin: %s (cache: %d)", coin_data.get("symbol", "???"), len(self.coin_cache.cache))
 
     async def _persist_discovered_coins(self, coins: list) -> int:
-        """Persist discovered coins directly to DB (discovered_coins + coin_streams).
+        """No-op: n8n is the sole gatekeeper for DB writes.
 
-        Non-fatal: catches all exceptions and logs warnings.
-        Returns number of coins persisted.
+        Previously this inserted into discovered_coins + coin_streams directly,
+        which caused ~800 fake newborns and bypassed n8n's RugCheck/enrichment.
+        Now n8n handles both INSERTs with enriched data after filtering.
         """
-        if not coins:
-            return 0
-
-        dc_rows = []
-        cs_rows = []
-        for coin in coins:
-            mint = coin.get("mint")
-            if not mint:
-                continue
-            dc_rows.append((
-                mint,
-                coin.get("symbol", ""),
-                coin.get("name", ""),
-                coin.get("traderPublicKey", ""),
-                float(coin.get("vTokensInBondingCurve", 0)),
-                float(coin.get("vSolInBondingCurve", 0)),
-                float(coin.get("marketCapSol", 0)),
-                coin.get("bondingCurveKey", ""),
-                coin.get("twitter_url") or coin.get("twitter") or "",
-                coin.get("telegram_url") or coin.get("telegram") or "",
-                coin.get("website_url") or coin.get("website") or "",
-                coin.get("discord_url") or coin.get("discord") or "",
-                float(coin.get("price_sol", 0)),
-                int(coin.get("social_count", 0)),
-            ))
-            cs_rows.append((
-                mint,
-                1,      # phase_id
-                True,   # is_active
-            ))
-
-        try:
-            pool = get_pool()
-            async with pool.acquire(timeout=5) as conn:
-                await conn.executemany("""
-                    INSERT INTO discovered_coins (
-                        token_address, symbol, name, trader_public_key,
-                        v_tokens_in_bonding_curve, v_sol_in_bonding_curve,
-                        market_cap_sol, bonding_curve_key,
-                        twitter_url, telegram_url, website_url, discord_url,
-                        price_sol, social_count
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-                    ON CONFLICT (token_address) DO NOTHING
-                """, dc_rows)
-
-                await conn.executemany("""
-                    INSERT INTO coin_streams (token_address, current_phase_id, is_active)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (token_address) DO NOTHING
-                """, cs_rows)
-
-            logger.info("Persisted %d coins to DB (discovered_coins + coin_streams)", len(dc_rows))
-            return len(dc_rows)
-
-        except asyncio.TimeoutError:
-            logger.warning("_persist_discovered_coins: pool.acquire timeout")
-            return 0
-        except Exception as e:
-            logger.warning("_persist_discovered_coins failed (non-fatal): %s", e)
-            return 0
+        return 0
 
     async def _flush_discovery_buffer(self) -> None:
-        """Persist discovery buffer to DB, then optionally send to n8n."""
+        """Send discovery buffer to n8n for filtering and enrichment.
+
+        n8n is the sole gatekeeper: it performs RugCheck, classification,
+        IPFS enrichment, then inserts approved coins into discovered_coins
+        and coin_streams with the correct phase.
+        """
         if not self.discovery_buffer:
             return
 
@@ -571,10 +518,6 @@ class CoinStreamer:
         is_timeout = (time.time() - self.last_discovery_flush) > settings.BATCH_TIMEOUT
 
         if is_full or is_timeout:
-            # 1. Always persist to DB first
-            await self._persist_discovered_coins(self.discovery_buffer)
-
-            # 2. Send to n8n (optional, best-effort)
             success = await send_batch_to_n8n(self.discovery_buffer, self.status)
             if success:
                 for coin in self.discovery_buffer:
@@ -582,7 +525,6 @@ class CoinStreamer:
                     if mint in self.coin_cache.cache:
                         self.coin_cache.cache[mint]["n8n_sent"] = True
 
-            # 3. Always clear buffer (data is safe in DB)
             self.discovery_buffer = []
             self.last_discovery_flush = time.time()
 
@@ -747,9 +689,9 @@ class CoinStreamer:
         """Flush critical buffers before reconnect. Non-fatal."""
         try:
             if self.discovery_buffer:
-                persisted = await self._persist_discovered_coins(self.discovery_buffer)
+                await send_batch_to_n8n(self.discovery_buffer, self.status)
+                logger.info("Emergency flush: %d discovery coins sent to n8n", len(self.discovery_buffer))
                 self.discovery_buffer = []
-                logger.info("Emergency flush: %d discovery coins persisted", persisted)
         except Exception as e:
             logger.warning("Emergency flush (discovery) failed: %s", e)
 

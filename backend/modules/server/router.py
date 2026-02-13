@@ -31,6 +31,7 @@ from backend.modules.server.db_queries import (
     save_prediction,
     get_predictions,
     get_latest_prediction,
+    delete_model_predictions,
 )
 from backend.modules.server.predictor import (
     load_model_for_prediction,
@@ -779,7 +780,10 @@ async def get_predictions_endpoint(
     coin_id: Optional[str] = Query(None),
     prediction: Optional[int] = Query(None),
     min_probability: Optional[float] = Query(None),
-    limit: int = Query(50, ge=1, le=1000),
+    tag: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    evaluation_result: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0)
 ):
     """Get predictions with filters"""
@@ -789,6 +793,9 @@ async def get_predictions_endpoint(
             coin_id=coin_id,
             prediction=prediction,
             min_probability=min_probability,
+            tag=tag,
+            status=status,
+            evaluation_result=evaluation_result,
             limit=limit,
             offset=offset
         )
@@ -815,6 +822,125 @@ async def get_latest_prediction_endpoint(
         raise
     except Exception as e:
         logger.error(f"Error getting latest prediction: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/models/{active_model_id}/predictions", status_code=status.HTTP_200_OK)
+async def delete_model_predictions_endpoint(active_model_id: int):
+    """Delete all predictions for a model"""
+    try:
+        count = await delete_model_predictions(active_model_id)
+        return {"message": f"Deleted {count} predictions for model {active_model_id}", "deleted_count": count}
+    except Exception as e:
+        logger.error(f"Error deleting predictions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Coin Details Endpoint
+# ============================================================
+
+@router.get("/models/{active_model_id}/coin/{coin_id}")
+async def get_coin_details_endpoint(active_model_id: int, coin_id: str):
+    """Get coin details including price history, predictions, and evaluations for a specific model+coin"""
+    try:
+        pool = get_pool()
+
+        # Get predictions for this model+coin
+        pred_rows = await pool.fetch("""
+            SELECT id, coin_id, prediction, probability, tag,
+                   prediction_timestamp, evaluation_timestamp, evaluated_at,
+                   evaluation_result, actual_price_change_pct,
+                   ath_highest_pct, ath_lowest_pct,
+                   price_close_at_prediction, price_close_at_evaluation
+            FROM model_predictions
+            WHERE active_model_id = $1 AND coin_id = $2
+            ORDER BY prediction_timestamp DESC
+            LIMIT 100
+        """, active_model_id, coin_id)
+
+        # Get the model's alert threshold
+        models = await get_active_models(include_inactive=True)
+        model = next((m for m in models if m['id'] == active_model_id), None)
+        alert_threshold = float(model.get('alert_threshold', 0.7)) if model else 0.7
+
+        # Get price history from coin_metrics
+        metric_rows = await pool.fetch("""
+            SELECT mint, timestamp, price_open, price_high, price_low, price_close,
+                   market_cap_close, volume_sol
+            FROM coin_metrics
+            WHERE mint = $1
+            ORDER BY timestamp ASC
+            LIMIT 500
+        """, coin_id)
+
+        # Build price history
+        price_history = []
+        for r in metric_rows:
+            price_history.append({
+                "timestamp": r['timestamp'].isoformat() if r['timestamp'] else None,
+                "price_open": float(r['price_open']) if r['price_open'] else None,
+                "price_high": float(r['price_high']) if r['price_high'] else None,
+                "price_low": float(r['price_low']) if r['price_low'] else None,
+                "price_close": float(r['price_close']) if r['price_close'] else None,
+                "volume_sol": float(r['volume_sol']) if r['volume_sol'] else None,
+                "market_cap_close": float(r['market_cap_close']) if r['market_cap_close'] else None,
+            })
+
+        # Build predictions list
+        predictions = []
+        for r in pred_rows:
+            prob = float(r['probability'])
+            predictions.append({
+                "id": r['id'],
+                "timestamp": r['prediction_timestamp'].isoformat() if r['prediction_timestamp'] else None,
+                "prediction_timestamp": r['prediction_timestamp'].isoformat() if r['prediction_timestamp'] else None,
+                "evaluation_timestamp": r['evaluation_timestamp'].isoformat() if r['evaluation_timestamp'] else None,
+                "evaluated_at": r['evaluated_at'].isoformat() if r['evaluated_at'] else None,
+                "prediction": r['prediction'],
+                "probability": prob,
+                "alert_threshold": alert_threshold,
+                "is_alert": r['tag'] == 'alert',
+                "evaluation_result": r['evaluation_result'],
+                "actual_price_change_pct": float(r['actual_price_change_pct']) if r['actual_price_change_pct'] is not None else None,
+                "ath_highest_pct": float(r['ath_highest_pct']) if r['ath_highest_pct'] is not None else None,
+                "ath_lowest_pct": float(r['ath_lowest_pct']) if r['ath_lowest_pct'] is not None else None,
+                "price_close_at_prediction": float(r['price_close_at_prediction']) if r['price_close_at_prediction'] is not None else None,
+                "price_close_at_evaluation": float(r['price_close_at_evaluation']) if r['price_close_at_evaluation'] is not None else None,
+            })
+
+        # Build evaluations list
+        evaluations = []
+        for r in pred_rows:
+            eval_result = r['evaluation_result']
+            if eval_result:
+                status_val = eval_result
+            elif r['evaluated_at']:
+                status_val = 'pending'
+            else:
+                status_val = 'pending'
+            evaluations.append({
+                "id": r['id'],
+                "prediction_timestamp": r['prediction_timestamp'].isoformat() if r['prediction_timestamp'] else None,
+                "status": status_val,
+                "actual_price_change": float(r['actual_price_change_pct']) if r['actual_price_change_pct'] is not None else None,
+                "probability": float(r['probability']),
+            })
+
+        # Earliest prediction timestamp for response
+        earliest_ts = pred_rows[-1]['prediction_timestamp'].isoformat() if pred_rows else None
+
+        return {
+            "coin_id": coin_id,
+            "model_id": active_model_id,
+            "prediction_timestamp": earliest_ts,
+            "price_history": price_history,
+            "predictions": predictions,
+            "evaluations": evaluations,
+        }
+
+    except Exception as e:
+        logger.error(f"Error loading coin details: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -865,7 +991,10 @@ async def get_alert_statistics_endpoint(
                 COUNT(*) FILTER (WHERE tag = 'alert' AND status = 'aktiv') as alerts_pending,
                 COUNT(*) FILTER (WHERE tag != 'alert' AND evaluation_result = 'success') as non_alerts_success,
                 COUNT(*) FILTER (WHERE tag != 'alert' AND evaluation_result = 'failed') as non_alerts_failed,
-                COUNT(*) FILTER (WHERE tag != 'alert' AND status = 'aktiv') as non_alerts_pending
+                COUNT(*) FILTER (WHERE tag != 'alert' AND status = 'aktiv') as non_alerts_pending,
+                COALESCE(SUM(actual_price_change_pct) FILTER (WHERE tag = 'alert' AND evaluation_result IN ('success', 'failed')), 0) as total_performance_pct,
+                COALESCE(SUM(actual_price_change_pct) FILTER (WHERE tag = 'alert' AND evaluation_result = 'success' AND actual_price_change_pct > 0), 0) as alerts_profit_pct,
+                COALESCE(SUM(actual_price_change_pct) FILTER (WHERE tag = 'alert' AND evaluation_result = 'failed' AND actual_price_change_pct < 0), 0) as alerts_loss_pct
             FROM model_predictions
             WHERE {where}
         """, *params)
@@ -895,6 +1024,9 @@ async def get_alert_statistics_endpoint(
             "non_alerts_pending": row['non_alerts_pending'] or 0,
             "alerts_success_rate": round(alerts_success / alerts_evaluated * 100, 1) if alerts_evaluated > 0 else 0,
             "non_alerts_success_rate": round(non_alerts_success / non_alerts_evaluated * 100, 1) if non_alerts_evaluated > 0 else 0,
+            "total_performance_pct": round(float(row['total_performance_pct']), 2),
+            "alerts_profit_pct": round(float(row['alerts_profit_pct']), 2),
+            "alerts_loss_pct": round(float(row['alerts_loss_pct']), 2),
         }
     except Exception as e:
         logger.error(f"Error getting alert statistics: {e}", exc_info=True)

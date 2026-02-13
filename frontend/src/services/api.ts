@@ -158,7 +158,10 @@ export const serverApi = {
   getLatestPrediction: (coinId: string, modelId?: number) =>
     api.get(`/server/predictions/latest/${coinId}`, { params: { model_id: modelId } }),
   getModelPredictions: (params?: Record<string, unknown>) =>
-    api.get('/server/model-predictions', { params }),
+    api.get('/server/predictions', { params }),
+
+  // Delete predictions for a model
+  deleteModelPredictions: (id: number) => api.delete(`/server/models/${id}/predictions`),
 
   // Alerts
   getAlerts: (params?: Record<string, unknown>) =>
@@ -174,6 +177,9 @@ export const serverApi = {
   getIgnoreSettings: (id: number) => api.get(`/server/models/${id}/ignore-settings`),
   updateIgnoreSettings: (id: number, data: Record<string, unknown>) =>
     api.patch(`/server/models/${id}/ignore-settings`, data),
+  getMaxLogEntries: (id: number) => api.get(`/server/models/${id}/max-log-entries`),
+  updateMaxLogEntries: (id: number, data: Record<string, unknown>) =>
+    api.patch(`/server/models/${id}/max-log-entries`, data),
 
   // System
   getHealth: () => api.get('/server/health'),

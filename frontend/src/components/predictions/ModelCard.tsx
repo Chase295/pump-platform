@@ -31,6 +31,9 @@ import {
   ShowChart as ShowChartIcon,
   AttachMoney as AttachMoneyIcon,
   Warning as WarningIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
+  HighlightOff as HighlightOffIcon,
+  HourglassTop as HourglassTopIcon,
 } from '@mui/icons-material';
 import type { ServerModel, AlertStatistics } from '../../types/server';
 
@@ -82,6 +85,8 @@ const ModelCard: React.FC<ModelCardProps> = React.memo(
         alertsAboveThreshold,
         alertsSuccess: alertStats?.alerts_success || 0,
         alertsFailed: alertStats?.alerts_failed || 0,
+        alertsPending: alertStats?.alerts_pending || 0,
+        alertsTotal: alertStats?.total_alerts || 0,
         nonAlertsSuccess: alertStats?.non_alerts_success || 0,
         nonAlertsFailed: alertStats?.non_alerts_failed || 0,
         totalPerformancePct: alertStats?.total_performance_pct || 0,
@@ -353,6 +358,80 @@ const ModelCard: React.FC<ModelCardProps> = React.memo(
               </Box>
             </Box>
           </Box>
+
+          {/* Alert Evaluation (when stats available) */}
+          {model.alert_stats && stats.alertsTotal > 0 && (
+            <Box
+              sx={{
+                mb: 2,
+                p: 2,
+                background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.08) 0%, rgba(255, 193, 7, 0.03) 100%)',
+                borderRadius: 2,
+                border: '1px solid rgba(255, 193, 7, 0.2)',
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  mb: 1.5,
+                  display: 'block',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  color: 'warning.main',
+                }}
+              >
+                Alert Evaluation
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1 }}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+                    <NotificationsIcon sx={{ color: 'warning.main', fontSize: 16 }} />
+                    <Typography sx={{ fontWeight: 700, color: 'warning.main', fontSize: '1rem' }}>
+                      {stats.alertsTotal}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+                    Total
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+                    <CheckCircleOutlineIcon sx={{ color: 'success.main', fontSize: 16 }} />
+                    <Typography sx={{ fontWeight: 700, color: 'success.main', fontSize: '1rem' }}>
+                      {stats.alertsSuccess}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+                    Success
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+                    <HighlightOffIcon sx={{ color: 'error.main', fontSize: 16 }} />
+                    <Typography sx={{ fontWeight: 700, color: 'error.main', fontSize: '1rem' }}>
+                      {stats.alertsFailed}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+                    Failed
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+                    <HourglassTopIcon sx={{ color: 'text.secondary', fontSize: 16 }} />
+                    <Typography sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '1rem' }}>
+                      {stats.alertsPending}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+                    Pending
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
 
           {/* Performance sums (when available) */}
           {model.alert_stats &&
