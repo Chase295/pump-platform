@@ -25,6 +25,7 @@ const chapterIds = [
   'train-overview',
   'train-base-features',
   'train-engineered',
+  'train-extra-sources',
   'train-params',
   'train-metrics',
   'train-api',
@@ -58,10 +59,11 @@ const TrainingInfo: React.FC = () => (
             Es macht zeitbasierte Vorhersagen wie "Steigt der Preis um X% in Y Minuten?"
           </Typography>
           <Box component="ul" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
-            <li><Typography variant="body2">Asynchrone Job-Queue fuer Training, Test und Vergleich</Typography></li>
-            <li><Typography variant="body2">28 Basis-Features + 66+ Engineered Features + 51 Flag-Features</Typography></li>
+            <li><Typography variant="body2">Asynchrone Job-Queue fuer Training, Test, Vergleich und Tuning</Typography></li>
+            <li><Typography variant="body2">28 Basis-Features + 66 Engineered Features + 51 Flag-Features + 22 Extra Source Features (Graph/Embedding/Transaction)</Typography></li>
             <li><Typography variant="body2">Konfigurierbarer Vorhersage-Horizont (future_minutes) und Schwelle (min_percent_change)</Typography></li>
             <li><Typography variant="body2">Automatische Metrik-Berechnung: Accuracy, F1, Precision, Recall, ROC-AUC, MCC</Typography></li>
+            <li><Typography variant="body2">Early Stopping, SHAP Feature Importance und Cross-Validation</Typography></li>
             <li><Typography variant="body2">Modell-Vergleiche auf identischen Testzeitraeumen</Typography></li>
           </Box>
           <CodeBlock>
@@ -71,7 +73,8 @@ const TrainingInfo: React.FC = () => (
   3. Modell wird trainiert und gespeichert
   4. TEST-Job auf neuem Zeitraum (Backtesting)
   5. COMPARE-Job: 2-4 Modelle vergleichen
-  6. Bestes Modell im Prediction-Server importieren`}
+  6. TUNE-Job: Hyperparameter optimieren
+  7. Bestes Modell im Prediction-Server importieren`}
           </CodeBlock>
         </Chapter>
 
@@ -99,46 +102,56 @@ const TrainingInfo: React.FC = () => (
                   <TableCell>4</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Market</TableCell>
-                  <TableCell>market_cap_close, bonding_curve_pct, coin_age_seconds</TableCell>
-                  <TableCell>3</TableCell>
-                </TableRow>
-                <TableRow>
                   <TableCell>Volume</TableCell>
-                  <TableCell>volume_sol, buy_volume_sol, sell_volume_sol</TableCell>
-                  <TableCell>3</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Trade Activity</TableCell>
-                  <TableCell>num_buys, num_sells, unique_wallets, num_trades, buy_sell_ratio, avg_trade_size</TableCell>
-                  <TableCell>6</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Dev/Whale</TableCell>
-                  <TableCell>dev_sold_amount, dev_last_sell_age, whale_buy_volume_sol, whale_sell_volume_sol</TableCell>
+                  <TableCell>volume_sol, buy_volume_sol, sell_volume_sol, net_volume_sol</TableCell>
                   <TableCell>4</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Analytics</TableCell>
-                  <TableCell>ath_price, ath_age_seconds, price_to_ath_ratio, holders_count, top10_holder_pct, smart_money_flow, rugcheck_score, social_score</TableCell>
-                  <TableCell>8</TableCell>
+                  <TableCell>Market</TableCell>
+                  <TableCell>market_cap_close, bonding_curve_pct, virtual_sol_reserves, is_koth</TableCell>
+                  <TableCell>4</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Activity</TableCell>
+                  <TableCell>num_buys, num_sells, unique_wallets, num_micro_trades</TableCell>
+                  <TableCell>4</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Trade Size</TableCell>
+                  <TableCell>max_single_buy_sol, max_single_sell_sol, avg_trade_size_sol</TableCell>
+                  <TableCell>3</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Whale</TableCell>
+                  <TableCell>whale_buy_volume_sol, whale_sell_volume_sol, num_whale_buys, num_whale_sells</TableCell>
+                  <TableCell>4</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Safety</TableCell>
+                  <TableCell>dev_sold_amount</TableCell>
+                  <TableCell>1</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Risk / Other</TableCell>
+                  <TableCell>volatility_pct, buy_pressure_ratio, unique_signer_ratio, phase_id_at_time</TableCell>
+                  <TableCell>4</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
           </SmallTable>
         </Chapter>
 
-        {/* 3. Feature Engineering (66+) */}
+        {/* 3. Feature Engineering (66) */}
         <Chapter
           id="train-engineered"
-          title="Feature Engineering (66+)"
+          title="Feature Engineering (66)"
           icon="🔬"
           expanded={expandedChapters.includes('train-engineered')}
           onChange={handleChapterChange('train-engineered')}
         >
           <Alert severity="info" sx={{ mb: 2 }}>
             Aktivierbar mit <code>use_engineered_features: true</code> beim Training.
-            Berechnet aus den letzten 10 Datenpunkten (Look-back Window).
+            Features werden mit Rolling Windows (5, 10, 15 Datenpunkte) berechnet.
           </Alert>
 
           <SmallTable>
@@ -147,32 +160,59 @@ const TrainingInfo: React.FC = () => (
                 <TableRow>
                   <TableCell><strong>Gruppe</strong></TableCell>
                   <TableCell><strong>Features</strong></TableCell>
+                  <TableCell><strong>Anzahl</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 <TableRow>
-                  <TableCell>ATH-Features</TableCell>
-                  <TableCell>ATH-Ratio, ATH-Age, Distance-to-ATH</TableCell>
+                  <TableCell>Dev Sold</TableCell>
+                  <TableCell>dev_sold_flag, dev_sold_cumsum, dev_sold_spike_5/10/15</TableCell>
+                  <TableCell>5</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Trend-Features</TableCell>
-                  <TableCell>price_trend, volume_trend, momentum (Steigung ueber 5 Punkte)</TableCell>
+                  <TableCell>Buy Pressure</TableCell>
+                  <TableCell>buy_pressure_ma_5/10/15, buy_pressure_trend_5/10/15</TableCell>
+                  <TableCell>6</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Momentum</TableCell>
-                  <TableCell>price_momentum, volume_momentum, acceleration</TableCell>
+                  <TableCell>Whale Tracking</TableCell>
+                  <TableCell>whale_net_volume, whale_activity_5/10/15</TableCell>
+                  <TableCell>4</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Rolling Windows</TableCell>
-                  <TableCell>mean_3, mean_5, mean_10, std_5, std_10 fuer Preis und Volume</TableCell>
+                  <TableCell>Volatility</TableCell>
+                  <TableCell>volatility_ma_5/10/15, volatility_spike_5/10/15</TableCell>
+                  <TableCell>6</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Volatilitaet</TableCell>
-                  <TableCell>price_volatility, volume_volatility, high_low_range</TableCell>
+                  <TableCell>Wash Trading</TableCell>
+                  <TableCell>wash_trading_flag_5/10/15</TableCell>
+                  <TableCell>3</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Ratio-Features</TableCell>
-                  <TableCell>buy_sell_vol_ratio, price_to_volume, market_cap_to_volume</TableCell>
+                  <TableCell>Net Volume</TableCell>
+                  <TableCell>net_volume_ma_5/10/15, volume_flip_5/10/15</TableCell>
+                  <TableCell>6</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Price Momentum</TableCell>
+                  <TableCell>price_change_5/10/15, price_roc_5/10/15</TableCell>
+                  <TableCell>6</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Market Cap</TableCell>
+                  <TableCell>mcap_velocity_5/10/15</TableCell>
+                  <TableCell>3</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>ATH Analysis</TableCell>
+                  <TableCell>rolling_ath, price_vs_ath_pct, ath_breakout, minutes_since_ath, ath_distance_trend, ath_approach, ath_breakout_count, ath_breakout_volume_ma, ath_age_trend (jeweils _5/10/15)</TableCell>
+                  <TableCell>19</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Power Features</TableCell>
+                  <TableCell>buy_sell_ratio, whale_dominance, price_acceleration_5/10/15, volume_spike_5/10/15</TableCell>
+                  <TableCell>8</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -187,7 +227,113 @@ const TrainingInfo: React.FC = () => (
           </Typography>
         </Chapter>
 
-        {/* 4. Training-Parameter */}
+        {/* 4. Extra Source Features */}
+        <Chapter
+          id="train-extra-sources"
+          title="Extra Source Features (22)"
+          icon="🔗"
+          expanded={expandedChapters.includes('train-extra-sources')}
+          onChange={handleChapterChange('train-extra-sources')}
+        >
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Drei zusaetzliche Datenquellen mit insgesamt 22 Features.
+            Jedes Feature ist einzeln auswaehlbar — nicht mehr nur an/aus pro Quelle.
+          </Alert>
+
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Graph Features (Neo4j) — 8 Features</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Creator-Analyse, Wallet-Cluster und Token-Aehnlichkeit aus dem Neo4j Knowledge Graph.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Feature</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow><TableCell><code>creator_total_tokens</code></TableCell><TableCell>Anzahl Tokens dieses Creators</TableCell></TableRow>
+                <TableRow><TableCell><code>creator_avg_risk_score</code></TableCell><TableCell>Durchschnittlicher Risk-Score der Creator-Tokens</TableCell></TableRow>
+                <TableRow><TableCell><code>creator_any_graduated</code></TableCell><TableCell>Hat ein Token des Creators graduated?</TableCell></TableRow>
+                <TableRow><TableCell><code>creator_is_serial</code></TableCell><TableCell>Creator hat 5+ Tokens erstellt</TableCell></TableRow>
+                <TableRow><TableCell><code>wallet_cluster_count</code></TableCell><TableCell>Anzahl Trading-Wallet-Cluster</TableCell></TableRow>
+                <TableRow><TableCell><code>avg_cluster_risk</code></TableCell><TableCell>Durchschnittlicher Cluster-Risiko-Score</TableCell></TableRow>
+                <TableRow><TableCell><code>similar_token_count</code></TableCell><TableCell>Anzahl graph-aehnlicher Tokens</TableCell></TableRow>
+                <TableRow><TableCell><code>similar_tokens_graduated_pct</code></TableCell><TableCell>% aehnlicher Tokens die graduated sind</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Embedding Features (pgvector) — 6 Features</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Pattern-Aehnlichkeit zu bekannten Pump/Rug-Mustern via pgvector Similarity Search.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Feature</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow><TableCell><code>similarity_to_pumps</code></TableCell><TableCell>Durchschnittliche Aehnlichkeit zu Pump-Patterns</TableCell></TableRow>
+                <TableRow><TableCell><code>similarity_to_rugs</code></TableCell><TableCell>Durchschnittliche Aehnlichkeit zu Rug-Patterns</TableCell></TableRow>
+                <TableRow><TableCell><code>max_pump_similarity</code></TableCell><TableCell>Max. Aehnlichkeit zu einem Pump-Pattern</TableCell></TableRow>
+                <TableRow><TableCell><code>max_rug_similarity</code></TableCell><TableCell>Max. Aehnlichkeit zu einem Rug-Pattern</TableCell></TableRow>
+                <TableRow><TableCell><code>nearest_pattern_label</code></TableCell><TableCell>Label des aehnlichsten Patterns</TableCell></TableRow>
+                <TableRow><TableCell><code>nearest_pattern_similarity</code></TableCell><TableCell>Score des naechsten Patterns</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Transaction Features — 8 Features</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Transaktionsbasierte Metriken: Wallet-Konzentration, Trade-Bursts und Whale-Aktivitaet.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Feature</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow><TableCell><code>tx_wallet_concentration</code></TableCell><TableCell>Gini-Koeffizient der Trader-Volumina</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_top3_holder_pct</code></TableCell><TableCell>% Volumen der Top-3-Trader</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_unique_traders</code></TableCell><TableCell>Anzahl einzigartiger Trader</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_buy_sell_ratio</code></TableCell><TableCell>Kauf-/Verkaufsverhaeltnis</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_avg_time_between_trades</code></TableCell><TableCell>Durchschn. Sekunden zwischen Trades</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_burst_count</code></TableCell><TableCell>Trading-Bursts (&gt;10 Trades in 60s)</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_whale_pct</code></TableCell><TableCell>% Volumen aus Whale-Trades</TableCell></TableRow>
+                <TableRow><TableCell><code>tx_quick_reversal_count</code></TableCell><TableCell>Buy→Sell in &lt;2min vom selben Trader</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>API-Parameter</Typography>
+          <CodeBlock>
+{`// Modulare Auswahl beim Training:
+{
+  "use_graph_features": true,
+  "graph_feature_names": ["creator_total_tokens", "creator_is_serial"],
+
+  "use_embedding_features": true,
+  "embedding_feature_names": null,  // null = alle 6
+
+  "use_transaction_features": false  // komplett deaktiviert
+}`}
+          </CodeBlock>
+        </Chapter>
+
+        {/* 5. Training-Parameter */}
         <Chapter
           id="train-params"
           title="Training-Parameter"
@@ -208,7 +354,7 @@ const TrainingInfo: React.FC = () => (
                 <TableRow>
                   <TableCell><code>model_type</code></TableCell>
                   <TableCell>xgboost</TableCell>
-                  <TableCell>Modell-Typ (aktuell nur XGBoost)</TableCell>
+                  <TableCell>Modell-Typ (xgboost oder lightgbm)</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell><code>features</code></TableCell>
@@ -242,18 +388,68 @@ const TrainingInfo: React.FC = () => (
                 </TableRow>
                 <TableRow>
                   <TableCell><code>use_smote</code></TableCell>
-                  <TableCell>false</TableCell>
+                  <TableCell>true</TableCell>
                   <TableCell>SMOTE Oversampling fuer unbalancierte Daten</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>early_stopping_rounds</code></TableCell>
+                  <TableCell>10</TableCell>
+                  <TableCell>Early Stopping Runden (0 = deaktiviert)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>compute_shap</code></TableCell>
+                  <TableCell>false</TableCell>
+                  <TableCell>SHAP Feature Importance berechnen</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>use_timeseries_split</code></TableCell>
+                  <TableCell>true</TableCell>
+                  <TableCell>TimeSeriesSplit fuer Cross-Validation</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>cv_splits</code></TableCell>
+                  <TableCell>5</TableCell>
+                  <TableCell>Anzahl CV-Splits (2-10)</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell><code>use_engineered_features</code></TableCell>
                   <TableCell>false</TableCell>
-                  <TableCell>66+ Feature Engineering aktivieren</TableCell>
+                  <TableCell>66 Feature Engineering aktivieren</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell><code>use_flag_features</code></TableCell>
                   <TableCell>true</TableCell>
                   <TableCell>51 Flag-Features aktivieren</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>use_graph_features</code></TableCell>
+                  <TableCell>false</TableCell>
+                  <TableCell>Neo4j Graph-Features laden</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>graph_feature_names</code></TableCell>
+                  <TableCell>null</TableCell>
+                  <TableCell>Einzelne Graph-Features (null = alle 8)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>use_embedding_features</code></TableCell>
+                  <TableCell>false</TableCell>
+                  <TableCell>pgvector Embedding-Features laden</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>embedding_feature_names</code></TableCell>
+                  <TableCell>null</TableCell>
+                  <TableCell>Einzelne Embedding-Features (null = alle 6)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>use_transaction_features</code></TableCell>
+                  <TableCell>false</TableCell>
+                  <TableCell>Transaction-Features laden</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>transaction_feature_names</code></TableCell>
+                  <TableCell>null</TableCell>
+                  <TableCell>Einzelne Transaction-Features (null = alle 8)</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell><code>phases</code></TableCell>
@@ -270,7 +466,7 @@ const TrainingInfo: React.FC = () => (
           </SmallTable>
         </Chapter>
 
-        {/* 5. Metriken & Auswertung */}
+        {/* 6. Metriken & Auswertung */}
         <Chapter
           id="train-metrics"
           title="Metriken & Auswertung"
@@ -336,7 +532,7 @@ TP = True Positive (korrekt erkannt)`}
           </CodeBlock>
         </Chapter>
 
-        {/* 6. API-Endpunkte */}
+        {/* 7. API-Endpunkte */}
         <Chapter
           id="train-api"
           title="API-Endpunkte"
@@ -347,24 +543,28 @@ TP = True Positive (korrekt erkannt)`}
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Modelle</Typography>
           <EndpointRow method="GET" path="/api/training/models" desc="Alle Modelle auflisten" />
           <EndpointRow method="GET" path="/api/training/models/{id}" desc="Modell-Details mit Metriken" />
+          <EndpointRow method="POST" path="/api/training/models/create" desc="TRAIN-Job erstellen (JSON Body)" />
+          <EndpointRow method="POST" path="/api/training/models/create/advanced" desc="TRAIN-Job erstellen (Query Params)" />
+          <EndpointRow method="POST" path="/api/training/models/{id}/test" desc="TEST-Job erstellen (Backtesting)" />
+          <EndpointRow method="POST" path="/api/training/models/compare" desc="COMPARE-Job erstellen (2-4 Modelle)" />
+          <EndpointRow method="POST" path="/api/training/models/{id}/tune" desc="TUNE-Job erstellen (Hyperparameter)" />
           <EndpointRow method="PATCH" path="/api/training/models/{id}" desc="Name/Beschreibung aendern" />
           <EndpointRow method="DELETE" path="/api/training/models/{id}" desc="Modell loeschen (soft-delete)" />
           <EndpointRow method="GET" path="/api/training/models/{id}/download" desc="Modell-Datei herunterladen" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Jobs</Typography>
-          <EndpointRow method="POST" path="/api/training/train" desc="TRAIN-Job erstellen" />
-          <EndpointRow method="POST" path="/api/training/test" desc="TEST-Job erstellen (Backtesting)" />
-          <EndpointRow method="POST" path="/api/training/compare" desc="COMPARE-Job erstellen (2-4 Modelle)" />
-          <EndpointRow method="GET" path="/api/training/jobs" desc="Alle Jobs auflisten" />
-          <EndpointRow method="GET" path="/api/training/jobs/{id}" desc="Job-Details" />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Job-Queue</Typography>
+          <EndpointRow method="GET" path="/api/training/queue" desc="Alle Jobs auflisten" />
+          <EndpointRow method="GET" path="/api/training/queue/{id}" desc="Job-Details mit Ergebnissen" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Ergebnisse</Typography>
           <EndpointRow method="GET" path="/api/training/test-results" desc="Alle Test-Ergebnisse" />
           <EndpointRow method="GET" path="/api/training/test-results/{id}" desc="Test-Ergebnis Details" />
+          <EndpointRow method="DELETE" path="/api/training/test-results/{id}" desc="Test-Ergebnis loeschen" />
           <EndpointRow method="GET" path="/api/training/comparisons" desc="Alle Vergleiche" />
           <EndpointRow method="GET" path="/api/training/comparisons/{id}" desc="Vergleich-Details" />
+          <EndpointRow method="DELETE" path="/api/training/comparisons/{id}" desc="Vergleich loeschen" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>System</Typography>
@@ -373,9 +573,11 @@ TP = True Positive (korrekt erkannt)`}
           <EndpointRow method="GET" path="/api/training/phases" desc="Coin-Phasen" />
           <EndpointRow method="GET" path="/api/training/health" desc="Service Health-Check" />
           <EndpointRow method="GET" path="/api/training/config" desc="Aktuelle Konfiguration" />
+          <EndpointRow method="GET" path="/api/training/settings" desc="Training-Einstellungen" />
+          <EndpointRow method="PATCH" path="/api/training/settings" desc="Training-Einstellungen aendern" />
         </Chapter>
 
-        {/* 7. MCP-Tools */}
+        {/* 8. MCP-Tools */}
         <Chapter
           id="train-mcp"
           title="MCP-Tools"
@@ -396,8 +598,9 @@ TP = True Positive (korrekt erkannt)`}
               { name: 'get_model', desc: 'Modell-Details mit Metriken', cat: 'Modelle' },
               { name: 'update_model', desc: 'Name/Beschreibung aendern', cat: 'Modelle' },
               { name: 'delete_model', desc: 'Modell loeschen', cat: 'Modelle' },
+              { name: 'get_model_download_info', desc: 'Modell-Datei Infos (Groesse, Pfad)', cat: 'Modelle' },
               { name: 'list_jobs', desc: 'Alle Jobs auflisten', cat: 'Jobs' },
-              { name: 'get_job', desc: 'Job-Details', cat: 'Jobs' },
+              { name: 'get_job', desc: 'Job-Details mit Ergebnissen', cat: 'Jobs' },
               { name: 'list_test_results', desc: 'Test-Ergebnisse', cat: 'Ergebnisse' },
               { name: 'get_test_result', desc: 'Test-Detail mit Confusion Matrix', cat: 'Ergebnisse' },
               { name: 'list_comparisons', desc: 'Alle Vergleiche', cat: 'Ergebnisse' },
@@ -406,6 +609,8 @@ TP = True Positive (korrekt erkannt)`}
               { name: 'get_data_availability', desc: 'Datenzeitraum abfragen', cat: 'System' },
               { name: 'get_phases', desc: 'Coin-Phasen', cat: 'System' },
               { name: 'health_check', desc: 'Service-Status', cat: 'System' },
+              { name: 'get_config', desc: 'Aktuelle Konfiguration', cat: 'System' },
+              { name: 'update_config', desc: 'Konfiguration aendern', cat: 'System' },
             ].map((tool) => (
               <Grid key={tool.name} size={{ xs: 12, sm: 6 }}>
                 <McpToolRow name={tool.name} desc={tool.desc} cat={tool.cat} />

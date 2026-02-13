@@ -7,6 +7,7 @@ ATH tracking, and INSERT into the coin_metrics table.
 Called by the streamer on each flush cycle.
 """
 
+import asyncio
 import time
 import logging
 from collections import Counter
@@ -175,23 +176,34 @@ async def flush_metrics_batch(batch_data: list[tuple], phases_in_batch: list[int
             $27, $28, $29, $30
         )
     """
-    try:
-        pool = get_pool()
-        async with pool.acquire() as conn:
-            await conn.executemany(sql, batch_data)
+    pool = get_pool()
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with pool.acquire(timeout=10) as conn:
+                await conn.executemany(sql, batch_data)
 
-        find_metrics_saved.inc(len(batch_data))
-        status["total_metrics_saved"] += len(batch_data)
+            find_metrics_saved.inc(len(batch_data))
+            status["total_metrics_saved"] += len(batch_data)
 
-        counts = Counter(phases_in_batch)
-        details = ", ".join([f"Phase {k}: {v}" for k, v in sorted(counts.items())])
-        logger.info("Saved metrics for %d coins (%s)", len(batch_data), details)
+            counts = Counter(phases_in_batch)
+            details = ", ".join([f"Phase {k}: {v}" for k, v in sorted(counts.items())])
+            logger.info("Saved metrics for %d coins (%s)", len(batch_data), details)
+            return
 
-    except Exception as e:
-        logger.error("SQL Error during metrics flush: %s", e)
-        status["db_connected"] = False
-        from backend.shared.prometheus import find_db_connected
-        find_db_connected.set(0)
+        except asyncio.TimeoutError:
+            logger.error("Metrics flush attempt %d/%d: pool.acquire timeout", attempt, max_attempts)
+        except Exception as e:
+            logger.error("Metrics flush attempt %d/%d: %s", attempt, max_attempts, e)
+
+        if attempt < max_attempts:
+            await asyncio.sleep(1.0)
+
+    # Both attempts failed
+    logger.error("Metrics flush failed after %d attempts - %d rows lost", max_attempts, len(batch_data))
+    status["db_connected"] = False
+    from backend.shared.prometheus import find_db_connected
+    find_db_connected.set(0)
 
 
 async def flush_transactions_batch(trades_data: list[tuple], status: dict) -> None:
@@ -215,10 +227,12 @@ async def flush_transactions_batch(trades_data: list[tuple], status: dict) -> No
     """
     try:
         pool = get_pool()
-        async with pool.acquire() as conn:
+        async with pool.acquire(timeout=10) as conn:
             await conn.executemany(sql, trades_data)
         find_transactions_saved.inc(len(trades_data))
         logger.debug("Saved %d transactions", len(trades_data))
+    except asyncio.TimeoutError:
+        logger.warning("coin_transactions flush timed out (non-fatal)")
     except Exception as e:
         logger.warning("coin_transactions flush failed (non-fatal): %s", e)
 
@@ -254,7 +268,7 @@ async def flush_ath_updates(ath_cache: dict, dirty_aths: set, status: dict) -> N
             SET ath_price_sol = $1, ath_timestamp = NOW()
             WHERE token_address = $2
         """
-        async with pool.acquire() as conn:
+        async with pool.acquire(timeout=10) as conn:
             await conn.executemany(query, updates)
 
         updated_count = len(updates)
@@ -263,5 +277,7 @@ async def flush_ath_updates(ath_cache: dict, dirty_aths: set, status: dict) -> N
         if updated_count > 10:
             logger.info("ATH-Update: %d coins written to DB", updated_count)
 
+    except asyncio.TimeoutError:
+        logger.error("ATH-Update: pool.acquire timeout")
     except Exception as e:
         logger.error("ATH-Update error: %s", e)

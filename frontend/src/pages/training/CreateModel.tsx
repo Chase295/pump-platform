@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -6,17 +6,10 @@ import {
   Paper,
   Button,
   Alert,
-  Stepper,
-  Step,
-  StepLabel,
-  Card,
-  CardContent,
   Chip,
   Checkbox,
   Slider,
   TextField,
-  Divider,
-  Avatar,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -24,10 +17,14 @@ import {
   Switch,
   FormControlLabel,
   Tooltip,
+  ToggleButton,
+  ToggleButtonGroup,
+  Collapse,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   RocketLaunch as RocketIcon,
-  AutoAwesome as MagicIcon,
   TrendingUp as PumpIcon,
   TrendingDown as RugIcon,
   Speed as SpeedIcon,
@@ -35,9 +32,6 @@ import {
   Psychology as BrainIcon,
   Science as ScienceIcon,
   Warning as WarningIcon,
-  NavigateNext as NextIcon,
-  NavigateBefore as BackIcon,
-  Refresh as RefreshIcon,
   Tune as TuneIcon,
   ExpandMore as ExpandMoreIcon,
   Hub as GraphIcon,
@@ -45,799 +39,675 @@ import {
   Receipt as TransactionIcon,
   Insights as ShapIcon,
   StopCircle as StopIcon,
+  Security as ShieldIcon,
+  CheckCircle as CheckIcon,
+  Error as ErrorIcon,
 } from '@mui/icons-material';
-import { trainingApi } from '../../services/api';
 
-// ============================================================
-// Feature definitions
-// ============================================================
-const BASE_FEATURES = [
-  { id: 'price_close', name: 'Price Close', desc: 'Closing price', importance: 'essential', category: 'price' },
-  { id: 'volume_sol', name: 'Volume SOL', desc: 'Trading volume in SOL', importance: 'essential', category: 'volume' },
-  { id: 'buy_pressure_ratio', name: 'Buy Pressure', desc: 'Buys vs Sells ratio', importance: 'essential', category: 'momentum' },
-  { id: 'dev_sold_amount', name: 'Dev Sold', desc: 'Developer sell amount (RUG indicator)', importance: 'recommended', category: 'safety' },
-  { id: 'whale_buy_volume_sol', name: 'Whale Buys', desc: 'Whale buy volume', importance: 'recommended', category: 'whale' },
-  { id: 'whale_sell_volume_sol', name: 'Whale Sells', desc: 'Whale sell volume', importance: 'recommended', category: 'whale' },
-  { id: 'unique_signer_ratio', name: 'Community', desc: 'Unique buyer ratio', importance: 'recommended', category: 'community' },
-  { id: 'volatility_pct', name: 'Volatility', desc: 'Risk indicator', importance: 'recommended', category: 'risk' },
-  { id: 'market_cap_close', name: 'Market Cap', desc: 'Market capitalization', importance: 'recommended', category: 'market' },
-  { id: 'price_open', name: 'Price Open', desc: 'Opening price', importance: 'optional', category: 'price' },
-  { id: 'price_high', name: 'Price High', desc: 'Highest price', importance: 'optional', category: 'price' },
-  { id: 'price_low', name: 'Price Low', desc: 'Lowest price', importance: 'optional', category: 'price' },
-  { id: 'buy_volume_sol', name: 'Buy Volume', desc: 'Buy-only volume', importance: 'optional', category: 'volume' },
-  { id: 'sell_volume_sol', name: 'Sell Volume', desc: 'Sell-only volume', importance: 'optional', category: 'volume' },
-  { id: 'net_volume_sol', name: 'Net Volume', desc: 'Buys minus sells', importance: 'optional', category: 'volume' },
-  { id: 'bonding_curve_pct', name: 'Bonding Curve', desc: 'Curve progress', importance: 'optional', category: 'market' },
-  { id: 'num_buys', name: 'Num Buys', desc: 'Number of buys', importance: 'optional', category: 'activity' },
-  { id: 'num_sells', name: 'Num Sells', desc: 'Number of sells', importance: 'optional', category: 'activity' },
-  { id: 'avg_trade_size_sol', name: 'Avg Trade', desc: 'Average trade size', importance: 'optional', category: 'activity' },
-  { id: 'unique_wallets', name: 'Unique Wallets', desc: 'Unique wallets count', importance: 'optional', category: 'community' },
-];
+import { useCreateModelForm } from './createModel/useCreateModelForm';
+import { PRESETS } from './createModel/presets';
+import {
+  BASE_FEATURES,
+  BASE_CATEGORIES,
+  ENGINEERING_CATEGORIES,
+  ENGINEERING_FEATURES,
+  GRAPH_FEATURES,
+  EMBEDDING_FEATURES,
+  TRANSACTION_FEATURES,
+  getBaseFeaturesByCategory,
+  getEngFeaturesByCategory,
+  getHighImportanceEngFeatures,
+  getEssentialBaseFeatures,
+  getRecommendedBaseFeatures,
+} from './createModel/features';
 
-const ENGINEERING_CATEGORIES = [
-  { id: 'dev', name: 'Dev Activity', desc: 'Developer sell detection' },
-  { id: 'momentum', name: 'Momentum', desc: 'Buy pressure trends' },
-  { id: 'whale', name: 'Whale Tracking', desc: 'Large investor behavior' },
-  { id: 'risk', name: 'Risk Analysis', desc: 'Volatility indicators' },
-  { id: 'safety', name: 'Safety', desc: 'Wash trading detection' },
-  { id: 'volume', name: 'Volume Patterns', desc: 'Volume trends and flips' },
-  { id: 'price', name: 'Price Momentum', desc: 'Price changes over time' },
-  { id: 'market', name: 'Market Velocity', desc: 'Market cap speed' },
-  { id: 'ath', name: 'ATH Analysis', desc: 'All-time-high tracking' },
-  { id: 'power', name: 'Power Features', desc: 'Combined signals' },
-];
+// ── Preset icon resolver ──────────────────────────────────────
+const PRESET_ICONS: Record<string, React.ReactElement> = {
+  speed: <SpeedIcon />,
+  trending_up: <PumpIcon />,
+  rocket: <RocketIcon />,
+  shield: <ShieldIcon />,
+  tune: <TuneIcon />,
+};
 
-// Simplified engineering features list
-const ENGINEERING_FEATURES = [
-  { id: 'dev_sold_flag', category: 'dev', importance: 'high' },
-  { id: 'dev_sold_cumsum', category: 'dev', importance: 'high' },
-  { id: 'dev_sold_spike_5', category: 'dev', importance: 'high' },
-  { id: 'buy_pressure_ma_5', category: 'momentum', importance: 'high' },
-  { id: 'buy_pressure_trend_5', category: 'momentum', importance: 'high' },
-  { id: 'buy_pressure_ma_10', category: 'momentum', importance: 'medium' },
-  { id: 'whale_net_volume', category: 'whale', importance: 'high' },
-  { id: 'whale_activity_5', category: 'whale', importance: 'high' },
-  { id: 'whale_activity_10', category: 'whale', importance: 'medium' },
-  { id: 'volatility_ma_5', category: 'risk', importance: 'high' },
-  { id: 'volatility_spike_5', category: 'risk', importance: 'high' },
-  { id: 'wash_trading_flag_5', category: 'safety', importance: 'high' },
-  { id: 'wash_trading_flag_10', category: 'safety', importance: 'medium' },
-  { id: 'net_volume_ma_5', category: 'volume', importance: 'high' },
-  { id: 'volume_flip_5', category: 'volume', importance: 'high' },
-  { id: 'price_change_5', category: 'price', importance: 'high' },
-  { id: 'price_change_10', category: 'price', importance: 'high' },
-  { id: 'price_roc_5', category: 'price', importance: 'high' },
-  { id: 'mcap_velocity_5', category: 'market', importance: 'high' },
-  { id: 'rolling_ath', category: 'ath', importance: 'high' },
-  { id: 'price_vs_ath_pct', category: 'ath', importance: 'high' },
-  { id: 'ath_breakout', category: 'ath', importance: 'high' },
-  { id: 'ath_distance_trend_5', category: 'ath', importance: 'high' },
-  { id: 'ath_approach_5', category: 'ath', importance: 'high' },
-  { id: 'buy_sell_ratio', category: 'power', importance: 'high' },
-  { id: 'whale_dominance', category: 'power', importance: 'high' },
-  { id: 'price_acceleration_5', category: 'power', importance: 'high' },
-  { id: 'volume_spike_5', category: 'power', importance: 'high' },
-];
-
-// Presets
-const PRESETS = [
-  {
-    id: 'fast', name: 'Fast Pump', desc: '5% in 5 min', color: '#00d4ff', icon: <SpeedIcon />,
-    futureMinutes: 5, minPercent: 5,
-    baseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio', 'whale_buy_volume_sol'],
-    engFeatures: [], scaleWeight: 100, direction: 'up',
-    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
-    useGraphFeatures: false, useEmbeddingFeatures: false, useTransactionFeatures: false,
-  },
-  {
-    id: 'standard', name: 'Standard', desc: '10% in 10 min', color: '#4caf50', icon: <PumpIcon />,
-    futureMinutes: 10, minPercent: 10,
-    baseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio', 'whale_buy_volume_sol', 'dev_sold_amount', 'unique_signer_ratio'],
-    engFeatures: ENGINEERING_FEATURES.filter((f) => f.importance === 'high').map((f) => f.id),
-    scaleWeight: 100, direction: 'up',
-    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
-    useGraphFeatures: false, useEmbeddingFeatures: false, useTransactionFeatures: false,
-  },
-  {
-    id: 'moonshot', name: 'Moonshot', desc: '25% in 15 min', color: '#9c27b0', icon: <RocketIcon />,
-    futureMinutes: 15, minPercent: 25,
-    baseFeatures: BASE_FEATURES.filter((f) => f.importance !== 'optional').map((f) => f.id),
-    engFeatures: ENGINEERING_FEATURES.filter((f) => f.importance === 'high' || f.importance === 'medium').map((f) => f.id),
-    scaleWeight: 200, direction: 'up',
-    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: true,
-    useGraphFeatures: false, useEmbeddingFeatures: true, useTransactionFeatures: false,
-  },
-  {
-    id: 'rug', name: 'Rug Shield', desc: '-20% in 10 min', color: '#f44336', icon: <RugIcon />,
-    futureMinutes: 10, minPercent: 20,
-    baseFeatures: ['price_close', 'dev_sold_amount', 'whale_sell_volume_sol', 'buy_pressure_ratio', 'volatility_pct'],
-    engFeatures: ENGINEERING_FEATURES.filter((f) => f.category === 'dev' || f.category === 'safety').map((f) => f.id),
-    scaleWeight: 50, direction: 'down',
-    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
-    useGraphFeatures: true, useEmbeddingFeatures: false, useTransactionFeatures: true,
-  },
-  {
-    id: 'custom', name: 'Custom', desc: 'Choose everything', color: '#ff9800', icon: <TuneIcon />,
-    futureMinutes: 10, minPercent: 10,
-    baseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio'],
-    engFeatures: [], scaleWeight: 100, direction: 'up',
-    modelType: 'xgboost' as const, earlyStoppingRounds: 10, enableShap: false,
-    useGraphFeatures: false, useEmbeddingFeatures: false, useTransactionFeatures: false,
-  },
-];
-
-const steps = ['Preset', 'Prediction', 'Base Features', 'Engineering', 'Balance', 'Submit'];
-
-interface CoinPhase {
-  id: number;
-  name: string;
-  interval_seconds: number;
-  max_age_minutes: number;
-}
+// ── Section wrapper ───────────────────────────────────────────
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <Paper sx={{ p: { xs: 2, md: 3 }, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
+    <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#00d4ff', fontSize: '1rem' }}>{title}</Typography>
+    {children}
+  </Paper>
+);
 
 const CreateModel: React.FC = () => {
   const navigate = useNavigate();
-  const [activeStep, setActiveStep] = useState(0);
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string; jobId?: number } | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  // Form state
-  const [name, setName] = useState('');
-  const [direction, setDirection] = useState('up');
-  const [futureMinutes, setFutureMinutes] = useState(10);
-  const [minPercent, setMinPercent] = useState(10);
-  const [selectedBaseFeatures, setSelectedBaseFeatures] = useState<string[]>(['price_close', 'volume_sol', 'buy_pressure_ratio']);
-  const [selectedEngFeatures, setSelectedEngFeatures] = useState<string[]>([]);
-  const [useFlagFeatures, setUseFlagFeatures] = useState(true);
-  const [balanceMethod, setBalanceMethod] = useState('scale_pos_weight');
-  const [scaleWeight, setScaleWeight] = useState(100);
-  const [selectedPhases, setSelectedPhases] = useState<number[]>([]);
-  const [availablePhases, setAvailablePhases] = useState<CoinPhase[]>([]);
-  const [phasesLoading, setPhasesLoading] = useState(true);
+  const {
+    form,
+    updateField,
+    applyPreset,
+    toggleBaseFeature,
+    toggleEngFeature,
+    toggleEngCategory,
+    toggleBaseCategoryFeatures,
+    toggleExtraFeature,
+    toggleAllExtraFeatures,
+    togglePhase,
+    setTimeQuickRange,
+    validation,
+    totalFeatures,
+    trainingDurationHours,
+    availablePhases,
+    phasesLoading,
+    isSubmitting,
+    result,
+    handleSubmit,
+  } = useCreateModelForm();
 
-  // New: Advanced training options
-  const [modelType, setModelType] = useState<'xgboost' | 'lightgbm'>('xgboost');
-  const [earlyStoppingRounds, setEarlyStoppingRounds] = useState(10);
-  const [enableShap, setEnableShap] = useState(false);
-  const [enableTuning, setEnableTuning] = useState(false);
-  const [tuningIterations, setTuningIterations] = useState(20);
-  const [useGraphFeatures, setUseGraphFeatures] = useState(false);
-  const [useEmbeddingFeatures, setUseEmbeddingFeatures] = useState(false);
-  const [useTransactionFeatures, setUseTransactionFeatures] = useState(false);
+  // Expanded category tracking for inline feature display
+  const [expandedBaseCat, setExpandedBaseCat] = useState<string | null>(null);
+  const [expandedEngCat, setExpandedEngCat] = useState<string | null>(null);
+  const [expandedExtraSource, setExpandedExtraSource] = useState<string | null>(null);
 
-  // Time range
-  const now = new Date();
-  const defaultEnd = new Date(now.getTime() - 60 * 60 * 1000);
-  const defaultStart = new Date(now.getTime() - 13 * 60 * 60 * 1000);
-  const [trainStart, setTrainStart] = useState(defaultStart.toISOString().slice(0, 16));
-  const [trainEnd, setTrainEnd] = useState(defaultEnd.toISOString().slice(0, 16));
+  // ── Summary content (shared between sidebar and mobile bar) ─
+  const SummaryContent = () => {
+    const startMs = new Date(form.trainStart).getTime();
+    const endMs = new Date(form.trainEnd).getTime();
+    const durationValid = !isNaN(startMs) && !isNaN(endMs) && endMs > startMs;
 
-  // Load phases
-  useEffect(() => {
-    const loadPhases = async () => {
-      try {
-        setPhasesLoading(true);
-        const resp = await trainingApi.getPhases();
-        const phases = resp.data?.phases || resp.data || [];
-        const relevant = phases.filter((p: CoinPhase) => p.id < 10);
-        setAvailablePhases(relevant);
-        setSelectedPhases(relevant.map((p: CoinPhase) => p.id));
-      } catch {
-        setAvailablePhases([
-          { id: 1, name: 'Newborn', interval_seconds: 3, max_age_minutes: 2 },
-          { id: 2, name: 'Baby', interval_seconds: 5, max_age_minutes: 8 },
-          { id: 3, name: 'Toddler', interval_seconds: 10, max_age_minutes: 20 },
-          { id: 4, name: 'Teen', interval_seconds: 30, max_age_minutes: 90 },
-          { id: 5, name: 'Young', interval_seconds: 60, max_age_minutes: 240 },
-          { id: 6, name: 'Adult', interval_seconds: 120, max_age_minutes: 1080 },
-          { id: 7, name: 'Senior', interval_seconds: 300, max_age_minutes: 8640 },
-          { id: 8, name: 'Veteran', interval_seconds: 600, max_age_minutes: 33120 },
-        ]);
-        setSelectedPhases([1, 2, 3, 4, 5, 6, 7, 8]);
-      } finally {
-        setPhasesLoading(false);
-      }
-    };
-    loadPhases();
-  }, []);
+    return (
+      <Box>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: '#00d4ff', textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: 1 }}>
+          Live Summary
+        </Typography>
 
-  const applyPreset = (presetId: string) => {
-    const preset = PRESETS.find((p) => p.id === presetId);
-    if (preset) {
-      setFutureMinutes(preset.futureMinutes);
-      setMinPercent(preset.minPercent);
-      setSelectedBaseFeatures(preset.baseFeatures);
-      setSelectedEngFeatures(preset.engFeatures);
-      setScaleWeight(preset.scaleWeight);
-      setDirection(preset.direction);
-      setName(`${preset.id}_${new Date().toISOString().slice(0, 10)}`);
-      setModelType(preset.modelType);
-      setEarlyStoppingRounds(preset.earlyStoppingRounds);
-      setEnableShap(preset.enableShap);
-      setUseGraphFeatures(preset.useGraphFeatures);
-      setUseEmbeddingFeatures(preset.useEmbeddingFeatures);
-      setUseTransactionFeatures(preset.useTransactionFeatures);
-    }
-    setSelectedPreset(presetId);
-    if (presetId !== 'custom') {
-      setActiveStep(5);
-    } else {
-      setActiveStep(1);
-    }
-  };
-
-  const toggleBaseFeature = (id: string) => {
-    setSelectedBaseFeatures((prev) => (prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]));
-  };
-
-  const toggleEngFeature = (id: string) => {
-    setSelectedEngFeatures((prev) => (prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]));
-  };
-
-  const selectEngCategory = (categoryId: string) => {
-    const catFeatures = ENGINEERING_FEATURES.filter((f) => f.category === categoryId).map((f) => f.id);
-    const allSelected = catFeatures.every((f) => selectedEngFeatures.includes(f));
-    if (allSelected) {
-      setSelectedEngFeatures((prev) => prev.filter((f) => !catFeatures.includes(f)));
-    } else {
-      setSelectedEngFeatures((prev) => [...new Set([...prev, ...catFeatures])]);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    setResult(null);
-    try {
-      const allFeatures = [...selectedBaseFeatures, ...selectedEngFeatures];
-      const data: Record<string, unknown> = {
-        name,
-        model_type: modelType,
-        features: allFeatures,
-        train_start: new Date(trainStart).toISOString(),
-        train_end: new Date(trainEnd).toISOString(),
-        future_minutes: futureMinutes,
-        min_percent_change: minPercent,
-        direction,
-        use_engineered_features: selectedEngFeatures.length > 0,
-        use_flag_features: useFlagFeatures,
-        early_stopping_rounds: earlyStoppingRounds,
-        compute_shap: enableShap,
-        use_graph_features: useGraphFeatures,
-        use_embedding_features: useEmbeddingFeatures,
-        use_transaction_features: useTransactionFeatures,
-      };
-      if (balanceMethod === 'scale_pos_weight') {
-        data.scale_pos_weight = scaleWeight;
-      } else if (balanceMethod === 'smote') {
-        data.use_smote = true;
-      }
-      if (selectedPhases.length > 0 && selectedPhases.length < availablePhases.length) {
-        data.phases = selectedPhases;
-      }
-
-      const resp = await trainingApi.createModel(data);
-      const trainJobId = resp.data?.job_id;
-
-      // If tuning enabled, create a TUNE job after the training job
-      if (enableTuning && trainJobId) {
-        setResult({
-          success: true,
-          message: `Model "${name}" training started! Tuning will run automatically after training completes.`,
-          jobId: trainJobId,
-        });
-      } else {
-        setResult({
-          success: true,
-          message: `Model "${name}" training started!`,
-          jobId: trainJobId,
-        });
-      }
-    } catch (err: any) {
-      setResult({
-        success: false,
-        message: `Error: ${err.response?.data?.detail || err.message || 'Unknown error'}`,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const totalFeatures = selectedBaseFeatures.length + selectedEngFeatures.length;
-
-  const FeatureCard = ({ feature, selected, onToggle }: { feature: any; selected: boolean; onToggle: () => void }) => (
-    <Card
-      onClick={onToggle}
-      sx={{
-        cursor: 'pointer',
-        border: `1px solid ${selected ? '#00d4ff' : 'rgba(255,255,255,0.1)'}`,
-        bgcolor: selected ? 'rgba(0,212,255,0.15)' : 'transparent',
-        transition: 'all 0.2s',
-        '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-      }}
-    >
-      <CardContent sx={{ py: 1, px: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Checkbox checked={selected} size="small" />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }} noWrap>
-            {feature.name || feature.id}
-          </Typography>
-          {feature.desc && (
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {feature.desc}
-            </Typography>
-          )}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+          <Row label="Name" value={form.name || '—'} />
+          <Row label="Type" value={form.modelType.toUpperCase()} />
+          <Row label="Target" value={`${form.direction === 'up' ? '+' : '-'}${form.minPercentChange}% in ${form.futureMinutes}min`} color={form.direction === 'up' ? '#4caf50' : '#f44336'} />
+          <Row label="Base" value={`${form.selectedBaseFeatures.length} features`} />
+          <Row label="Engineered" value={form.selectedEngFeatures.length > 0 ? `+${form.selectedEngFeatures.length}` : 'Off'} />
+          {form.selectedGraphFeatures.length > 0 && <Row label="Graph" value={`+${form.selectedGraphFeatures.length}`} />}
+          {form.selectedEmbeddingFeatures.length > 0 && <Row label="Embedding" value={`+${form.selectedEmbeddingFeatures.length}`} />}
+          {form.selectedTransactionFeatures.length > 0 && <Row label="Transaction" value={`+${form.selectedTransactionFeatures.length}`} />}
+          <Row label="Total Features" value={String(totalFeatures)} bold />
+          <Row label="Balance" value={form.balanceMethod === 'scale_pos_weight' ? `SPW ${form.scaleWeight}x` : form.balanceMethod === 'smote' ? 'SMOTE' : 'None'} />
+          {durationValid && <Row label="Period" value={`${trainingDurationHours}h`} />}
         </Box>
-      </CardContent>
-    </Card>
-  );
+
+        {/* Validation */}
+        {validation.errors.length > 0 && (
+          <Box sx={{ mt: 2 }}>
+            {validation.errors.map((e) => (
+              <Alert key={e} severity="error" sx={{ py: 0, mb: 0.5, fontSize: '0.75rem' }} icon={<ErrorIcon sx={{ fontSize: 16 }} />}>{e}</Alert>
+            ))}
+          </Box>
+        )}
+        {validation.warnings.length > 0 && (
+          <Box sx={{ mt: 1 }}>
+            {validation.warnings.map((w) => (
+              <Alert key={w} severity="warning" sx={{ py: 0, mb: 0.5, fontSize: '0.75rem' }} icon={<WarningIcon sx={{ fontSize: 16 }} />}>{w}</Alert>
+            ))}
+          </Box>
+        )}
+
+        {/* Result */}
+        {result && (
+          <Alert
+            severity={result.success ? 'success' : 'error'}
+            sx={{ mt: 2, fontSize: '0.8rem' }}
+            action={result.success ? <Button color="inherit" size="small" onClick={() => navigate('/training/jobs')}>View Jobs</Button> : undefined}
+          >
+            {result.message}
+            {result.jobId && <><br />Job ID: {result.jobId}</>}
+          </Alert>
+        )}
+
+        {/* Submit button */}
+        {!isMobile && (
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={!validation.isValid || isSubmitting}
+            startIcon={isSubmitting ? <CircularProgress size={18} color="inherit" /> : <RocketIcon />}
+            sx={{
+              mt: 2,
+              py: 1.5,
+              bgcolor: '#4caf50',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              '&:hover': { bgcolor: '#45a049' },
+              '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.08)' },
+            }}
+          >
+            {isSubmitting ? 'Training...' : 'TRAIN MODEL'}
+          </Button>
+        )}
+      </Box>
+    );
+  };
 
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
-      {/* Header */}
-      <Box sx={{ textAlign: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ color: '#00d4ff', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-          <BrainIcon sx={{ fontSize: 40 }} /> Create ML Model
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h5" sx={{ color: '#00d4ff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <BrainIcon /> Create ML Model
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Create a pump-detection model with individually selectable features
+          Select a preset or customize every parameter
         </Typography>
       </Box>
 
-      {/* Stepper */}
-      <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
-        {steps.map((label) => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
+      {/* ── Preset Bar ─────────────────────────────────────────── */}
+      <Paper sx={{ p: 1.5, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {PRESETS.map((preset) => {
+            const isActive = form.activePreset === preset.id;
+            return (
+              <Chip
+                key={preset.id}
+                icon={PRESET_ICONS[preset.icon]}
+                label={<><strong>{preset.name}</strong> <span style={{ opacity: 0.7 }}>{preset.subtitle}</span></>}
+                onClick={() => applyPreset(preset.id)}
+                variant={isActive ? 'filled' : 'outlined'}
+                sx={{
+                  borderColor: isActive ? preset.color : 'rgba(255,255,255,0.2)',
+                  bgcolor: isActive ? `${preset.color}25` : 'transparent',
+                  color: isActive ? preset.color : 'inherit',
+                  fontWeight: isActive ? 700 : 400,
+                  '& .MuiChip-icon': { color: isActive ? preset.color : 'inherit' },
+                  '&:hover': { bgcolor: `${preset.color}15`, borderColor: preset.color },
+                  px: 0.5,
+                  height: 36,
+                }}
+              />
+            );
+          })}
+        </Box>
+      </Paper>
 
-      <Paper sx={{ p: { xs: 2, md: 4 }, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
-        {/* Step 0: Preset */}
-        {activeStep === 0 && (
-          <Box>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold' }}>
-              Choose a preset or start custom
-            </Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(5, 1fr)' }, gap: 2 }}>
-              {PRESETS.map((preset) => (
-                <Card
-                  key={preset.id}
-                  onClick={() => applyPreset(preset.id)}
-                  sx={{
-                    cursor: 'pointer',
-                    border: `2px solid ${selectedPreset === preset.id ? preset.color : 'rgba(255,255,255,0.1)'}`,
-                    bgcolor: selectedPreset === preset.id ? `${preset.color}20` : 'rgba(255,255,255,0.05)',
-                    transition: 'all 0.3s',
-                    '&:hover': { transform: 'translateY(-4px)', boxShadow: `0 8px 24px ${preset.color}40`, borderColor: preset.color },
-                  }}
-                >
-                  <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                    <Avatar sx={{ bgcolor: preset.color, width: 48, height: 48, mx: 'auto', mb: 1 }}>{preset.icon}</Avatar>
-                    <Typography variant="subtitle1" sx={{ color: preset.color, fontWeight: 'bold' }}>{preset.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{preset.desc}</Typography>
-                    <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
-                      {preset.baseFeatures.length}+{preset.engFeatures.length} features
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ))}
+      {/* ── Main Content: Left Form + Right Summary ────────────── */}
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+        {/* LEFT COLUMN */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+
+          {/* Section 1: Model Identity */}
+          <Section title="Model Identity">
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+              <TextField
+                label="Model Name"
+                value={form.name}
+                onChange={(e) => updateField('name', e.target.value)}
+                size="small"
+                sx={{ flex: '2 1 200px' }}
+                helperText={form.name.length < 3 ? 'Min. 3 characters' : ''}
+              />
+              <ToggleButtonGroup
+                value={form.modelType}
+                exclusive
+                onChange={(_, v) => v && updateField('modelType', v)}
+                size="small"
+                sx={{ flex: '1 1 160px' }}
+              >
+                <ToggleButton value="xgboost" sx={{ flex: 1, textTransform: 'none', fontWeight: form.modelType === 'xgboost' ? 700 : 400 }}>
+                  <BrainIcon sx={{ mr: 0.5, fontSize: 18 }} /> XGBoost
+                </ToggleButton>
+                <ToggleButton value="lightgbm" sx={{ flex: 1, textTransform: 'none', fontWeight: form.modelType === 'lightgbm' ? 700 : 400 }}>
+                  <ScienceIcon sx={{ mr: 0.5, fontSize: 18 }} /> LightGBM
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup
+                value={form.direction}
+                exclusive
+                onChange={(_, v) => v && updateField('direction', v)}
+                size="small"
+                sx={{ flex: '1 1 120px' }}
+              >
+                <ToggleButton value="up" sx={{ flex: 1, textTransform: 'none', color: form.direction === 'up' ? '#4caf50' : undefined, fontWeight: form.direction === 'up' ? 700 : 400 }}>
+                  <PumpIcon sx={{ mr: 0.5, fontSize: 18 }} /> PUMP
+                </ToggleButton>
+                <ToggleButton value="down" sx={{ flex: 1, textTransform: 'none', color: form.direction === 'down' ? '#f44336' : undefined, fontWeight: form.direction === 'down' ? 700 : 400 }}>
+                  <RugIcon sx={{ mr: 0.5, fontSize: 18 }} /> RUG
+                </ToggleButton>
+              </ToggleButtonGroup>
             </Box>
-          </Box>
-        )}
+          </Section>
 
-        {/* Step 1: Prediction */}
-        {activeStep === 1 && (
-          <Box>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold' }}>What to predict?</Typography>
-            <TextField fullWidth label="Model Name" value={name} onChange={(e) => setName(e.target.value)} sx={{ mb: 3 }} helperText="Min. 3 characters" />
-
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Model Type:</Typography>
-            <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
-              <Card onClick={() => setModelType('xgboost')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${modelType === 'xgboost' ? '#00d4ff' : 'rgba(255,255,255,0.1)'}`, bgcolor: modelType === 'xgboost' ? 'rgba(0,212,255,0.2)' : 'transparent' }}>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <BrainIcon sx={{ fontSize: 48, color: '#00d4ff' }} />
-                  <Typography variant="h6" sx={{ color: '#00d4ff' }}>XGBoost</Typography>
-                  <Typography variant="caption" color="text.secondary">Fast, proven, great for tabular data</Typography>
-                </CardContent>
-              </Card>
-              <Card onClick={() => setModelType('lightgbm')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${modelType === 'lightgbm' ? '#66bb6a' : 'rgba(255,255,255,0.1)'}`, bgcolor: modelType === 'lightgbm' ? 'rgba(102,187,106,0.2)' : 'transparent' }}>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <ScienceIcon sx={{ fontSize: 48, color: '#66bb6a' }} />
-                  <Typography variant="h6" sx={{ color: '#66bb6a' }}>LightGBM</Typography>
-                  <Typography variant="caption" color="text.secondary">Faster training, handles large features well</Typography>
-                </CardContent>
-              </Card>
-            </Box>
-
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Prediction Type:</Typography>
-            <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
-              <Card onClick={() => setDirection('up')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${direction === 'up' ? '#4caf50' : 'rgba(255,255,255,0.1)'}`, bgcolor: direction === 'up' ? 'rgba(76,175,80,0.2)' : 'transparent' }}>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <PumpIcon sx={{ fontSize: 48, color: '#4caf50' }} />
-                  <Typography variant="h6" sx={{ color: '#4caf50' }}>PUMP</Typography>
-                </CardContent>
-              </Card>
-              <Card onClick={() => setDirection('down')} sx={{ cursor: 'pointer', flex: 1, border: `2px solid ${direction === 'down' ? '#f44336' : 'rgba(255,255,255,0.1)'}`, bgcolor: direction === 'down' ? 'rgba(244,67,54,0.2)' : 'transparent' }}>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <RugIcon sx={{ fontSize: 48, color: '#f44336' }} />
-                  <Typography variant="h6" sx={{ color: '#f44336' }}>RUG</Typography>
-                </CardContent>
-              </Card>
-            </Box>
-
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>In {futureMinutes} minutes:</Typography>
-            <Slider value={futureMinutes} onChange={(_, v) => setFutureMinutes(v as number)} min={1} max={60} marks={[{ value: 5, label: '5' }, { value: 10, label: '10' }, { value: 15, label: '15' }, { value: 30, label: '30' }]} valueLabelDisplay="on" sx={{ mb: 3 }} />
-
-            {/* Phase filter */}
-            <Divider sx={{ my: 3 }} />
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Coin Phase Filter</Typography>
-            {phasesLoading ? (
-              <CircularProgress size={24} />
-            ) : (
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3 }}>
-                {availablePhases.map((phase) => (
-                  <Card
-                    key={phase.id}
-                    onClick={() => setSelectedPhases((prev) => prev.includes(phase.id) ? prev.filter((p) => p !== phase.id) : [...prev, phase.id])}
-                    sx={{ cursor: 'pointer', minWidth: 130, border: `2px solid ${selectedPhases.includes(phase.id) ? '#00d4ff' : 'rgba(255,255,255,0.1)'}`, bgcolor: selectedPhases.includes(phase.id) ? 'rgba(0,212,255,0.15)' : 'transparent' }}
-                  >
-                    <CardContent sx={{ textAlign: 'center', py: 1.5 }}>
-                      <Checkbox checked={selectedPhases.includes(phase.id)} />
-                      <Typography variant="subtitle2" sx={{ color: '#00d4ff', fontWeight: 'bold' }}>{phase.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">0-{phase.max_age_minutes >= 60 ? `${Math.floor(phase.max_age_minutes / 60)}h` : `${phase.max_age_minutes}m`}</Typography>
-                    </CardContent>
-                  </Card>
-                ))}
+          {/* Section 2: Prediction Target */}
+          <Section title="Prediction Target">
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 200px' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Min Price Change: <strong>{form.minPercentChange}%</strong></Typography>
+                <Slider
+                  value={form.minPercentChange}
+                  onChange={(_, v) => updateField('minPercentChange', v as number)}
+                  min={1} max={50}
+                  marks={[{ value: 5, label: '5%' }, { value: 10, label: '10%' }, { value: 25, label: '25%' }, { value: 50, label: '50%' }]}
+                  valueLabelDisplay="auto"
+                />
               </Box>
-            )}
-
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Min change: {minPercent}%</Typography>
-            <Slider value={minPercent} onChange={(_, v) => setMinPercent(v as number)} min={1} max={50} marks={[{ value: 5, label: '5%' }, { value: 10, label: '10%' }, { value: 25, label: '25%' }]} valueLabelDisplay="on" sx={{ mb: 3 }} />
-
-            <Alert severity="success">
-              <strong>Your model:</strong> &quot;{minPercent}% {direction === 'up' ? 'increase' : 'decrease'} in {futureMinutes} minutes&quot;
+              <Box sx={{ flex: '1 1 200px' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Time Window: <strong>{form.futureMinutes} min</strong></Typography>
+                <Slider
+                  value={form.futureMinutes}
+                  onChange={(_, v) => updateField('futureMinutes', v as number)}
+                  min={1} max={60}
+                  marks={[{ value: 5, label: '5' }, { value: 10, label: '10' }, { value: 15, label: '15' }, { value: 30, label: '30' }, { value: 60, label: '60' }]}
+                  valueLabelDisplay="auto"
+                />
+              </Box>
+            </Box>
+            <Alert severity={form.direction === 'up' ? 'success' : 'error'} sx={{ mt: 1 }} icon={form.direction === 'up' ? <PumpIcon /> : <RugIcon />}>
+              Price {form.direction === 'up' ? 'increases' : 'decreases'} by <strong>&ge;{form.minPercentChange}%</strong> within <strong>{form.futureMinutes} minutes</strong>
             </Alert>
+          </Section>
 
-            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-              <Button variant="outlined" onClick={() => setActiveStep(0)} startIcon={<BackIcon />}>Back</Button>
-              <Button variant="contained" onClick={() => setActiveStep(2)} disabled={name.length < 3} endIcon={<NextIcon />} sx={{ bgcolor: '#00d4ff' }}>Next</Button>
-            </Box>
-          </Box>
-        )}
-
-        {/* Step 2: Base Features */}
-        {activeStep === 2 && (
-          <Box>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold' }}>Base Features</Typography>
-
-            {/* Extra Feature Sources */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 'bold' }}>Extra Feature Sources</Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Tooltip title="Creator history, wallet clusters, similar tokens (Neo4j)">
-                  <Chip
-                    icon={<GraphIcon />}
-                    label="Graph Features"
-                    onClick={() => setUseGraphFeatures(!useGraphFeatures)}
-                    color={useGraphFeatures ? 'primary' : 'default'}
-                    variant={useGraphFeatures ? 'filled' : 'outlined'}
-                    sx={{ fontWeight: useGraphFeatures ? 'bold' : 'normal' }}
-                  />
-                </Tooltip>
-                <Tooltip title="Pattern similarity to known pumps/rugs (pgvector)">
-                  <Chip
-                    icon={<EmbeddingIcon />}
-                    label="Embedding Features"
-                    onClick={() => setUseEmbeddingFeatures(!useEmbeddingFeatures)}
-                    color={useEmbeddingFeatures ? 'secondary' : 'default'}
-                    variant={useEmbeddingFeatures ? 'filled' : 'outlined'}
-                    sx={{ fontWeight: useEmbeddingFeatures ? 'bold' : 'normal' }}
-                  />
-                </Tooltip>
-                <Tooltip title="Wallet concentration, trade bursts, whale activity">
-                  <Chip
-                    icon={<TransactionIcon />}
-                    label="Transaction Features"
-                    onClick={() => setUseTransactionFeatures(!useTransactionFeatures)}
-                    color={useTransactionFeatures ? 'info' : 'default'}
-                    variant={useTransactionFeatures ? 'filled' : 'outlined'}
-                    sx={{ fontWeight: useTransactionFeatures ? 'bold' : 'normal' }}
-                  />
-                </Tooltip>
-              </Box>
-              {(useGraphFeatures || useEmbeddingFeatures || useTransactionFeatures) && (
-                <Alert severity="info" sx={{ mt: 1.5 }}>
-                  {useGraphFeatures && <><strong>Graph:</strong> +8 features (creator history, cluster risk, similar tokens). </>}
-                  {useEmbeddingFeatures && <><strong>Embedding:</strong> +6 features (pump/rug pattern similarity). </>}
-                  {useTransactionFeatures && <><strong>Transaction:</strong> +8 features (wallet concentration, trade bursts). </>}
-                </Alert>
-              )}
-            </Paper>
-
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(0,212,255,0.1)', border: '1px solid #00d4ff' }}>
-              <Typography variant="h6" sx={{ color: '#00d4ff' }}>Selected: {selectedBaseFeatures.length} / {BASE_FEATURES.length}</Typography>
-            </Paper>
-            <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
-              <Button variant="outlined" size="small" onClick={() => setSelectedBaseFeatures(BASE_FEATURES.filter((f) => f.importance === 'essential').map((f) => f.id))}>Essential</Button>
-              <Button variant="outlined" size="small" onClick={() => setSelectedBaseFeatures(BASE_FEATURES.filter((f) => f.importance !== 'optional').map((f) => f.id))}>+ Recommended</Button>
-              <Button variant="outlined" size="small" onClick={() => setSelectedBaseFeatures(BASE_FEATURES.map((f) => f.id))}>All</Button>
-              <Button variant="outlined" size="small" color="error" onClick={() => setSelectedBaseFeatures([])}>None</Button>
-            </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 1 }}>
-              {BASE_FEATURES.map((f) => (
-                <FeatureCard key={f.id} feature={f} selected={selectedBaseFeatures.includes(f.id)} onToggle={() => toggleBaseFeature(f.id)} />
-              ))}
-            </Box>
-            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-              <Button variant="outlined" onClick={() => setActiveStep(1)} startIcon={<BackIcon />}>Back</Button>
-              <Button variant="contained" onClick={() => setActiveStep(3)} disabled={selectedBaseFeatures.length < 2} endIcon={<NextIcon />} sx={{ bgcolor: '#00d4ff' }}>Next</Button>
-            </Box>
-          </Box>
-        )}
-
-        {/* Step 3: Engineering Features */}
-        {activeStep === 3 && (
-          <Box>
-            <Typography variant="h5" sx={{ mb: 3, color: '#9c27b0', fontWeight: 'bold' }}>
-              <MagicIcon sx={{ mr: 1 }} /> Engineering Features
+          {/* Section 3: Features */}
+          <Section title="Features">
+            {/* Base Features */}
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
+              Base Features ({form.selectedBaseFeatures.length}/{BASE_FEATURES.length})
             </Typography>
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(156,39,176,0.1)', border: '1px solid #9c27b0' }}>
-              <Typography variant="h6" sx={{ color: '#9c27b0' }}>
-                Selected: {selectedEngFeatures.length} / {ENGINEERING_FEATURES.length}
-              </Typography>
-            </Paper>
-            <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
-              <Button variant="outlined" size="small" onClick={() => setSelectedEngFeatures(ENGINEERING_FEATURES.filter((f) => f.importance === 'high').map((f) => f.id))}>High Importance</Button>
-              <Button variant="outlined" size="small" onClick={() => setSelectedEngFeatures(ENGINEERING_FEATURES.map((f) => f.id))}>All ({ENGINEERING_FEATURES.length})</Button>
-              <Button variant="outlined" size="small" color="error" onClick={() => setSelectedEngFeatures([])}>None</Button>
+            <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" onClick={() => updateField('selectedBaseFeatures', getEssentialBaseFeatures())}>Essential</Button>
+              <Button size="small" variant="outlined" onClick={() => updateField('selectedBaseFeatures', getRecommendedBaseFeatures())}>+ Recommended</Button>
+              <Button size="small" variant="outlined" onClick={() => updateField('selectedBaseFeatures', BASE_FEATURES.map((f) => f.id))}>All</Button>
+              <Button size="small" variant="outlined" color="error" onClick={() => updateField('selectedBaseFeatures', [])}>None</Button>
             </Box>
-            {ENGINEERING_CATEGORIES.map((cat) => {
-              const catFeatures = ENGINEERING_FEATURES.filter((f) => f.category === cat.id);
-              if (catFeatures.length === 0) return null;
-              const selectedInCat = catFeatures.filter((f) => selectedEngFeatures.includes(f.id)).length;
-              return (
-                <Accordion key={cat.id} sx={{ bgcolor: 'rgba(255,255,255,0.05)', mb: 1 }}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{cat.name}</Typography>
-                      <Chip label={`${selectedInCat}/${catFeatures.length}`} size="small" color={selectedInCat === catFeatures.length ? 'success' : selectedInCat > 0 ? 'warning' : 'default'} />
-                      <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>{cat.desc}</Typography>
-                      <Button size="small" variant="outlined" onClick={(e) => { e.stopPropagation(); selectEngCategory(cat.id); }}>
-                        {selectedInCat === catFeatures.length ? 'Deselect' : 'All'}
-                      </Button>
-                    </Box>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 1 }}>
-                      {catFeatures.map((f) => (
-                        <FeatureCard key={f.id} feature={{ ...f, name: f.id }} selected={selectedEngFeatures.includes(f.id)} onToggle={() => toggleEngFeature(f.id)} />
-                      ))}
-                    </Box>
-                  </AccordionDetails>
-                </Accordion>
-              );
-            })}
-            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-              <Button variant="outlined" onClick={() => setActiveStep(2)} startIcon={<BackIcon />}>Back</Button>
-              <Button variant="contained" onClick={() => setActiveStep(4)} endIcon={<NextIcon />} sx={{ bgcolor: '#9c27b0' }}>Next</Button>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+              {BASE_CATEGORIES.map((cat) => {
+                const catFeatures = getBaseFeaturesByCategory(cat.id);
+                const selectedCount = catFeatures.filter((f) => form.selectedBaseFeatures.includes(f.id)).length;
+                const allSelected = selectedCount === catFeatures.length;
+                const isExpanded = expandedBaseCat === cat.id;
+                return (
+                  <Tooltip key={cat.id} title={cat.desc}>
+                    <Chip
+                      label={`${cat.name} ${selectedCount}/${catFeatures.length}`}
+                      size="small"
+                      variant={selectedCount > 0 ? 'filled' : 'outlined'}
+                      color={allSelected ? 'primary' : selectedCount > 0 ? 'default' : 'default'}
+                      onClick={() => setExpandedBaseCat(isExpanded ? null : cat.id)}
+                      onDelete={() => toggleBaseCategoryFeatures(catFeatures.map((f) => f.id))}
+                      deleteIcon={allSelected ? <CheckIcon sx={{ fontSize: 16 }} /> : undefined}
+                      sx={{
+                        bgcolor: allSelected ? 'rgba(0,212,255,0.2)' : selectedCount > 0 ? 'rgba(255,255,255,0.08)' : 'transparent',
+                        borderColor: isExpanded ? '#00d4ff' : undefined,
+                      }}
+                    />
+                  </Tooltip>
+                );
+              })}
             </Box>
-          </Box>
-        )}
-
-        {/* Step 4: Balance & Time Range */}
-        {activeStep === 4 && (
-          <Box>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold' }}>Balance & Time Range</Typography>
-            <Alert severity="warning" sx={{ mb: 3 }}>
-              <strong>Imbalanced data:</strong> Pumps are rare (1-5%). Without balancing, F1 = 0!
-            </Alert>
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-              {[
-                { id: 'scale_pos_weight', icon: <BalanceIcon />, name: 'scale_pos_weight', color: '#ff9800', label: 'Recommended' },
-                { id: 'smote', icon: <ScienceIcon />, name: 'SMOTE', color: '#00bcd4', label: 'Advanced' },
-                { id: 'none', icon: <WarningIcon />, name: 'None', color: '#666', label: 'Not recommended' },
-              ].map((b) => (
-                <Card key={b.id} onClick={() => setBalanceMethod(b.id)} sx={{ cursor: 'pointer', flex: '1 1 150px', border: `2px solid ${balanceMethod === b.id ? b.color : 'rgba(255,255,255,0.1)'}`, bgcolor: balanceMethod === b.id ? `${b.color}30` : 'transparent' }}>
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    {React.cloneElement(b.icon, { sx: { fontSize: 40, color: b.color } })}
-                    <Typography variant="h6" sx={{ color: b.color }}>{b.name}</Typography>
-                    <Chip label={b.label} size="small" />
-                  </CardContent>
-                </Card>
-              ))}
-            </Box>
-            {balanceMethod === 'scale_pos_weight' && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ mb: 2 }}>Weight: {scaleWeight}x</Typography>
-                <Slider value={scaleWeight} onChange={(_, v) => setScaleWeight(v as number)} min={10} max={300} marks={[{ value: 50, label: '50' }, { value: 100, label: '100' }, { value: 200, label: '200' }]} valueLabelDisplay="on" />
-              </Box>
-            )}
-
-            <Divider sx={{ my: 3 }} />
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(156,39,176,0.1)', border: '1px solid #9c27b0' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Checkbox checked={useFlagFeatures} onChange={(e) => setUseFlagFeatures(e.target.checked)} />
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#9c27b0' }}>Flag Features (recommended)</Typography>
-                  <Typography variant="caption" color="text.secondary">Shows the model whether an engineering feature has enough data</Typography>
-                </Box>
-              </Box>
-            </Paper>
-
-            {/* Advanced Training Options */}
-            <Divider sx={{ my: 3 }} />
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Advanced Training Options</Typography>
-
-            {/* Early Stopping */}
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <StopIcon sx={{ color: earlyStoppingRounds > 0 ? '#ff9800' : '#666' }} />
-                <Box sx={{ flex: 1 }}>
-                  <FormControlLabel
-                    control={<Switch checked={earlyStoppingRounds > 0} onChange={(e) => setEarlyStoppingRounds(e.target.checked ? 10 : 0)} />}
-                    label={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Early Stopping</Typography>}
-                  />
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    Stops training when validation score stops improving. Prevents overfitting.
-                  </Typography>
-                </Box>
-              </Box>
-              {earlyStoppingRounds > 0 && (
-                <Box sx={{ mt: 2, px: 2 }}>
-                  <Typography variant="body2">Patience: {earlyStoppingRounds} rounds</Typography>
-                  <Slider value={earlyStoppingRounds} onChange={(_, v) => setEarlyStoppingRounds(v as number)} min={5} max={50} step={5} marks={[{ value: 10, label: '10' }, { value: 25, label: '25' }, { value: 50, label: '50' }]} valueLabelDisplay="auto" />
-                </Box>
-              )}
-            </Paper>
-
-            {/* SHAP Explainability */}
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <ShapIcon sx={{ color: enableShap ? '#9c27b0' : '#666' }} />
-                <Box sx={{ flex: 1 }}>
-                  <FormControlLabel
-                    control={<Switch checked={enableShap} onChange={(e) => setEnableShap(e.target.checked)} />}
-                    label={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>SHAP Explainability</Typography>}
-                  />
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    Computes SHAP values for each feature. Makes training slower but gives detailed feature explanations.
-                  </Typography>
-                </Box>
-              </Box>
-            </Paper>
-
-            {/* Hyperparameter Tuning */}
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <TuneIcon sx={{ color: enableTuning ? '#00d4ff' : '#666' }} />
-                <Box sx={{ flex: 1 }}>
-                  <FormControlLabel
-                    control={<Switch checked={enableTuning} onChange={(e) => setEnableTuning(e.target.checked)} />}
-                    label={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Hyperparameter Tuning</Typography>}
-                  />
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    After training, automatically creates an optimized model with best parameters found via random search.
-                  </Typography>
-                </Box>
-              </Box>
-              {enableTuning && (
-                <Box sx={{ mt: 2, px: 2 }}>
-                  <Typography variant="body2">Iterations: {tuningIterations}</Typography>
-                  <Slider value={tuningIterations} onChange={(_, v) => setTuningIterations(v as number)} min={10} max={100} step={10} marks={[{ value: 20, label: '20' }, { value: 50, label: '50' }, { value: 100, label: '100' }]} valueLabelDisplay="auto" />
-                </Box>
-              )}
-            </Paper>
-
-            <Divider sx={{ my: 3 }} />
-            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Training Period:</Typography>
-            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-              <TextField label="Start" type="datetime-local" value={trainStart} onChange={(e) => setTrainStart(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} />
-              <TextField label="End" type="datetime-local" value={trainEnd} onChange={(e) => setTrainEnd(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ flex: 1 }} />
-            </Box>
-
-            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-              <Button variant="outlined" onClick={() => setActiveStep(3)} startIcon={<BackIcon />}>Back</Button>
-              <Button variant="contained" onClick={() => setActiveStep(5)} endIcon={<NextIcon />} sx={{ bgcolor: '#00d4ff' }}>Summary</Button>
-            </Box>
-          </Box>
-        )}
-
-        {/* Step 5: Summary */}
-        {activeStep === 5 && (
-          <Box>
-            <Typography variant="h5" sx={{ mb: 3, color: '#00d4ff', fontWeight: 'bold' }}>Summary</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3, mb: 3 }}>
-              <Paper sx={{ p: 3, bgcolor: 'rgba(0,212,255,0.1)', border: '1px solid #00d4ff' }}>
-                <Typography variant="h6" sx={{ mb: 2, color: '#00d4ff' }}>Configuration</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Name:</Typography><Typography fontWeight="bold">{name}</Typography></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Model Type:</Typography><Chip label={modelType.toUpperCase()} size="small" color="primary" /></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Prediction:</Typography><Chip label={`${minPercent}% in ${futureMinutes}min`} size="small" color={direction === 'up' ? 'success' : 'error'} /></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Direction:</Typography><Chip label={direction === 'up' ? 'PUMP' : 'RUG'} size="small" color={direction === 'up' ? 'success' : 'error'} /></Box>
-                </Box>
-              </Paper>
-
-              <Paper sx={{ p: 3, bgcolor: 'rgba(156,39,176,0.1)', border: '1px solid #9c27b0' }}>
-                <Typography variant="h6" sx={{ mb: 2, color: '#9c27b0' }}>Features</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Base:</Typography><Typography fontWeight="bold">{selectedBaseFeatures.length}</Typography></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Engineering:</Typography><Chip label={selectedEngFeatures.length > 0 ? `+${selectedEngFeatures.length}` : 'Off'} size="small" color={selectedEngFeatures.length > 0 ? 'secondary' : 'default'} /></Box>
-                  {useGraphFeatures && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Graph:</Typography><Chip icon={<GraphIcon />} label="+8" size="small" color="primary" /></Box>}
-                  {useEmbeddingFeatures && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Embedding:</Typography><Chip icon={<EmbeddingIcon />} label="+6" size="small" color="secondary" /></Box>}
-                  {useTransactionFeatures && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Transaction:</Typography><Chip icon={<TransactionIcon />} label="+8" size="small" color="info" /></Box>}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Total:</Typography><Typography fontWeight="bold" color="secondary">{totalFeatures}{useGraphFeatures ? '+8' : ''}{useEmbeddingFeatures ? '+6' : ''}{useTransactionFeatures ? '+8' : ''}</Typography></Box>
-                </Box>
-              </Paper>
-
-              <Paper sx={{ p: 3, bgcolor: 'rgba(255,152,0,0.1)', border: '1px solid #ff9800' }}>
-                <Typography variant="h6" sx={{ mb: 2, color: '#ff9800' }}>Balance</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Method:</Typography><Chip label={balanceMethod === 'scale_pos_weight' ? 'scale_pos_weight' : balanceMethod === 'smote' ? 'SMOTE' : 'None'} size="small" /></Box>
-                  {balanceMethod === 'scale_pos_weight' && (
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Weight:</Typography><Typography fontWeight="bold">{scaleWeight}x</Typography></Box>
-                  )}
-                </Box>
-              </Paper>
-
-              <Paper sx={{ p: 3, bgcolor: 'rgba(76,175,80,0.1)', border: '1px solid #4caf50' }}>
-                <Typography variant="h6" sx={{ mb: 2, color: '#4caf50' }}>Time Range</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Start:</Typography><Typography fontWeight="bold">{new Date(trainStart).toLocaleString()}</Typography></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">End:</Typography><Typography fontWeight="bold">{new Date(trainEnd).toLocaleString()}</Typography></Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Duration:</Typography><Chip label={`${Math.round((new Date(trainEnd).getTime() - new Date(trainStart).getTime()) / (1000 * 60 * 60))}h`} size="small" color="success" /></Box>
-                </Box>
-              </Paper>
-
-              {(earlyStoppingRounds > 0 || enableShap || enableTuning) && (
-                <Paper sx={{ p: 3, bgcolor: 'rgba(255,152,0,0.05)', border: '1px solid rgba(255,152,0,0.3)' }}>
-                  <Typography variant="h6" sx={{ mb: 2, color: '#ff9800' }}>Advanced</Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {earlyStoppingRounds > 0 && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Early Stopping:</Typography><Chip icon={<StopIcon />} label={`${earlyStoppingRounds} rounds`} size="small" /></Box>}
-                    {enableShap && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">SHAP:</Typography><Chip icon={<ShapIcon />} label="Enabled" size="small" color="secondary" /></Box>}
-                    {enableTuning && <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography color="text.secondary">Tuning:</Typography><Chip icon={<TuneIcon />} label={`${tuningIterations} iterations`} size="small" color="primary" /></Box>}
+            <Collapse in={expandedBaseCat !== null}>
+              {expandedBaseCat && (
+                <Paper sx={{ p: 1.5, mb: 1.5, bgcolor: 'rgba(0,212,255,0.05)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 1 }}>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {getBaseFeaturesByCategory(expandedBaseCat).map((f) => (
+                      <Tooltip key={f.id} title={f.desc}>
+                        <Chip
+                          label={f.name}
+                          size="small"
+                          icon={<Checkbox checked={form.selectedBaseFeatures.includes(f.id)} sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
+                          onClick={() => toggleBaseFeature(f.id)}
+                          variant={form.selectedBaseFeatures.includes(f.id) ? 'filled' : 'outlined'}
+                          sx={{ bgcolor: form.selectedBaseFeatures.includes(f.id) ? 'rgba(0,212,255,0.15)' : 'transparent' }}
+                        />
+                      </Tooltip>
+                    ))}
                   </Box>
                 </Paper>
               )}
+            </Collapse>
+
+            {/* Engineering Features */}
+            <Typography variant="subtitle2" sx={{ mb: 1, mt: 2, fontWeight: 700 }}>
+              Engineered Features ({form.selectedEngFeatures.length}/{ENGINEERING_FEATURES.length})
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" onClick={() => updateField('selectedEngFeatures', getHighImportanceEngFeatures())}>High Importance</Button>
+              <Button size="small" variant="outlined" onClick={() => updateField('selectedEngFeatures', ENGINEERING_FEATURES.map((f) => f.id))}>All</Button>
+              <Button size="small" variant="outlined" color="error" onClick={() => updateField('selectedEngFeatures', [])}>None</Button>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+              {ENGINEERING_CATEGORIES.map((cat) => {
+                const catFeatures = getEngFeaturesByCategory(cat.id);
+                if (catFeatures.length === 0) return null;
+                const selectedCount = catFeatures.filter((f) => form.selectedEngFeatures.includes(f.id)).length;
+                const allSelected = selectedCount === catFeatures.length;
+                const isExpanded = expandedEngCat === cat.id;
+                return (
+                  <Tooltip key={cat.id} title={cat.desc}>
+                    <Chip
+                      label={`${cat.name} ${selectedCount}/${catFeatures.length}`}
+                      size="small"
+                      variant={selectedCount > 0 ? 'filled' : 'outlined'}
+                      color={allSelected ? 'secondary' : 'default'}
+                      onClick={() => setExpandedEngCat(isExpanded ? null : cat.id)}
+                      onDelete={() => toggleEngCategory(catFeatures.map((f) => f.id))}
+                      deleteIcon={allSelected ? <CheckIcon sx={{ fontSize: 16 }} /> : undefined}
+                      sx={{
+                        bgcolor: allSelected ? 'rgba(156,39,176,0.2)' : selectedCount > 0 ? 'rgba(255,255,255,0.08)' : 'transparent',
+                        borderColor: isExpanded ? '#9c27b0' : undefined,
+                      }}
+                    />
+                  </Tooltip>
+                );
+              })}
+            </Box>
+            <Collapse in={expandedEngCat !== null}>
+              {expandedEngCat && (
+                <Paper sx={{ p: 1.5, mb: 1.5, bgcolor: 'rgba(156,39,176,0.05)', border: '1px solid rgba(156,39,176,0.2)', borderRadius: 1 }}>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {getEngFeaturesByCategory(expandedEngCat).map((f) => (
+                      <Chip
+                        key={f.id}
+                        label={f.id}
+                        size="small"
+                        icon={<Checkbox checked={form.selectedEngFeatures.includes(f.id)} sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
+                        onClick={() => toggleEngFeature(f.id)}
+                        variant={form.selectedEngFeatures.includes(f.id) ? 'filled' : 'outlined'}
+                        sx={{ bgcolor: form.selectedEngFeatures.includes(f.id) ? 'rgba(156,39,176,0.15)' : 'transparent' }}
+                      />
+                    ))}
+                  </Box>
+                </Paper>
+              )}
+            </Collapse>
+
+            {/* Extra Feature Sources */}
+            <Typography variant="subtitle2" sx={{ mb: 1, mt: 2, fontWeight: 700 }}>Extra Sources</Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" onClick={() => { toggleAllExtraFeatures('selectedGraphFeatures', GRAPH_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedEmbeddingFeatures', EMBEDDING_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedTransactionFeatures', TRANSACTION_FEATURES.map((f) => f.id)); }}>All Sources</Button>
+              <Button size="small" variant="outlined" color="error" onClick={() => { updateField('selectedGraphFeatures', []); updateField('selectedEmbeddingFeatures', []); updateField('selectedTransactionFeatures', []); }}>None</Button>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+              {([
+                { key: 'selectedGraphFeatures' as const, features: GRAPH_FEATURES, label: 'Graph', icon: <GraphIcon sx={{ fontSize: 18 }} />, color: '#00d4ff' },
+                { key: 'selectedEmbeddingFeatures' as const, features: EMBEDDING_FEATURES, label: 'Embedding', icon: <EmbeddingIcon sx={{ fontSize: 18 }} />, color: '#9c27b0' },
+                { key: 'selectedTransactionFeatures' as const, features: TRANSACTION_FEATURES, label: 'Transaction', icon: <TransactionIcon sx={{ fontSize: 18 }} />, color: '#00bcd4' },
+              ]).map((source) => {
+                const selectedCount = form[source.key].length;
+                const totalCount = source.features.length;
+                const allSelected = selectedCount === totalCount;
+                const isExpanded = expandedExtraSource === source.key;
+                return (
+                  <Tooltip key={source.key} title={`${source.label} features (${selectedCount}/${totalCount})`}>
+                    <Chip
+                      icon={source.icon}
+                      label={`${source.label} ${selectedCount}/${totalCount}`}
+                      size="small"
+                      variant={selectedCount > 0 ? 'filled' : 'outlined'}
+                      onClick={() => setExpandedExtraSource(isExpanded ? null : source.key)}
+                      onDelete={() => toggleAllExtraFeatures(source.key, source.features.map((f) => f.id))}
+                      deleteIcon={allSelected ? <CheckIcon sx={{ fontSize: 16 }} /> : undefined}
+                      sx={{
+                        bgcolor: allSelected ? `${source.color}33` : selectedCount > 0 ? 'rgba(255,255,255,0.08)' : 'transparent',
+                        borderColor: isExpanded ? source.color : selectedCount > 0 ? `${source.color}80` : undefined,
+                        '& .MuiChip-icon': { color: selectedCount > 0 ? source.color : undefined },
+                      }}
+                    />
+                  </Tooltip>
+                );
+              })}
+            </Box>
+            <Collapse in={expandedExtraSource !== null}>
+              {expandedExtraSource && (() => {
+                const sourceMap = {
+                  selectedGraphFeatures: { features: GRAPH_FEATURES, color: '#00d4ff' },
+                  selectedEmbeddingFeatures: { features: EMBEDDING_FEATURES, color: '#9c27b0' },
+                  selectedTransactionFeatures: { features: TRANSACTION_FEATURES, color: '#00bcd4' },
+                } as const;
+                const source = sourceMap[expandedExtraSource as keyof typeof sourceMap];
+                if (!source) return null;
+                const selected = form[expandedExtraSource as keyof typeof sourceMap];
+                return (
+                  <Paper sx={{ p: 1.5, mb: 1.5, bgcolor: `${source.color}0a`, border: `1px solid ${source.color}33`, borderRadius: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      {source.features.map((f) => (
+                        <Tooltip key={f.id} title={f.desc}>
+                          <Chip
+                            label={f.name}
+                            size="small"
+                            icon={<Checkbox checked={selected.includes(f.id)} sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
+                            onClick={() => toggleExtraFeature(expandedExtraSource as keyof typeof sourceMap, f.id)}
+                            variant={selected.includes(f.id) ? 'filled' : 'outlined'}
+                            sx={{ bgcolor: selected.includes(f.id) ? `${source.color}25` : 'transparent' }}
+                          />
+                        </Tooltip>
+                      ))}
+                    </Box>
+                  </Paper>
+                );
+              })()}
+            </Collapse>
+          </Section>
+
+          {/* Section 4: Training Data */}
+          <Section title="Training Data">
+            <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+              <TextField
+                label="Start"
+                type="datetime-local"
+                value={form.trainStart}
+                onChange={(e) => updateField('trainStart', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                size="small"
+                sx={{ flex: '1 1 200px' }}
+              />
+              <TextField
+                label="End"
+                type="datetime-local"
+                value={form.trainEnd}
+                onChange={(e) => updateField('trainEnd', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                size="small"
+                sx={{ flex: '1 1 200px' }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap' }}>
+              {[6, 12, 24, 48].map((h) => (
+                <Button key={h} size="small" variant="outlined" onClick={() => setTimeQuickRange(h)}>{h}h</Button>
+              ))}
             </Box>
 
-            {result && (
-              <Alert
-                severity={result.success ? 'success' : 'error'}
-                sx={{ mb: 3 }}
-                action={
-                  result.success ? (
-                    <Button color="inherit" size="small" onClick={() => navigate('/training/jobs')}>
-                      View Jobs
-                    </Button>
-                  ) : undefined
-                }
-              >
-                {result.message}
-                {result.jobId && <><br />Job ID: {result.jobId}</>}
-              </Alert>
+            {/* Phase Filter */}
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Phase Filter</Typography>
+            {phasesLoading ? (
+              <CircularProgress size={20} />
+            ) : (
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                <Chip
+                  label="All"
+                  size="small"
+                  variant={form.selectedPhases.length === availablePhases.length ? 'filled' : 'outlined'}
+                  color={form.selectedPhases.length === availablePhases.length ? 'primary' : 'default'}
+                  onClick={() => updateField('selectedPhases', form.selectedPhases.length === availablePhases.length ? [] : availablePhases.map((p) => p.id))}
+                />
+                {availablePhases.map((phase) => (
+                  <Chip
+                    key={phase.id}
+                    label={phase.name}
+                    size="small"
+                    variant={form.selectedPhases.includes(phase.id) ? 'filled' : 'outlined'}
+                    color={form.selectedPhases.includes(phase.id) ? 'primary' : 'default'}
+                    onClick={() => togglePhase(phase.id)}
+                    sx={{ bgcolor: form.selectedPhases.includes(phase.id) ? 'rgba(0,212,255,0.15)' : 'transparent' }}
+                  />
+                ))}
+              </Box>
             )}
+          </Section>
 
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button variant="outlined" onClick={() => setActiveStep(selectedPreset === 'custom' ? 4 : 0)} startIcon={<BackIcon />}>Back</Button>
-              <Button
-                variant="contained"
-                onClick={handleSubmit}
-                disabled={isSubmitting || name.length < 3}
-                startIcon={isSubmitting ? <RefreshIcon sx={{ animation: 'spin 1s linear infinite' }} /> : <RocketIcon />}
-                sx={{ bgcolor: '#4caf50', px: 4, '&:hover': { bgcolor: '#45a049' } }}
-              >
-                {isSubmitting ? 'Training...' : 'TRAIN MODEL'}
-              </Button>
-            </Box>
-          </Box>
+          {/* Section 5: Advanced Options (collapsed) */}
+          <Accordion sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px !important', mb: 2, '&:before': { display: 'none' } }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#ff9800', fontSize: '1rem' }}>Advanced Options</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              {/* Balance Method */}
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Balance Method</Typography>
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                {([
+                  { id: 'scale_pos_weight' as const, label: 'SPW', desc: 'Recommended', color: '#ff9800', icon: <BalanceIcon sx={{ fontSize: 18 }} /> },
+                  { id: 'smote' as const, label: 'SMOTE', desc: 'Synthetic oversampling', color: '#00bcd4', icon: <ScienceIcon sx={{ fontSize: 18 }} /> },
+                  { id: 'none' as const, label: 'None', desc: 'Not recommended', color: '#666', icon: <WarningIcon sx={{ fontSize: 18 }} /> },
+                ]).map((b) => (
+                  <Chip
+                    key={b.id}
+                    icon={b.icon}
+                    label={b.label}
+                    onClick={() => updateField('balanceMethod', b.id)}
+                    variant={form.balanceMethod === b.id ? 'filled' : 'outlined'}
+                    sx={{
+                      borderColor: form.balanceMethod === b.id ? b.color : undefined,
+                      bgcolor: form.balanceMethod === b.id ? `${b.color}25` : 'transparent',
+                      color: form.balanceMethod === b.id ? b.color : undefined,
+                      '& .MuiChip-icon': { color: form.balanceMethod === b.id ? b.color : undefined },
+                    }}
+                  />
+                ))}
+              </Box>
+              {form.balanceMethod === 'scale_pos_weight' && (
+                <Box sx={{ mb: 2, px: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Weight: <strong>{form.scaleWeight}x</strong></Typography>
+                  <Slider
+                    value={form.scaleWeight}
+                    onChange={(_, v) => updateField('scaleWeight', v as number)}
+                    min={10} max={300}
+                    marks={[{ value: 50, label: '50' }, { value: 100, label: '100' }, { value: 200, label: '200' }]}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+              )}
+
+              {/* Flag Features */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <FormControlLabel
+                  control={<Switch checked={form.useFlagFeatures} onChange={(e) => updateField('useFlagFeatures', e.target.checked)} size="small" />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Flag Features</Typography>}
+                />
+                <Typography variant="caption" color="text.secondary">Shows model whether eng features have enough data</Typography>
+              </Box>
+
+              {/* Early Stopping */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <StopIcon sx={{ fontSize: 20, color: form.earlyStoppingRounds > 0 ? '#ff9800' : '#666' }} />
+                <FormControlLabel
+                  control={<Switch checked={form.earlyStoppingRounds > 0} onChange={(e) => updateField('earlyStoppingRounds', e.target.checked ? 10 : 0)} size="small" />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Early Stopping</Typography>}
+                />
+                <Typography variant="caption" color="text.secondary">Prevents overfitting</Typography>
+              </Box>
+              {form.earlyStoppingRounds > 0 && (
+                <Box sx={{ mb: 2, px: 3 }}>
+                  <Typography variant="body2" color="text.secondary">Patience: {form.earlyStoppingRounds} rounds</Typography>
+                  <Slider value={form.earlyStoppingRounds} onChange={(_, v) => updateField('earlyStoppingRounds', v as number)} min={5} max={50} step={5} valueLabelDisplay="auto" />
+                </Box>
+              )}
+
+              {/* SHAP */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <ShapIcon sx={{ fontSize: 20, color: form.enableShap ? '#9c27b0' : '#666' }} />
+                <FormControlLabel
+                  control={<Switch checked={form.enableShap} onChange={(e) => updateField('enableShap', e.target.checked)} size="small" />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>SHAP Explainability</Typography>}
+                />
+                <Typography variant="caption" color="text.secondary">Feature importance (slower training)</Typography>
+              </Box>
+
+              {/* Tuning */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <TuneIcon sx={{ fontSize: 20, color: form.enableTuning ? '#00d4ff' : '#666' }} />
+                <FormControlLabel
+                  control={<Switch checked={form.enableTuning} onChange={(e) => updateField('enableTuning', e.target.checked)} size="small" />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Hyperparameter Tuning</Typography>}
+                />
+                <Typography variant="caption" color="text.secondary">Auto-optimize after training</Typography>
+              </Box>
+              {form.enableTuning && (
+                <Box sx={{ mb: 1, px: 3 }}>
+                  <Typography variant="body2" color="text.secondary">Iterations: {form.tuningIterations}</Typography>
+                  <Slider value={form.tuningIterations} onChange={(_, v) => updateField('tuningIterations', v as number)} min={10} max={100} step={10} valueLabelDisplay="auto" />
+                </Box>
+              )}
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+
+        {/* RIGHT COLUMN: Sticky Summary (desktop only) */}
+        {!isMobile && (
+          <Paper
+            sx={{
+              width: 280,
+              flexShrink: 0,
+              p: 2,
+              position: 'sticky',
+              top: 80,
+              bgcolor: 'rgba(255,255,255,0.03)',
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.08)',
+              maxHeight: 'calc(100vh - 100px)',
+              overflowY: 'auto',
+            }}
+          >
+            <SummaryContent />
+          </Paper>
         )}
-      </Paper>
+      </Box>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      {/* ── Mobile Bottom Bar ──────────────────────────────────── */}
+      {isMobile && (
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            p: 2,
+            bgcolor: '#1a1a2e',
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" noWrap>
+              {form.name || 'Unnamed'} &middot; {totalFeatures} features &middot; {form.direction === 'up' ? '+' : '-'}{form.minPercentChange}% / {form.futureMinutes}m
+            </Typography>
+            {validation.errors.length > 0 && (
+              <Typography variant="caption" color="error">{validation.errors[0]}</Typography>
+            )}
+          </Box>
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={!validation.isValid || isSubmitting}
+            startIcon={isSubmitting ? <CircularProgress size={16} color="inherit" /> : <RocketIcon />}
+            sx={{ bgcolor: '#4caf50', fontWeight: 700, flexShrink: 0, '&:hover': { bgcolor: '#45a049' } }}
+          >
+            {isSubmitting ? '...' : 'TRAIN'}
+          </Button>
+        </Paper>
+      )}
+
+      {/* Mobile spacer so content isn't hidden behind bottom bar */}
+      {isMobile && <Box sx={{ height: 80 }} />}
     </Box>
   );
 };
+
+// ── Helper component ──────────────────────────────────────────
+const Row: React.FC<{ label: string; value: string; color?: string; bold?: boolean }> = ({ label, value, color, bold }) => (
+  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Typography variant="caption" color="text.secondary">{label}</Typography>
+    <Typography variant="caption" sx={{ fontWeight: bold ? 700 : 500, color: color || 'text.primary' }}>{value}</Typography>
+  </Box>
+);
 
 export default CreateModel;

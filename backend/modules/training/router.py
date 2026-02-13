@@ -85,11 +85,18 @@ async def create_model_job_advanced(
     use_smote: bool = False,
     scale_pos_weight: float = None,
     phases: str = None,
+    use_graph_features: bool = False,
+    use_embedding_features: bool = False,
+    use_transaction_features: bool = False,
+    graph_feature_names: str = None,
+    embedding_feature_names: str = None,
+    transaction_feature_names: str = None,
 ):
     """
     Advanced model creation endpoint with full configuration options.
 
     Features are comma-separated. Phases are comma-separated integers.
+    Extra source feature names are comma-separated.
     """
     try:
         custom_params: Dict[str, Any] = {}
@@ -103,6 +110,10 @@ async def create_model_job_advanced(
                 parsed_phases = [int(p.strip()) for p in phases.split(",")]
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid phases format: '{phases}'")
+
+        parsed_graph_names = graph_feature_names.split(",") if graph_feature_names else None
+        parsed_embedding_names = embedding_feature_names.split(",") if embedding_feature_names else None
+        parsed_transaction_names = transaction_feature_names.split(",") if transaction_feature_names else None
 
         request = TrainModelRequest(
             name=name,
@@ -118,6 +129,12 @@ async def create_model_job_advanced(
             use_engineered_features=use_engineered_features,
             use_smote=use_smote,
             phases=parsed_phases,
+            use_graph_features=use_graph_features,
+            use_embedding_features=use_embedding_features,
+            use_transaction_features=use_transaction_features,
+            graph_feature_names=parsed_graph_names,
+            embedding_feature_names=parsed_embedding_names,
+            transaction_feature_names=parsed_transaction_names,
             params=custom_params if custom_params else None,
         )
 
@@ -130,6 +147,12 @@ async def create_model_job_advanced(
     except Exception as exc:
         logger.error("Error creating model: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/models/create", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+async def create_model_job_body(request: TrainModelRequest):
+    """Create a training job via JSON body (used by the frontend)."""
+    return await _create_model_job(request)
 
 
 async def _create_model_job(request: TrainModelRequest):
@@ -199,6 +222,12 @@ async def _create_model_job(request: TrainModelRequest):
         final_params["use_embedding_features"] = True
     if request.use_transaction_features:
         final_params["use_transaction_features"] = True
+    if request.graph_feature_names:
+        final_params["graph_feature_names"] = request.graph_feature_names
+    if request.embedding_feature_names:
+        final_params["embedding_feature_names"] = request.embedding_feature_names
+    if request.transaction_feature_names:
+        final_params["transaction_feature_names"] = request.transaction_feature_names
 
     use_flag = final_params.get("use_flag_features", True)
 

@@ -92,7 +92,7 @@ export const trainingApi = {
   listModels: (params?: { status?: string; limit?: number }) =>
     api.get('/training/models', { params }),
   getModel: (id: number) => api.get(`/training/models/${id}`),
-  createModel: (data: Record<string, unknown>) => api.post('/training/models/create/advanced', data),
+  createModel: (data: Record<string, unknown>) => api.post('/training/models/create', data),
   updateModel: (id: number, data: { name?: string; description?: string }) =>
     api.patch(`/training/models/${id}`, data),
   deleteModel: (id: number) => api.delete(`/training/models/${id}`),

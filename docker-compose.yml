@@ -4,7 +4,7 @@ services:
     container_name: pump-platform-db
     restart: unless-stopped
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/home/postgres/pgdata
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
       POSTGRES_DB: ${DB_NAME:-pump_platform}
@@ -24,6 +24,10 @@ services:
     build: ./backend
     container_name: pump-platform-backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 20g
     depends_on:
       db:
         condition: service_healthy

@@ -55,6 +55,10 @@ class TrainModelRequest(BaseModel):
     use_graph_features: bool = Field(False, description="Include Neo4j graph features")
     use_embedding_features: bool = Field(False, description="Include embedding similarity features")
     use_transaction_features: bool = Field(False, description="Include transaction-level features")
+    # Individual feature selection per extra source (None = all when flag=True)
+    graph_feature_names: Optional[List[str]] = Field(None, description="Selected graph feature names")
+    embedding_feature_names: Optional[List[str]] = Field(None, description="Selected embedding feature names")
+    transaction_feature_names: Optional[List[str]] = Field(None, description="Selected transaction feature names")
 
     # Feature exclusion (phase 2)
     exclude_features: Optional[List[str]] = Field(None, description="Features to exclude")

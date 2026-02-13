@@ -12,7 +12,10 @@ import {
   Alert,
   CircularProgress,
   Chip,
+  Checkbox,
+  Collapse,
   Divider,
+  Tooltip,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -21,8 +24,17 @@ import {
   TrendingDown as DriftIcon,
   Tune as DefaultsIcon,
   Save as SaveIcon,
+  Hub as GraphIcon,
+  Fingerprint as EmbeddingIcon,
+  Receipt as TransactionIcon,
+  CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
+import {
+  GRAPH_FEATURES,
+  EMBEDDING_FEATURES,
+  TRANSACTION_FEATURES,
+} from './createModel/features';
 
 interface Settings {
   auto_retrain_enabled: boolean;
@@ -35,9 +47,9 @@ interface Settings {
   default_model_type: string;
   default_early_stopping_rounds: number;
   default_enable_shap: boolean;
-  graph_features_enabled: boolean;
-  embedding_features_enabled: boolean;
-  transaction_features_enabled: boolean;
+  default_graph_features: string[];
+  default_embedding_features: string[];
+  default_transaction_features: string[];
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -51,9 +63,9 @@ const DEFAULT_SETTINGS: Settings = {
   default_model_type: 'xgboost',
   default_early_stopping_rounds: 10,
   default_enable_shap: false,
-  graph_features_enabled: true,
-  embedding_features_enabled: true,
-  transaction_features_enabled: true,
+  default_graph_features: GRAPH_FEATURES.map((f) => f.id),
+  default_embedding_features: EMBEDDING_FEATURES.map((f) => f.id),
+  default_transaction_features: TRANSACTION_FEATURES.map((f) => f.id),
 };
 
 interface ModelOption {
@@ -61,6 +73,82 @@ interface ModelOption {
   name: string;
   status: string;
 }
+
+// ── Feature Source Section with expandable feature list ─────
+interface FeatureSourceSectionProps {
+  label: string;
+  subtitle: string;
+  icon: React.ReactElement;
+  color: string;
+  allFeatures: { id: string; name: string; desc: string }[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  onToggleAll: () => void;
+}
+
+const FeatureSourceSection: React.FC<FeatureSourceSectionProps> = ({
+  label, subtitle, icon, color, allFeatures, selected, onToggle, onToggleAll,
+}) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const count = selected.length;
+  const total = allFeatures.length;
+  const allSelected = count === total;
+
+  return (
+    <Paper sx={{ p: 2, mb: 1.5, bgcolor: `${color}08`, border: `1px solid ${color}25` }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{ color }}>{icon}</Box>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>{label}</Typography>
+            <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
+          </Box>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Chip
+            label={`${count}/${total}`}
+            size="small"
+            variant={count > 0 ? 'filled' : 'outlined'}
+            onClick={() => setExpanded(!expanded)}
+            sx={{
+              bgcolor: allSelected ? `${color}33` : count > 0 ? 'rgba(255,255,255,0.08)' : 'transparent',
+              borderColor: count > 0 ? `${color}80` : undefined,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          />
+          <Tooltip title={allSelected ? 'Deselect all' : 'Select all'}>
+            <Chip
+              label={allSelected ? 'None' : 'All'}
+              size="small"
+              variant="outlined"
+              onClick={onToggleAll}
+              onDelete={onToggleAll}
+              deleteIcon={allSelected ? <CheckIcon sx={{ fontSize: 16 }} /> : undefined}
+              sx={{ borderColor: `${color}60`, '& .MuiChip-deleteIcon': { color } }}
+            />
+          </Tooltip>
+        </Box>
+      </Box>
+      <Collapse in={expanded}>
+        <Box sx={{ mt: 1.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {allFeatures.map((f) => (
+            <Tooltip key={f.id} title={f.desc}>
+              <Chip
+                label={f.name}
+                size="small"
+                icon={<Checkbox checked={selected.includes(f.id)} sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
+                onClick={() => onToggle(f.id)}
+                variant={selected.includes(f.id) ? 'filled' : 'outlined'}
+                sx={{ bgcolor: selected.includes(f.id) ? `${color}25` : 'transparent' }}
+              />
+            </Tooltip>
+          ))}
+        </Box>
+      </Collapse>
+    </Paper>
+  );
+};
 
 const TrainingSettings: React.FC = () => {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -336,45 +424,59 @@ const TrainingSettings: React.FC = () => {
 
         <Divider sx={{ my: 3 }} />
 
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Feature Sources</Typography>
+        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>Default Feature Sources</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Vorauswahl der Extra Source Features fuer neue Modelle. Einzeln auswaehlbar.
+        </Typography>
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <Paper sx={{ p: 2, bgcolor: 'rgba(0,212,255,0.05)', border: '1px solid rgba(0,212,255,0.15)' }}>
-            <FormControlLabel
-              control={<Switch checked={settings.graph_features_enabled} onChange={(e) => updateField('graph_features_enabled', e.target.checked)} />}
-              label={
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Graph Features (Neo4j)</Typography>
-                  <Typography variant="caption" color="text.secondary">Creator history, wallet clusters, similar tokens</Typography>
-                </Box>
-              }
-            />
-          </Paper>
-
-          <Paper sx={{ p: 2, bgcolor: 'rgba(156,39,176,0.05)', border: '1px solid rgba(156,39,176,0.15)' }}>
-            <FormControlLabel
-              control={<Switch checked={settings.embedding_features_enabled} onChange={(e) => updateField('embedding_features_enabled', e.target.checked)} />}
-              label={
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Embedding Features (pgvector)</Typography>
-                  <Typography variant="caption" color="text.secondary">Pattern similarity to pumps/rugs</Typography>
-                </Box>
-              }
-            />
-          </Paper>
-
-          <Paper sx={{ p: 2, bgcolor: 'rgba(33,150,243,0.05)', border: '1px solid rgba(33,150,243,0.15)' }}>
-            <FormControlLabel
-              control={<Switch checked={settings.transaction_features_enabled} onChange={(e) => updateField('transaction_features_enabled', e.target.checked)} />}
-              label={
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Transaction Features</Typography>
-                  <Typography variant="caption" color="text.secondary">Wallet concentration, trade bursts, whale activity</Typography>
-                </Box>
-              }
-            />
-          </Paper>
-        </Box>
+        <FeatureSourceSection
+          label="Graph Features (Neo4j)"
+          subtitle="Creator history, wallet clusters, similar tokens"
+          icon={<GraphIcon />}
+          color="#00d4ff"
+          allFeatures={GRAPH_FEATURES}
+          selected={settings.default_graph_features}
+          onToggle={(id) => {
+            const current = settings.default_graph_features;
+            updateField('default_graph_features', current.includes(id) ? current.filter((f) => f !== id) : [...current, id]);
+          }}
+          onToggleAll={() => {
+            const allIds = GRAPH_FEATURES.map((f) => f.id);
+            updateField('default_graph_features', settings.default_graph_features.length === allIds.length ? [] : allIds);
+          }}
+        />
+        <FeatureSourceSection
+          label="Embedding Features (pgvector)"
+          subtitle="Pattern similarity to pumps/rugs"
+          icon={<EmbeddingIcon />}
+          color="#9c27b0"
+          allFeatures={EMBEDDING_FEATURES}
+          selected={settings.default_embedding_features}
+          onToggle={(id) => {
+            const current = settings.default_embedding_features;
+            updateField('default_embedding_features', current.includes(id) ? current.filter((f) => f !== id) : [...current, id]);
+          }}
+          onToggleAll={() => {
+            const allIds = EMBEDDING_FEATURES.map((f) => f.id);
+            updateField('default_embedding_features', settings.default_embedding_features.length === allIds.length ? [] : allIds);
+          }}
+        />
+        <FeatureSourceSection
+          label="Transaction Features"
+          subtitle="Wallet concentration, trade bursts, whale activity"
+          icon={<TransactionIcon />}
+          color="#00bcd4"
+          allFeatures={TRANSACTION_FEATURES}
+          selected={settings.default_transaction_features}
+          onToggle={(id) => {
+            const current = settings.default_transaction_features;
+            updateField('default_transaction_features', current.includes(id) ? current.filter((f) => f !== id) : [...current, id]);
+          }}
+          onToggleAll={() => {
+            const allIds = TRANSACTION_FEATURES.map((f) => f.id);
+            updateField('default_transaction_features', settings.default_transaction_features.length === allIds.length ? [] : allIds);
+          }}
+        />
       </Paper>
     </Box>
   );

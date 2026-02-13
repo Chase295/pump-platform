@@ -18,6 +18,7 @@ Usage:
 
 import asyncio
 import json
+import random
 import re
 import ssl
 import time
@@ -68,12 +69,29 @@ class CoinCache:
     tracking or expire.
     """
 
-    def __init__(self, cache_seconds: int = 120):
+    def __init__(self, cache_seconds: int = 120, max_size: int = 0):
         self.cache_seconds = cache_seconds
+        self.max_size = max_size
         self.cache: dict = {}
         self.last_cleanup = time.time()
 
+    def _evict_oldest(self) -> None:
+        """Evict the oldest non-activated coin from cache."""
+        oldest_mint = None
+        oldest_time = float("inf")
+        for mint, data in self.cache.items():
+            if not data["activated"] and data["discovered_at"] < oldest_time:
+                oldest_time = data["discovered_at"]
+                oldest_mint = mint
+        if oldest_mint:
+            del self.cache[oldest_mint]
+            logger.debug("Cache evicted oldest coin %s (%.0fs old)", oldest_mint[:8], time.time() - oldest_time)
+
     def add_coin(self, mint: str, coin_data: dict) -> None:
+        # Enforce max size before adding
+        if self.max_size > 0 and len(self.cache) >= self.max_size:
+            self._evict_oldest()
+
         now = time.time()
         self.cache[mint] = {
             "discovered_at": now,
@@ -283,7 +301,7 @@ class CoinStreamer:
         self.sorted_phase_ids: list = []
 
         # Cache & filter
-        self.coin_cache = CoinCache(settings.COIN_CACHE_SECONDS)
+        self.coin_cache = CoinCache(settings.COIN_CACHE_SECONDS, max_size=settings.COIN_CACHE_MAX_SIZE)
         self.coin_filter = CoinFilter(settings.SPAM_BURST_WINDOW)
 
         # Watchlist for active coins
@@ -304,6 +322,9 @@ class CoinStreamer:
         self.subscription_watchdog: dict = {}
         self.stale_data_warnings: dict = {}
         self.last_saved_signatures: dict = {}
+
+        # Watchdog timing
+        self.last_watchdog_check = time.time()
 
         # WebSocket batching
         self.pending_subscriptions: set = set()
@@ -354,7 +375,53 @@ class CoinStreamer:
         self._tasks.append(task)
 
     async def stop(self) -> None:
-        """Cancel all background tasks."""
+        """Flush all pending data, then cancel background tasks."""
+        logger.info("CoinStreamer shutdown: flushing buffers...")
+
+        # 1. Flush discovery buffer to DB
+        try:
+            if self.discovery_buffer:
+                persisted = await self._persist_discovered_coins(self.discovery_buffer)
+                logger.info("Shutdown: %d discovery coins persisted", persisted)
+                self.discovery_buffer = []
+        except Exception as e:
+            logger.warning("Shutdown: discovery flush failed: %s", e)
+
+        # 2. Force-flush all watchlist metric buffers
+        try:
+            results, trades_for_flush = await check_lifecycle_and_advance(
+                watchlist=self.watchlist,
+                phases_config=self.phases_config,
+                sorted_phase_ids=self.sorted_phase_ids,
+                subscribed_mints=self.subscribed_mints,
+                dirty_aths=self.dirty_aths,
+                status=self.status,
+                now_ts=time.time() + 99999,  # force all next_flush to trigger
+                last_trade_timestamps=self.last_trade_timestamps,
+                last_saved_signatures=self.last_saved_signatures,
+                stale_data_warnings=self.stale_data_warnings,
+                force_resubscribe_fn=None,
+            )
+            if results:
+                batch_data = [r[0] for r in results]
+                phases_in_batch = [r[1] for r in results]
+                await flush_metrics_batch(batch_data, phases_in_batch, self.status)
+                logger.info("Shutdown: %d metric batches flushed", len(batch_data))
+            if trades_for_flush:
+                await flush_transactions_batch(trades_for_flush, self.status)
+                logger.info("Shutdown: %d transactions flushed", len(trades_for_flush))
+        except Exception as e:
+            logger.warning("Shutdown: metrics flush failed: %s", e)
+
+        # 3. Flush dirty ATHs
+        try:
+            if self.dirty_aths:
+                await flush_ath_updates(self.ath_cache, self.dirty_aths, self.status)
+                logger.info("Shutdown: ATH updates flushed")
+        except Exception as e:
+            logger.warning("Shutdown: ATH flush failed: %s", e)
+
+        # Cancel tasks
         for task in self._tasks:
             task.cancel()
             try:
@@ -428,8 +495,75 @@ class CoinStreamer:
 
         logger.info("New coin: %s (cache: %d)", coin_data.get("symbol", "???"), len(self.coin_cache.cache))
 
+    async def _persist_discovered_coins(self, coins: list) -> int:
+        """Persist discovered coins directly to DB (discovered_coins + coin_streams).
+
+        Non-fatal: catches all exceptions and logs warnings.
+        Returns number of coins persisted.
+        """
+        if not coins:
+            return 0
+
+        dc_rows = []
+        cs_rows = []
+        for coin in coins:
+            mint = coin.get("mint")
+            if not mint:
+                continue
+            dc_rows.append((
+                mint,
+                coin.get("symbol", ""),
+                coin.get("name", ""),
+                coin.get("traderPublicKey", ""),
+                float(coin.get("vTokensInBondingCurve", 0)),
+                float(coin.get("vSolInBondingCurve", 0)),
+                float(coin.get("marketCapSol", 0)),
+                coin.get("bondingCurveKey", ""),
+                coin.get("twitter_url") or coin.get("twitter") or "",
+                coin.get("telegram_url") or coin.get("telegram") or "",
+                coin.get("website_url") or coin.get("website") or "",
+                coin.get("discord_url") or coin.get("discord") or "",
+                float(coin.get("price_sol", 0)),
+                int(coin.get("social_count", 0)),
+            ))
+            cs_rows.append((
+                mint,
+                1,      # phase_id
+                True,   # is_active
+            ))
+
+        try:
+            pool = get_pool()
+            async with pool.acquire(timeout=5) as conn:
+                await conn.executemany("""
+                    INSERT INTO discovered_coins (
+                        token_address, symbol, name, trader_public_key,
+                        v_tokens_in_bonding_curve, v_sol_in_bonding_curve,
+                        market_cap_sol, bonding_curve_key,
+                        twitter_url, telegram_url, website_url, discord_url,
+                        price_sol, social_count
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                    ON CONFLICT (token_address) DO NOTHING
+                """, dc_rows)
+
+                await conn.executemany("""
+                    INSERT INTO coin_streams (token_address, current_phase_id, is_active)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (token_address) DO NOTHING
+                """, cs_rows)
+
+            logger.info("Persisted %d coins to DB (discovered_coins + coin_streams)", len(dc_rows))
+            return len(dc_rows)
+
+        except asyncio.TimeoutError:
+            logger.warning("_persist_discovered_coins: pool.acquire timeout")
+            return 0
+        except Exception as e:
+            logger.warning("_persist_discovered_coins failed (non-fatal): %s", e)
+            return 0
+
     async def _flush_discovery_buffer(self) -> None:
-        """Send discovery buffer to n8n when full or timed out."""
+        """Persist discovery buffer to DB, then optionally send to n8n."""
         if not self.discovery_buffer:
             return
 
@@ -437,13 +571,19 @@ class CoinStreamer:
         is_timeout = (time.time() - self.last_discovery_flush) > settings.BATCH_TIMEOUT
 
         if is_full or is_timeout:
+            # 1. Always persist to DB first
+            await self._persist_discovered_coins(self.discovery_buffer)
+
+            # 2. Send to n8n (optional, best-effort)
             success = await send_batch_to_n8n(self.discovery_buffer, self.status)
             if success:
                 for coin in self.discovery_buffer:
                     mint = coin.get("mint")
                     if mint in self.coin_cache.cache:
                         self.coin_cache.cache[mint]["n8n_sent"] = True
-                self.discovery_buffer = []
+
+            # 3. Always clear buffer (data is safe in DB)
+            self.discovery_buffer = []
             self.last_discovery_flush = time.time()
 
     # ------------------------------------------------------------------
@@ -600,6 +740,27 @@ class CoinStreamer:
         return total_removed
 
     # ------------------------------------------------------------------
+    # Emergency flush (before reconnect)
+    # ------------------------------------------------------------------
+
+    async def _emergency_flush(self) -> None:
+        """Flush critical buffers before reconnect. Non-fatal."""
+        try:
+            if self.discovery_buffer:
+                persisted = await self._persist_discovered_coins(self.discovery_buffer)
+                self.discovery_buffer = []
+                logger.info("Emergency flush: %d discovery coins persisted", persisted)
+        except Exception as e:
+            logger.warning("Emergency flush (discovery) failed: %s", e)
+
+        try:
+            if self.dirty_aths:
+                await flush_ath_updates(self.ath_cache, self.dirty_aths, self.status)
+                logger.info("Emergency flush: ATH updates flushed")
+        except Exception as e:
+            logger.warning("Emergency flush (ATH) failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Main WebSocket loop
     # ------------------------------------------------------------------
 
@@ -637,11 +798,17 @@ class CoinStreamer:
                     # Subscribe to new tokens
                     await ws.send(json.dumps({"method": "subscribeNewToken"}))
 
-                    # Restore existing subscriptions
+                    # Restore existing subscriptions in chunks
                     if self.subscribed_mints:
-                        logger.info("Restoring %d existing subscriptions...", len(self.subscribed_mints))
+                        restore_list = list(self.subscribed_mints)
+                        logger.info("Restoring %d existing subscriptions in chunks...", len(restore_list))
+                        chunk_size = 50
                         try:
-                            await ws.send(json.dumps({"method": "subscribeTokenTrade", "keys": list(self.subscribed_mints)}))
+                            for i in range(0, len(restore_list), chunk_size):
+                                chunk = restore_list[i:i + chunk_size]
+                                await ws.send(json.dumps({"method": "subscribeTokenTrade", "keys": chunk}))
+                                if i + chunk_size < len(restore_list):
+                                    await asyncio.sleep(0.2)
                         except Exception as e:
                             logger.warning("Error restoring subscriptions: %s", e)
                             self.pending_subscriptions.update(self.subscribed_mints)
@@ -739,6 +906,7 @@ class CoinStreamer:
                                         await self.batching_task
                                     except asyncio.CancelledError:
                                         pass
+                                await self._emergency_flush()
                                 break
 
                         except websockets.exceptions.ConnectionClosed as e:
@@ -752,6 +920,7 @@ class CoinStreamer:
                                     await self.batching_task
                                 except asyncio.CancelledError:
                                     pass
+                            await self._emergency_flush()
                             break
 
                         except json.JSONDecodeError as e:
@@ -761,6 +930,7 @@ class CoinStreamer:
                         except Exception as e:
                             logger.warning("WS receive error: %s", e)
                             self.status["last_error"] = f"ws_error: {str(e)[:100]}"
+                            await self._emergency_flush()
                             break
 
                         # Buffer cleanup
@@ -796,8 +966,9 @@ class CoinStreamer:
                             await flush_transactions_batch(trades_for_flush, self.status)
 
                         # Zombie watchdog (every 60s)
-                        if int(now_ts) % 60 == 0:
+                        if now_ts - self.last_watchdog_check >= 60:
                             await self._check_subscription_watchdog(now_ts)
+                            self.last_watchdog_check = now_ts
 
                         # ATH updates
                         if now_ts - self.last_ath_flush > 5:
@@ -828,10 +999,12 @@ class CoinStreamer:
                 reconnect_count += 1
                 self.status["reconnect_count"] = reconnect_count
 
-            # Reconnect delay with exponential backoff
-            delay = min(
+            # Reconnect delay with exponential backoff + jitter
+            base_delay = min(
                 settings.WS_RETRY_DELAY * (1 + reconnect_count * 0.5),
                 settings.WS_MAX_RETRY_DELAY,
             )
-            logger.info("Reconnect in %.1fs...", delay)
+            jitter = random.uniform(0, base_delay * 0.3)
+            delay = base_delay + jitter
+            logger.info("Reconnect in %.1fs (base=%.1f, jitter=%.1f)...", delay, base_delay, jitter)
             await asyncio.sleep(delay)

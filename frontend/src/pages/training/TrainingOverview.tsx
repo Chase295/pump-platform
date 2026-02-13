@@ -273,6 +273,11 @@ const TrainingOverview: React.FC = () => {
                 <MenuItem value="created_at">Created</MenuItem>
                 <MenuItem value="name">Name</MenuItem>
                 <MenuItem value="training_accuracy">Accuracy</MenuItem>
+                <MenuItem value="training_f1">F1-Score</MenuItem>
+                <MenuItem value="training_precision">Precision</MenuItem>
+                <MenuItem value="training_recall">Recall</MenuItem>
+                <MenuItem value="roc_auc">ROC-AUC</MenuItem>
+                <MenuItem value="mcc">MCC</MenuItem>
               </Select>
             </FormControl>
           </Grid>

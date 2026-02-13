@@ -1,0 +1,144 @@
+import type { CreateModelFormState } from './types';
+import { ENGINEERING_FEATURES, BASE_FEATURES, GRAPH_FEATURES, EMBEDDING_FEATURES, TRANSACTION_FEATURES } from './features';
+
+export interface PresetDef {
+  id: string;
+  name: string;
+  subtitle: string;
+  color: string;
+  icon: string; // MUI icon name — resolved in the component
+  values: Omit<CreateModelFormState, 'name' | 'trainStart' | 'trainEnd' | 'selectedPhases' | 'activePreset'>;
+}
+
+const highImpEng = ENGINEERING_FEATURES.filter((f) => f.importance === 'high').map((f) => f.id);
+const mediumAndHighEng = ENGINEERING_FEATURES.filter((f) => f.importance === 'high' || f.importance === 'medium').map((f) => f.id);
+const devSafetyEng = ENGINEERING_FEATURES.filter((f) => f.category === 'dev' || f.category === 'safety').map((f) => f.id);
+const recommendedBase = BASE_FEATURES.filter((f) => f.importance !== 'optional').map((f) => f.id);
+
+export const PRESETS: PresetDef[] = [
+  {
+    id: 'fast',
+    name: 'Fast Pump',
+    subtitle: '5% / 5min',
+    color: '#00d4ff',
+    icon: 'speed',
+    values: {
+      modelType: 'xgboost',
+      direction: 'up',
+      futureMinutes: 5,
+      minPercentChange: 5,
+      selectedBaseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio', 'whale_buy_volume_sol'],
+      selectedEngFeatures: [],
+      selectedGraphFeatures: [],
+      selectedEmbeddingFeatures: [],
+      selectedTransactionFeatures: [],
+      balanceMethod: 'scale_pos_weight',
+      scaleWeight: 100,
+      useFlagFeatures: true,
+      earlyStoppingRounds: 10,
+      enableShap: false,
+      enableTuning: false,
+      tuningIterations: 20,
+    },
+  },
+  {
+    id: 'standard',
+    name: 'Standard',
+    subtitle: '10% / 10min',
+    color: '#4caf50',
+    icon: 'trending_up',
+    values: {
+      modelType: 'xgboost',
+      direction: 'up',
+      futureMinutes: 10,
+      minPercentChange: 10,
+      selectedBaseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio', 'whale_buy_volume_sol', 'dev_sold_amount', 'unique_signer_ratio'],
+      selectedEngFeatures: highImpEng,
+      selectedGraphFeatures: [],
+      selectedEmbeddingFeatures: [],
+      selectedTransactionFeatures: [],
+      balanceMethod: 'scale_pos_weight',
+      scaleWeight: 100,
+      useFlagFeatures: true,
+      earlyStoppingRounds: 10,
+      enableShap: false,
+      enableTuning: false,
+      tuningIterations: 20,
+    },
+  },
+  {
+    id: 'moonshot',
+    name: 'Moonshot',
+    subtitle: '25% / 15min',
+    color: '#9c27b0',
+    icon: 'rocket',
+    values: {
+      modelType: 'xgboost',
+      direction: 'up',
+      futureMinutes: 15,
+      minPercentChange: 25,
+      selectedBaseFeatures: recommendedBase,
+      selectedEngFeatures: mediumAndHighEng,
+      selectedGraphFeatures: [],
+      selectedEmbeddingFeatures: EMBEDDING_FEATURES.map((f) => f.id),
+      selectedTransactionFeatures: [],
+      balanceMethod: 'scale_pos_weight',
+      scaleWeight: 200,
+      useFlagFeatures: true,
+      earlyStoppingRounds: 10,
+      enableShap: true,
+      enableTuning: false,
+      tuningIterations: 20,
+    },
+  },
+  {
+    id: 'rug',
+    name: 'Rug Shield',
+    subtitle: '-20% / 10min',
+    color: '#f44336',
+    icon: 'shield',
+    values: {
+      modelType: 'xgboost',
+      direction: 'down',
+      futureMinutes: 10,
+      minPercentChange: 20,
+      selectedBaseFeatures: ['price_close', 'dev_sold_amount', 'whale_sell_volume_sol', 'buy_pressure_ratio', 'volatility_pct'],
+      selectedEngFeatures: devSafetyEng,
+      selectedGraphFeatures: GRAPH_FEATURES.map((f) => f.id),
+      selectedEmbeddingFeatures: [],
+      selectedTransactionFeatures: TRANSACTION_FEATURES.map((f) => f.id),
+      balanceMethod: 'scale_pos_weight',
+      scaleWeight: 50,
+      useFlagFeatures: true,
+      earlyStoppingRounds: 10,
+      enableShap: false,
+      enableTuning: false,
+      tuningIterations: 20,
+    },
+  },
+  {
+    id: 'custom',
+    name: 'Custom',
+    subtitle: 'Full control',
+    color: '#ff9800',
+    icon: 'tune',
+    values: {
+      modelType: 'xgboost',
+      direction: 'up',
+      futureMinutes: 10,
+      minPercentChange: 10,
+      selectedBaseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio'],
+      selectedEngFeatures: [],
+      selectedGraphFeatures: [],
+      selectedEmbeddingFeatures: [],
+      selectedTransactionFeatures: [],
+      balanceMethod: 'scale_pos_weight',
+      scaleWeight: 100,
+      useFlagFeatures: true,
+      earlyStoppingRounds: 10,
+      enableShap: false,
+      enableTuning: false,
+      tuningIterations: 20,
+    },
+  },
+];

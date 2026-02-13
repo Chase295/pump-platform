@@ -11,6 +11,7 @@ Phase lifecycle:
     Baby Zone (0-10m, 5s) -> Survival Zone (10-60m, 30s) -> Mature Zone (60-1440m, 60s) -> Finished/Graduated
 """
 
+import asyncio
 import time
 import logging
 from datetime import datetime, timezone
@@ -105,7 +106,13 @@ async def get_active_streams_from_db(ath_cache: dict, pool=None) -> dict:
         JOIN discovered_coins dc ON cs.token_address = dc.token_address
         WHERE cs.is_active = TRUE
     """
-    rows = await pool.fetch(sql)
+    try:
+        async with pool.acquire(timeout=10) as conn:
+            rows = await conn.fetch(sql)
+    except asyncio.TimeoutError:
+        logger.error("get_active_streams_from_db: pool.acquire timeout")
+        return {}
+
     results = {}
 
     for row in rows:
@@ -150,11 +157,14 @@ async def switch_phase(mint: str, old_phase: int, new_phase: int) -> None:
         new_phase: New phase ID.
     """
     pool = get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE coin_streams SET current_phase_id = $1 WHERE token_address = $2",
-            new_phase, mint,
-        )
+    try:
+        async with pool.acquire(timeout=10) as conn:
+            await conn.execute(
+                "UPDATE coin_streams SET current_phase_id = $1 WHERE token_address = $2",
+                new_phase, mint,
+            )
+    except asyncio.TimeoutError:
+        raise Exception(f"switch_phase pool.acquire timeout for {mint[:8]}")
     find_phase_switches.inc()
     logger.info("Phase %d -> %d for %s", old_phase, new_phase, mint[:8])
 
@@ -183,12 +193,14 @@ async def stop_tracking(mint: str, is_graduation: bool, watchlist: dict,
             logger.info("FINISHED: %s lifecycle ended", mint[:8])
 
         pool = get_pool()
-        async with pool.acquire() as conn:
+        async with pool.acquire(timeout=10) as conn:
             await conn.execute("""
                 UPDATE coin_streams
                 SET is_active = FALSE, current_phase_id = $2, is_graduated = $3
                 WHERE token_address = $1
             """, mint, final_phase, graduated_flag)
+    except asyncio.TimeoutError:
+        logger.error("Stop tracking pool.acquire timeout for %s", mint[:8])
     except Exception as e:
         logger.error("Stop tracking error for %s: %s", mint[:8], e)
     finally:

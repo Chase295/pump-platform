@@ -120,10 +120,13 @@ const Jobs: React.FC = () => {
 
   const getResultLink = (job: JobResponse) => {
     if (job.job_type === 'TRAIN' && job.result_model_id) {
-      return { label: `Model #${job.result_model_id}`, path: `/training/models/${job.result_model_id}` };
+      const label = job.result_model?.name || `Model #${job.result_model_id}`;
+      return { label, path: `/training/models/${job.result_model_id}` };
     }
     if (job.job_type === 'TEST' && job.result_test_id) {
-      return { label: `Test #${job.result_test_id}`, path: `/training/test-results/${job.result_test_id}` };
+      const modelName = job.result_model?.name;
+      const label = modelName ? `Test: ${modelName}` : `Test #${job.result_test_id}`;
+      return { label, path: `/training/test-results/${job.result_test_id}` };
     }
     if (job.job_type === 'COMPARE' && job.result_comparison_id) {
       return { label: `Compare #${job.result_comparison_id}`, path: `/training/comparisons/${job.result_comparison_id}` };

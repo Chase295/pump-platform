@@ -1487,6 +1487,25 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- ============================================================================
+-- FUNCTION: repair_missing_streams (MODULE: FIND)
+-- Ensures every active discovered_coin has a corresponding coin_streams entry.
+-- Called from phases.py on every active streams load.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION repair_missing_streams()
+RETURNS void AS $$
+BEGIN
+    INSERT INTO coin_streams (token_address, current_phase_id, is_active, started_at)
+    SELECT dc.token_address, COALESCE(dc.phase_id, 1), true, COALESCE(dc.discovered_at, NOW())
+    FROM discovered_coins dc
+    LEFT JOIN coin_streams cs ON dc.token_address = cs.token_address
+    WHERE cs.token_address IS NULL
+      AND dc.is_active = true;
+END;
+$$ LANGUAGE plpgsql;
+
+
 -- ############################################################################
 -- SEED DATA
 -- ############################################################################

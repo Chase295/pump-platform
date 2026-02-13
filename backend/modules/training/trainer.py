@@ -139,6 +139,7 @@ def create_model_instance(model_type: str, params: Dict[str, Any]) -> Any:
         "use_market_context", "exclude_features", "use_flag_features",
         "early_stopping_rounds", "compute_shap",
         "use_graph_features", "use_embedding_features", "use_transaction_features",
+        "graph_feature_names", "embedding_feature_names", "transaction_feature_names",
     }
     extra = {k: v for k, v in params.items() if k not in excluded_keys and not isinstance(v, (dict, list, bool))}
 
@@ -678,6 +679,22 @@ async def train_model(
     )
     if len(data) == 0:
         raise ValueError("No training data found!")
+
+    # Append selected extra-source features to the features list
+    if use_graph_features:
+        from backend.modules.training.graph_features import GRAPH_FEATURE_NAMES
+        selected = (params or {}).get("graph_feature_names") or GRAPH_FEATURE_NAMES
+        features.extend([f for f in selected if f in data.columns and f not in features])
+
+    if use_embedding_features:
+        from backend.modules.training.embedding_features import EMBEDDING_FEATURE_NAMES
+        selected = (params or {}).get("embedding_feature_names") or EMBEDDING_FEATURE_NAMES
+        features.extend([f for f in selected if f in data.columns and f not in features])
+
+    if use_transaction_features:
+        from backend.modules.training.transaction_features import TRANSACTION_FEATURE_NAMES
+        selected = (params or {}).get("transaction_feature_names") or TRANSACTION_FEATURE_NAMES
+        features.extend([f for f in selected if f in data.columns and f not in features])
 
     # Phase intervals (time-based only)
     phase_intervals = None
