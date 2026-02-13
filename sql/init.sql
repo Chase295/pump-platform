@@ -587,6 +587,13 @@ CREATE TABLE IF NOT EXISTS ml_models (
     model_binary BYTEA,
     description TEXT,
 
+    -- SHAP & Early Stopping metadata (Training V2)
+    shap_values JSONB,
+    best_iteration INTEGER,
+    best_score NUMERIC(10, 6),
+    low_importance_features JSONB,
+    early_stopping_rounds INTEGER,
+
     CONSTRAINT chk_ml_model_type CHECK (model_type IN ('random_forest', 'xgboost', 'gradient_boosting', 'logistic_regression', 'neural_network')),
     CONSTRAINT chk_ml_status CHECK (status IN ('TRAINING', 'READY', 'FAILED')),
     CONSTRAINT chk_ml_operator CHECK (target_operator IS NULL OR target_operator IN ('>', '<', '>=', '<=', '=')),
@@ -814,7 +821,14 @@ CREATE TABLE IF NOT EXISTS ml_jobs (
     -- COMPARE: Result
     result_comparison_id BIGINT REFERENCES ml_comparisons(id) ON DELETE SET NULL,
 
-    CONSTRAINT chk_job_type CHECK (job_type IN ('TRAIN', 'TEST', 'COMPARE')),
+    -- TUNE: Configuration
+    tune_model_id BIGINT REFERENCES ml_models(id),
+    tune_strategy VARCHAR(20) DEFAULT 'random',
+    tune_n_iterations INTEGER DEFAULT 20,
+    tune_param_space JSONB,
+    tune_results JSONB,
+
+    CONSTRAINT chk_job_type CHECK (job_type IN ('TRAIN', 'TEST', 'COMPARE', 'TUNE')),
     CONSTRAINT chk_job_status CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')),
     CONSTRAINT chk_job_train_direction CHECK (train_target_direction IS NULL OR train_target_direction IN ('up', 'down')),
     CONSTRAINT chk_job_train_dates CHECK (train_start IS NULL OR train_end IS NULL OR train_start < train_end),
@@ -828,7 +842,20 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON ml_jobs(status, priority, created_
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON ml_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_type_status ON ml_jobs(job_type, status, created_at DESC);
 
-COMMENT ON TABLE ml_jobs IS 'Job queue for TRAIN/TEST/COMPARE operations with type-specific fields';
+COMMENT ON TABLE ml_jobs IS 'Job queue for TRAIN/TEST/COMPARE/TUNE operations with type-specific fields';
+
+
+-- ============================================================================
+-- TABLE: training_settings (key-value store for training module config)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS training_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+COMMENT ON TABLE training_settings IS 'Key-value settings for training module (auto-retrain, drift detection, defaults)';
 
 
 -- ============================================================================
@@ -874,8 +901,8 @@ CREATE TABLE IF NOT EXISTS prediction_active_models (
     phases JSONB,
     params JSONB,
 
-    -- Model file (locally stored)
-    local_model_path TEXT NOT NULL,
+    -- Model file (locally stored, NULL when using direct Python import)
+    local_model_path TEXT,
     model_file_url TEXT,
 
     -- Status
@@ -1554,6 +1581,27 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================================
+-- SEED: training_settings (MODULE: TRAINING)
+-- ============================================================================
+
+INSERT INTO training_settings (key, value) VALUES
+  ('auto_retrain_enabled', 'false'),
+  ('auto_retrain_schedule', '"daily"'),
+  ('auto_retrain_base_model_id', 'null'),
+  ('auto_retrain_auto_deploy', 'false'),
+  ('drift_detection_enabled', 'false'),
+  ('drift_accuracy_threshold', '0.5'),
+  ('drift_check_interval_hours', '6'),
+  ('default_model_type', '"xgboost"'),
+  ('default_early_stopping_rounds', '10'),
+  ('default_enable_shap', 'false'),
+  ('graph_features_enabled', 'true'),
+  ('embedding_features_enabled', 'true'),
+  ('transaction_features_enabled', 'true')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- ============================================================================
 -- SEED: Test wallets (MODULE: BUY)
 -- ============================================================================
 
@@ -1636,7 +1684,8 @@ SELECT add_compression_policy('alert_evaluations', INTERVAL '14 days', if_not_ex
 --   FIND:     discovered_coins, coin_streams, ref_coin_phases, coin_metrics,
 --             coin_transactions, coin_pattern_embeddings,
 --             exchange_rates, 3 graduation views
---   TRAINING: ml_models, ml_test_results, ml_comparisons, ml_jobs, ref_model_types
+--   TRAINING: ml_models, ml_test_results, ml_comparisons, ml_jobs, ref_model_types,
+--             training_settings
 --   SERVER:   prediction_active_models (with all migrations merged),
 --             predictions, model_predictions, alert_evaluations,
 --             prediction_webhook_log, coin_scan_cache,
