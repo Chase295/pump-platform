@@ -122,10 +122,12 @@ async def process_train_job(job: Dict[str, Any]) -> None:
     use_graph_features = False
     use_embedding_features = False
     use_transaction_features = False
+    use_metadata_features = False
     if params and isinstance(params, dict):
         use_graph_features = params.get("use_graph_features", False)
         use_embedding_features = params.get("use_embedding_features", False)
         use_transaction_features = params.get("use_transaction_features", False)
+        use_metadata_features = params.get("use_metadata_features", False)
 
     # Progress 10%
     await update_job_status(job_id, status="RUNNING", progress=0.1, progress_msg="Loading training data...")
@@ -157,6 +159,7 @@ async def process_train_job(job: Dict[str, Any]) -> None:
             use_graph_features=use_graph_features,
             use_embedding_features=use_embedding_features,
             use_transaction_features=use_transaction_features,
+            use_metadata_features=use_metadata_features,
         )
         logger.info(
             "Job %d training done: accuracy=%.4f, f1=%.4f",

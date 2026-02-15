@@ -139,7 +139,9 @@ def create_model_instance(model_type: str, params: Dict[str, Any]) -> Any:
         "use_market_context", "exclude_features", "use_flag_features",
         "early_stopping_rounds", "compute_shap",
         "use_graph_features", "use_embedding_features", "use_transaction_features",
+        "use_metadata_features",
         "graph_feature_names", "embedding_feature_names", "transaction_feature_names",
+        "metadata_feature_names",
     }
     extra = {k: v for k, v in params.items() if k not in excluded_keys and not isinstance(v, (dict, list, bool))}
 
@@ -627,6 +629,7 @@ async def train_model(
     use_graph_features: bool = False,
     use_embedding_features: bool = False,
     use_transaction_features: bool = False,
+    use_metadata_features: bool = False,
 ) -> Dict[str, Any]:
     """Async wrapper: loads data, then delegates CPU work to executor."""
 
@@ -676,6 +679,7 @@ async def train_model(
         use_graph_features=use_graph_features,
         use_embedding_features=use_embedding_features,
         use_transaction_features=use_transaction_features,
+        use_metadata_features=use_metadata_features,
     )
     if len(data) == 0:
         raise ValueError("No training data found!")
@@ -694,6 +698,11 @@ async def train_model(
     if use_transaction_features:
         from backend.modules.training.transaction_features import TRANSACTION_FEATURE_NAMES
         selected = (params or {}).get("transaction_feature_names") or TRANSACTION_FEATURE_NAMES
+        features.extend([f for f in selected if f in data.columns and f not in features])
+
+    if use_metadata_features:
+        from backend.modules.training.metadata_features import METADATA_FEATURE_NAMES
+        selected = (params or {}).get("metadata_feature_names") or METADATA_FEATURE_NAMES
         features.extend([f for f in selected if f in data.columns and f not in features])
 
     # Phase intervals (time-based only)

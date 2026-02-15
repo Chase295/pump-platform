@@ -8,7 +8,7 @@ Mounted at ``/api/find`` by the main application.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -519,6 +519,7 @@ async def get_streams(limit: int = 50):
     """Gibt Streams aus der coin_streams Tabelle zurueck"""
     try:
         pool = _get_pool()
+        limit = max(1, min(limit, 1000))
         rows = await pool.fetch("""
             SELECT * FROM coin_streams
             ORDER BY id DESC
@@ -579,6 +580,7 @@ async def get_recent_metrics(limit: int = 100, mint: Optional[str] = None):
     """
     try:
         pool = _get_pool()
+        limit = max(1, min(limit, 5000))
 
         query = "SELECT * FROM coin_metrics"
         params: list = []
@@ -696,15 +698,19 @@ def _parse_time_windows(windows_str: str) -> dict:
         window = window.strip()
         if not window:
             continue
-        if window.endswith('s'):
-            seconds = int(window[:-1])
-        elif window.endswith('m'):
-            seconds = int(window[:-1]) * 60
-        elif window.endswith('h'):
-            seconds = int(window[:-1]) * 3600
-        else:
-            seconds = int(window) * 60
-        windows[window] = {'seconds': seconds}
+        try:
+            if window.endswith('s'):
+                seconds = int(window[:-1])
+            elif window.endswith('m'):
+                seconds = int(window[:-1]) * 60
+            elif window.endswith('h'):
+                seconds = int(window[:-1]) * 3600
+            else:
+                seconds = int(window) * 60
+            if seconds > 0:
+                windows[window] = {'seconds': seconds}
+        except ValueError:
+            continue
     return windows
 
 
@@ -788,17 +794,18 @@ async def get_coin_analytics(mint: str, windows: str = "30s,1m,3m,5m,15m,30m,1h"
         time_windows = _parse_time_windows(windows)
         max_seconds = max(w['seconds'] for w in time_windows.values()) if time_windows else 3600
 
-        # Get historical data
+        # Get historical data (limited to the largest requested window + margin)
+        now = datetime.now(timezone.utc)
+        lookback = now - timedelta(seconds=max_seconds + 120)
         historical_rows = await pool.fetch(
-            "SELECT * FROM coin_metrics WHERE mint = $1 ORDER BY timestamp ASC", mint
+            "SELECT * FROM coin_metrics WHERE mint = $1 AND timestamp >= $2 ORDER BY timestamp ASC",
+            mint, lookback,
         )
         historical_data = [dict(row) for row in historical_rows]
 
         # Calculate analytics for each window
-        now = datetime.now(timezone.utc)
         performance = {}
         for window_name, window_info in time_windows.items():
-            from datetime import timedelta
             target_time = now - timedelta(seconds=window_info['seconds'])
             performance[window_name] = _calculate_window_analytics(current_data, historical_data, target_time)
 

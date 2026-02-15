@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Typography,
   Box,
@@ -33,6 +34,7 @@ import type { FindHealthResponse, StreamStats, Phase, RecentMetric } from '../..
 import DiscoveryStatCard from '../../components/discovery/DiscoveryStatCard';
 import PipelineVisualization from '../../components/discovery/PipelineVisualization';
 import PhaseDistributionChart from '../../components/discovery/PhaseDistributionChart';
+import { getPhaseColor } from '../../utils/phaseColors';
 
 const fmt = (n: number | undefined | null): string => {
   if (n == null) return '--';
@@ -72,15 +74,9 @@ const timeAgo = (ts: string): string => {
   return `${Math.floor(diff / 86400)}d`;
 };
 
-const PHASE_CHIP_COLORS: Record<number, string> = {
-  1: '#2196f3',
-  2: '#ff9800',
-  3: '#4caf50',
-  99: '#f44336',
-  100: '#9c27b0',
-};
-
 const DiscoveryOverview: React.FC = () => {
+  const navigate = useNavigate();
+
   const { data: health, error: healthError, isLoading: healthLoading } = useQuery<FindHealthResponse>({
     queryKey: ['find', 'health'],
     queryFn: async () => (await findApi.getHealth()).data,
@@ -371,7 +367,7 @@ const DiscoveryOverview: React.FC = () => {
                   {phases.map((p) => (
                     <Box key={p.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: PHASE_CHIP_COLORS[p.id] || '#607d8b' }} />
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getPhaseColor(p.id) }} />
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>
                           {p.name}
                         </Typography>
@@ -424,9 +420,11 @@ const DiscoveryOverview: React.FC = () => {
                 recentMetrics.map((m, i) => (
                   <TableRow
                     key={`${m.mint}-${m.timestamp}-${i}`}
+                    onClick={() => navigate(`/discovery/coin/${m.mint}`)}
                     sx={{
+                      cursor: 'pointer',
                       '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
-                      '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.05)' },
+                      '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.08)' },
                     }}
                   >
                     <TableCell sx={{ py: 0.5 }}>
@@ -437,7 +435,7 @@ const DiscoveryOverview: React.FC = () => {
                         <Tooltip title="Copy address">
                           <IconButton
                             size="small"
-                            onClick={() => navigator.clipboard.writeText(m.mint)}
+                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(m.mint); }}
                             sx={{ p: 0.25, opacity: 0.4, '&:hover': { opacity: 1 } }}
                           >
                             <ContentCopyIcon sx={{ fontSize: 12 }} />
@@ -450,8 +448,8 @@ const DiscoveryOverview: React.FC = () => {
                         label={`P${m.phase_id_at_time}`}
                         size="small"
                         sx={{
-                          bgcolor: `${PHASE_CHIP_COLORS[m.phase_id_at_time] || '#607d8b'}20`,
-                          color: PHASE_CHIP_COLORS[m.phase_id_at_time] || '#607d8b',
+                          bgcolor: `${getPhaseColor(m.phase_id_at_time)}20`,
+                          color: getPhaseColor(m.phase_id_at_time),
                           fontSize: '0.65rem',
                           height: 20,
                           minWidth: 36,

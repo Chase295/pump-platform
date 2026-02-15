@@ -1,5 +1,5 @@
 import type { CreateModelFormState } from './types';
-import { ENGINEERING_FEATURES, BASE_FEATURES, GRAPH_FEATURES, EMBEDDING_FEATURES, TRANSACTION_FEATURES } from './features';
+import { ENGINEERING_FEATURES, BASE_FEATURES, GRAPH_FEATURES, EMBEDDING_FEATURES, TRANSACTION_FEATURES, METADATA_FEATURES } from './features';
 
 export interface PresetDef {
   id: string;
@@ -7,7 +7,7 @@ export interface PresetDef {
   subtitle: string;
   color: string;
   icon: string; // MUI icon name — resolved in the component
-  values: Omit<CreateModelFormState, 'name' | 'trainStart' | 'trainEnd' | 'selectedPhases' | 'activePreset'>;
+  values: Omit<CreateModelFormState, 'name' | 'trainStart' | 'trainEnd' | 'selectedPhases' | 'activePreset' | 'description'>;
 }
 
 const highImpEng = ENGINEERING_FEATURES.filter((f) => f.importance === 'high').map((f) => f.id);
@@ -32,6 +32,7 @@ export const PRESETS: PresetDef[] = [
       selectedGraphFeatures: [],
       selectedEmbeddingFeatures: [],
       selectedTransactionFeatures: [],
+      selectedMetadataFeatures: [],
       balanceMethod: 'scale_pos_weight',
       scaleWeight: 100,
       useFlagFeatures: true,
@@ -39,6 +40,8 @@ export const PRESETS: PresetDef[] = [
       enableShap: false,
       enableTuning: false,
       tuningIterations: 20,
+      cvSplits: 5,
+      useTimeseriesSplit: true,
     },
   },
   {
@@ -57,6 +60,7 @@ export const PRESETS: PresetDef[] = [
       selectedGraphFeatures: [],
       selectedEmbeddingFeatures: [],
       selectedTransactionFeatures: [],
+      selectedMetadataFeatures: [],
       balanceMethod: 'scale_pos_weight',
       scaleWeight: 100,
       useFlagFeatures: true,
@@ -64,6 +68,8 @@ export const PRESETS: PresetDef[] = [
       enableShap: false,
       enableTuning: false,
       tuningIterations: 20,
+      cvSplits: 5,
+      useTimeseriesSplit: true,
     },
   },
   {
@@ -82,6 +88,7 @@ export const PRESETS: PresetDef[] = [
       selectedGraphFeatures: [],
       selectedEmbeddingFeatures: EMBEDDING_FEATURES.map((f) => f.id),
       selectedTransactionFeatures: [],
+      selectedMetadataFeatures: METADATA_FEATURES.map((f) => f.id),
       balanceMethod: 'scale_pos_weight',
       scaleWeight: 200,
       useFlagFeatures: true,
@@ -89,6 +96,8 @@ export const PRESETS: PresetDef[] = [
       enableShap: true,
       enableTuning: false,
       tuningIterations: 20,
+      cvSplits: 5,
+      useTimeseriesSplit: true,
     },
   },
   {
@@ -107,6 +116,7 @@ export const PRESETS: PresetDef[] = [
       selectedGraphFeatures: GRAPH_FEATURES.map((f) => f.id),
       selectedEmbeddingFeatures: [],
       selectedTransactionFeatures: TRANSACTION_FEATURES.map((f) => f.id),
+      selectedMetadataFeatures: METADATA_FEATURES.map((f) => f.id),
       balanceMethod: 'scale_pos_weight',
       scaleWeight: 50,
       useFlagFeatures: true,
@@ -114,6 +124,8 @@ export const PRESETS: PresetDef[] = [
       enableShap: false,
       enableTuning: false,
       tuningIterations: 20,
+      cvSplits: 5,
+      useTimeseriesSplit: true,
     },
   },
   {
@@ -132,6 +144,7 @@ export const PRESETS: PresetDef[] = [
       selectedGraphFeatures: [],
       selectedEmbeddingFeatures: [],
       selectedTransactionFeatures: [],
+      selectedMetadataFeatures: [],
       balanceMethod: 'scale_pos_weight',
       scaleWeight: 100,
       useFlagFeatures: true,
@@ -139,6 +152,8 @@ export const PRESETS: PresetDef[] = [
       enableShap: false,
       enableTuning: false,
       tuningIterations: 20,
+      cvSplits: 5,
+      useTimeseriesSplit: true,
     },
   },
 ];

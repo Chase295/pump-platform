@@ -98,6 +98,7 @@ async def update_config(config_id: int, updates: Dict[str, Any]) -> Optional[dic
 
 async def delete_config(config_id: int) -> bool:
     """Delete a config and all its embeddings."""
+    await execute("DELETE FROM coin_pattern_embeddings WHERE config_id = $1", config_id)
     result = await execute("DELETE FROM embedding_configs WHERE id = $1", config_id)
     return "DELETE 1" in result
 

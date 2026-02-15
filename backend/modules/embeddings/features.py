@@ -101,7 +101,9 @@ assert len(FEATURE_NAMES) == 128, f"Expected 128 features, got {len(FEATURE_NAME
 # ---------------------------------------------------------------------------
 
 def _safe_div(a: float, b: float) -> float:
-    return a / (b + EPS)
+    if abs(b) < EPS:
+        return 0.0
+    return a / b
 
 
 def _linear_slope(values: np.ndarray) -> float:
@@ -291,7 +293,7 @@ def _extract_metrics_features(data: dict) -> np.ndarray:
     features[1] = _safe_div(price_range, opens[0]) * 100  # range %
     features[2] = _safe_div(closes[-1] - lows.min(), price_range) if price_range > EPS else 0.5  # position
     features[3] = _safe_div(highs.max() - closes[-1], price_range) if price_range > EPS else 0.0  # upper shadow
-    features[4] = _safe_div(closes[-1] - lows.min(), price_range) if price_range > EPS else 0.0  # lower shadow
+    features[4] = _safe_div(min(opens[0], closes[-1]) - lows.min(), price_range) if price_range > EPS else 0.0  # lower shadow
     features[5] = _safe_div(closes[-1], opens[0]) - 1  # vs start
     features[6] = _sma(returns, 3)  # momentum 3
     features[7] = _sma(returns, 5)  # momentum 5
@@ -361,7 +363,7 @@ def _extract_metrics_features(data: dict) -> np.ndarray:
     features[55] = _safe_div(n_buys.sum(), n_sells.sum())
     tc_diffs = np.diff(trade_counts) if n > 1 else np.array([0.0])
     features[56] = tc_diffs[-1] - tc_diffs[-2] if len(tc_diffs) >= 2 else 0.0
-    features[57] = _linear_slope(u_wallets)  # new wallet rate approx
+    features[57] = _safe_div(float(np.diff(u_wallets).mean()), u_wallets.mean()) if n > 1 and u_wallets.mean() > EPS else 0.0  # new wallet rate (relative growth)
     features[58] = avg_trade.mean() if n > 0 else 0.0
     features[59] = _linear_slope(avg_trade)
 
@@ -392,7 +394,7 @@ def _extract_transaction_features(data: dict) -> np.ndarray:
         return features
 
     is_buy = np.array([t == "buy" for t in types])
-    is_sell = ~is_buy
+    is_sell = np.array([t == "sell" for t in types])
 
     # --- Group E: Temporal trade patterns (14) ---
     if n > 1:
@@ -403,13 +405,15 @@ def _extract_transaction_features(data: dict) -> np.ndarray:
         features[0] = 0.0
         features[1] = 0.0
 
-    # Bursts: >3 trades within 5 seconds
+    # Bursts: >3 trades within 5 seconds (sliding window, O(n))
     burst_count = 0
     burst_max = 0
     if n > 3:
+        j = 0
         for i in range(n):
-            window_end_t = timestamps[i] + 5.0
-            trades_in_window = int(np.sum((timestamps >= timestamps[i]) & (timestamps <= window_end_t)))
+            while j < n and timestamps[j] <= timestamps[i] + 5.0:
+                j += 1
+            trades_in_window = j - i
             if trades_in_window > 3:
                 burst_count += 1
                 burst_max = max(burst_max, trades_in_window)
@@ -431,11 +435,11 @@ def _extract_transaction_features(data: dict) -> np.ndarray:
     features[4] = max_buy_streak
     features[5] = max_sell_streak
 
-    # Trade density
-    half_idx = n // 2
-    features[6] = _safe_div(half_idx, n)  # first half density
-    quarter_idx = 3 * n // 4
-    features[7] = _safe_div(n - quarter_idx, n)  # last quarter density
+    # Trade density by time window
+    t_mid = (timestamps[0] + timestamps[-1]) / 2.0 if n > 1 else timestamps[0]
+    features[6] = _safe_div(float(np.sum(timestamps <= t_mid)), n)  # first half density
+    t_q3 = timestamps[0] + 0.75 * (timestamps[-1] - timestamps[0]) if n > 1 else timestamps[0]
+    features[7] = _safe_div(float(np.sum(timestamps >= t_q3)), n)  # last quarter density
 
     # Time to first sell / whale
     sell_indices = np.where(is_sell)[0]
@@ -804,9 +808,11 @@ async def extract_window_features(
         "window_seconds": (window_end - window_start).total_seconds(),
     }
 
-    # 4. Extract features
+    # 4. Extract features (NaN cleanup between steps to prevent propagation)
     metrics_feats = _extract_metrics_features(metrics_data)  # 60
+    metrics_feats = np.nan_to_num(metrics_feats, nan=0.0, posinf=0.0, neginf=0.0)
     tx_feats = _extract_transaction_features(tx_data)  # 40
+    tx_feats = np.nan_to_num(tx_feats, nan=0.0, posinf=0.0, neginf=0.0)
     ctx_feats = _extract_context_and_interaction_features(metrics_feats, tx_feats, context)  # 28
 
     # 5. Concatenate

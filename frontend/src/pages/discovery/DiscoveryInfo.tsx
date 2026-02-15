@@ -45,22 +45,25 @@ const DiscoveryInfo: React.FC = () => (
           </Typography>
           <Box component="ul" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
             <li><Typography variant="body2">WebSocket-Verbindung zu pumpportal.fun fuer Echtzeit-Coin-Erkennung</Typography></li>
-            <li><Typography variant="body2">Spam-Filter (Bad Names, Burst Detection) gegen Scam-Tokens</Typography></li>
-            <li><Typography variant="body2">120-Sekunden Cache vor Aktivierung des vollstaendigen Trackings</Typography></li>
-            <li><Typography variant="body2">Phasen-basiertes Metrik-Tracking mit konfigurierbaren Intervallen</Typography></li>
-            <li><Typography variant="body2">OHLCV-Daten, Volume, Wallet-Tracking in coin_metrics Tabelle</Typography></li>
-            <li><Typography variant="body2">Einzelne Trades in coin_transactions Tabelle (Wallet, Betrag, Preis)</Typography></li>
-            <li><Typography variant="body2">n8n Webhook-Integration fuer Benachrichtigungen</Typography></li>
+            <li><Typography variant="body2">Spam-Filter (Bad Names Regex, Burst Detection) gegen Scam-Tokens</Typography></li>
+            <li><Typography variant="body2">360-Sekunden Cache vor Aktivierung des vollstaendigen Trackings</Typography></li>
+            <li><Typography variant="body2">n8n als alleiniger Gatekeeper: RugCheck, Enrichment, dann DB-Insert</Typography></li>
+            <li><Typography variant="body2">8-stufiges Phasen-System mit konfigurierbaren Intervallen (3s bis 600s)</Typography></li>
+            <li><Typography variant="body2">30-Spalten OHLCV-Daten inkl. Whale-Tracking in coin_metrics (TimescaleDB)</Typography></li>
+            <li><Typography variant="body2">Einzelne Trades in coin_transactions (Wallet, Betrag, Preis, Whale-Flag)</Typography></li>
+            <li><Typography variant="body2">ATH-Tracking mit Dirty-Flag und Batch-Flush</Typography></li>
           </Box>
           <CodeBlock>
 {`Datenfluss:
   pumpportal.fun (WebSocket)
-    -> Spam-Filter (bad_names, burst)
-    -> 120s Cache (Trade-Sammlung)
-    -> Coin-Stream erstellen (Phase 1)
-    -> Metriken alle X Sekunden speichern
-    -> coin_metrics (aggregierte OHLCV-Snapshots)
-    -> coin_transactions (einzelne Trades)`}
+    -> Spam-Filter (bad_names Regex, Burst Detection)
+    -> 360s Cache (Trade-Sammlung)
+    -> n8n Webhook (RugCheck, IPFS-Enrichment, Klassifikation)
+    -> n8n schreibt in discovered_coins + coin_streams
+    -> Cache-Aktivierung nach 360s wenn DB-Eintrag vorhanden
+    -> Live-Tracking mit phasenbasiertem Intervall
+    -> coin_metrics (30 Spalten OHLCV pro Intervall)
+    -> coin_transactions (einzelne Trades, non-fatal)`}
           </CodeBlock>
         </Chapter>
 
@@ -76,13 +79,16 @@ const DiscoveryInfo: React.FC = () => (
             WebSocket-Datenformat
           </Typography>
           <CodeBlock>
-{`Empfangene Daten pro Coin:
+{`Empfangene Daten pro Coin (newToken Event):
 - mint: Token-Adresse (Solana)
 - name, symbol: Token-Name und Symbol
 - traderPublicKey: Creator-Wallet
-- vSolInBondingCurve: Virtuelles SOL
+- vSolInBondingCurve: Virtuelles SOL in Bonding Curve
+- vTokensInBondingCurve: Virtuelle Tokens
 - marketCapSol: Market Cap in SOL
-- uri: Metadata-URI (IPFS/Arweave)`}
+- bondingCurveKey: Bonding Curve Adresse
+- uri: Metadata-URI (IPFS/Arweave)
+- twitter, telegram, website: Social Links`}
           </CodeBlock>
 
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold', color: '#4caf50' }}>
@@ -92,22 +98,32 @@ const DiscoveryInfo: React.FC = () => (
             <ConfigItem
               name="Bad Names Regex"
               value="test|bot|rug|scam|cant|honey|faucet"
-              desc="Filtert Coins mit verdaechtigen Namen"
+              desc="Filtert Coins mit verdaechtigen Namen (konfigurierbar, wird zur Laufzeit aktualisiert)"
             />
             <ConfigItem
               name="Spam-Burst Filter"
-              value="Max 3 Coins/Minute pro Wallet"
-              desc="Blockiert Massen-Erstellungen von gleicher Wallet"
+              value="30 Sekunden Window"
+              desc="Blockiert Coins mit identischem Name oder Symbol innerhalb des Burst-Fensters"
             />
           </Box>
+
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold', color: '#4caf50' }}>
+            n8n Gatekeeper
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            n8n ist der alleinige Gatekeeper fuer Datenbank-Inserts. Der Streamer sendet entdeckte Coins
+            per Webhook an n8n. Dort erfolgen RugCheck, IPFS-Enrichment und Klassifikation. Nur von n8n
+            freigegebene Coins werden in discovered_coins und coin_streams geschrieben.
+          </Typography>
 
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold', color: '#4caf50' }}>
             Cache-Aktivierung
           </Typography>
           <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-            Neue Coins werden fuer 120 Sekunden im Cache gehalten. Waehrend dieser Zeit werden Trades
-            gesammelt, aber noch keine Metriken in die Datenbank geschrieben. Nach 120s wird ein
-            vollstaendiger Coin-Stream mit Phase 1 aktiviert.
+            Neue Coins werden fuer 360 Sekunden im Cache gehalten (max. 5.000 Eintraege).
+            Waehrend dieser Zeit werden Trades gesammelt. Nach Ablauf wird geprueft ob n8n
+            den Coin in coin_streams angelegt hat. Falls ja: Aktivierung mit allen gecachten
+            Trades. Falls nein: Coin wird verworfen.
           </Typography>
         </Chapter>
 
@@ -121,12 +137,18 @@ const DiscoveryInfo: React.FC = () => (
         >
           <Alert severity="info" sx={{ mb: 2 }}>
             Phasen steuern wie oft Metriken gespeichert werden. Junge Coins werden haeufiger getrackt.
+            Alle Phasen sind ueber die UI oder API konfigurierbar.
           </Alert>
 
           {[
-            { name: 'Baby Zone (Phase 1)', interval: '5 Sekunden', range: '0-10 Min', desc: 'Sehr junge Coins, haeufige Updates', color: '#4caf50' },
-            { name: 'Survival Zone (Phase 2)', interval: '15-30 Sekunden', range: '10-120 Min', desc: 'Coins die erste Minuten ueberlebt haben', color: '#ff9800' },
-            { name: 'Mature Zone (Phase 3)', interval: '60 Sekunden', range: '2-24 Stunden', desc: 'Etablierte Coins, seltenere Updates', color: '#2196f3' },
+            { name: 'Newborn (Phase 1)', interval: '3s', range: '0-2 Min', desc: 'Erste Sekunden nach Erstellung', color: '#2196f3' },
+            { name: 'Baby (Phase 2)', interval: '5s', range: '2-8 Min', desc: 'Erste Minuten, haeufige Updates', color: '#ff9800' },
+            { name: 'Toddler (Phase 3)', interval: '10s', range: '8-20 Min', desc: 'Coin zeigt erste Lebenszeichen', color: '#4caf50' },
+            { name: 'Teen (Phase 4)', interval: '30s', range: '20-90 Min', desc: 'Ueberlebensphase, mittlere Frequenz', color: '#00bcd4' },
+            { name: 'Young (Phase 5)', interval: '60s', range: '1.5-4 Stunden', desc: 'Etablierter Coin, minutenweise Updates', color: '#e91e63' },
+            { name: 'Adult (Phase 6)', interval: '120s', range: '4-18 Stunden', desc: 'Reifer Coin, alle 2 Minuten', color: '#ffeb3b' },
+            { name: 'Senior (Phase 7)', interval: '300s', range: '18h-6 Tage', desc: 'Langzeit-Tracking, alle 5 Minuten', color: '#8bc34a' },
+            { name: 'Veteran (Phase 8)', interval: '600s', range: '6-23 Tage', desc: 'Letztes Tracking, alle 10 Minuten', color: '#03a9f4' },
           ].map((phase) => (
             <Box key={phase.name} sx={{ p: 1.5, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1, borderLeft: `3px solid ${phase.color}`, mb: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 'bold', color: phase.color }}>{phase.name}</Typography>
@@ -142,8 +164,8 @@ const DiscoveryInfo: React.FC = () => (
 
           <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>System-Phasen (nicht editierbar)</Typography>
           {[
-            { name: 'Finished (Phase 99)', desc: 'Tracking beendet (zu alt, 24h+)', color: '#f44336' },
-            { name: 'Graduated (Phase 100)', desc: 'Token hat Bonding Curve verlassen (Raydium)', color: '#9c27b0' },
+            { name: 'Finished (Phase 99)', desc: 'Tracking beendet (max. Alter ueberschritten, 23+ Tage)', color: '#f44336' },
+            { name: 'Graduated (Phase 100)', desc: 'Token hat Bonding Curve verlassen (>99.5% -> Raydium)', color: '#9c27b0' },
           ].map((phase) => (
             <Box key={phase.name} sx={{ p: 1.5, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1, borderLeft: `3px solid ${phase.color}`, mb: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 'bold', color: phase.color }}>{phase.name}</Typography>
@@ -153,10 +175,10 @@ const DiscoveryInfo: React.FC = () => (
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Phasen-API</Typography>
-          <EndpointRow method="GET" path="/api/find/database/phases" desc="Alle Phasen abrufen" />
-          <EndpointRow method="POST" path="/api/find/database/phases" desc="Neue Phase erstellen (ID 1-98)" />
-          <EndpointRow method="PUT" path="/api/find/database/phases/{id}" desc="Phase aktualisieren" />
-          <EndpointRow method="DELETE" path="/api/find/database/phases/{id}" desc="Phase loeschen (Streams migrieren)" />
+          <EndpointRow method="GET" path="/api/find/phases" desc="Alle Phasen abrufen" />
+          <EndpointRow method="POST" path="/api/find/phases" desc="Neue Phase erstellen (ID 1-98)" />
+          <EndpointRow method="PUT" path="/api/find/phases/{id}" desc="Phase aktualisieren" />
+          <EndpointRow method="DELETE" path="/api/find/phases/{id}" desc="Phase loeschen (Streams migrieren)" />
         </Chapter>
 
         {/* 4. Live-Tracking & Metriken */}
@@ -179,26 +201,47 @@ Volumen-Akkumulation:
   buy_volume_sol  (wenn txType == "buy")
   sell_volume_sol (wenn txType == "sell")
 
-Trade-Zaehlung:
-  num_buys, num_sells, unique_wallets`}
+Whale-Erkennung:
+  is_whale = solAmount >= WHALE_THRESHOLD_SOL (1.0 SOL)
+
+Stale-Data-Erkennung:
+  Signatur = price + volume + trade_count
+  Wenn identisch mit letztem Save -> Zombie Alert
+  Nach 2x stale + 5min ohne Trade -> Re-Subscribe`}
           </CodeBlock>
 
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold', color: '#ff9800' }}>
-            coin_metrics Schema
+            coin_metrics Schema (30 Spalten)
           </Typography>
           <CodeBlock>
 {`INSERT INTO coin_metrics (
+  -- Identifikation
   mint, timestamp, phase_id_at_time,
+  -- OHLCV
   price_open, price_high, price_low, price_close,
-  market_cap_close, bonding_curve_pct,
+  -- Marktdaten
+  market_cap_close, bonding_curve_pct, virtual_sol_reserves, is_koth,
+  -- Volumen
   volume_sol, buy_volume_sol, sell_volume_sol,
-  num_buys, num_sells, unique_wallets,
-  dev_sold_amount, whale_buy_volume_sol
+  -- Trade-Zaehler
+  num_buys, num_sells, unique_wallets, num_micro_trades,
+  -- Dev-Tracking
+  dev_sold_amount,
+  -- Extremwerte
+  max_single_buy_sol, max_single_sell_sol,
+  -- Abgeleitete Metriken
+  net_volume_sol, volatility_pct, avg_trade_size_sol,
+  -- Whale-Daten
+  whale_buy_volume_sol, whale_sell_volume_sol,
+  num_whale_buys, num_whale_sells,
+  -- Ratios
+  buy_pressure_ratio, unique_signer_ratio
 )`}
           </CodeBlock>
 
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Jeder Eintrag speichert OHLCV-Daten fuer das jeweilige Phasen-Intervall.
+            Jeder Eintrag speichert OHLCV + 20 erweiterte Metriken fuer das jeweilige Phasen-Intervall.
+            coin_metrics ist eine TimescaleDB Hypertable (1-Tag Chunks).
             Der Training-Service und Prediction-Server lesen diese Daten fuer ML-Vorhersagen.
           </Typography>
 
@@ -213,15 +256,14 @@ Trade-Zaehlung:
 
 Parallel zu coin_metrics gespeichert (non-fatal).
 Einzelne Trades mit Wallet-Adresse fuer:
-  - Pattern-Analyse & Graph-Features
-  - Wallet-Clustering (spaeter Neo4j)
-  - pgvector Similarity Search`}
+  - Embedding-Pipeline (pgvector Similarity Search)
+  - Graph-Features (Neo4j Wallet-Analyse)
+  - Pattern-Erkennung`}
           </CodeBlock>
 
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            coin_transactions ist eine TimescaleDB Hypertable mit 1-Tag Chunks und
-            automatischer Compression nach 1 Tag. Fehler beim Speichern beeintraechtigen
-            niemals die coin_metrics Pipeline.
+            coin_transactions ist eine TimescaleDB Hypertable mit 1-Tag Chunks.
+            Fehler beim Speichern beeintraechtigen niemals die coin_metrics Pipeline.
           </Typography>
         </Chapter>
 
@@ -234,28 +276,28 @@ Einzelne Trades mit Wallet-Adresse fuer:
           onChange={handleChapterChange('disc-api')}
         >
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>System</Typography>
-          <EndpointRow method="GET" path="/api/find/health" desc="Service-Status & Live-Daten" />
+          <EndpointRow method="GET" path="/api/find/health" desc="Service-Status, WebSocket, Cache, Tracking-Stats" />
           <EndpointRow method="GET" path="/api/find/config" desc="Aktuelle Konfiguration" />
           <EndpointRow method="PUT" path="/api/find/config" desc="Konfiguration aendern (Runtime)" />
-          <EndpointRow method="GET" path="/api/find/metrics" desc="Prometheus-Metriken" />
+          <EndpointRow method="POST" path="/api/find/reload-config" desc="Phasen-Config aus DB neu laden" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Datenbank & Streams</Typography>
-          <EndpointRow method="GET" path="/api/find/database/streams/stats" desc="Stream-Statistiken nach Phase" />
-          <EndpointRow method="GET" path="/api/find/database/streams?limit=50" desc="Einzelne Streams auflisten" />
-          <EndpointRow method="GET" path="/api/find/database/metrics?limit=100&mint=..." desc="Historische Metriken (OHLCV)" />
-          <EndpointRow method="GET" path="/api/find/coin/{mint}" desc="Vollstaendige Coin-Daten" />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Streams & Metriken</Typography>
+          <EndpointRow method="GET" path="/api/find/streams/stats" desc="Stream-Statistiken nach Phase" />
+          <EndpointRow method="GET" path="/api/find/streams?limit=50" desc="Einzelne Streams auflisten (max 1.000)" />
+          <EndpointRow method="GET" path="/api/find/metrics?limit=100&mint=..." desc="Letzte coin_metrics Eintraege (max 5.000)" />
+          <EndpointRow method="GET" path="/api/find/coins/{mint}" desc="Vollstaendige Coin-Daten + Live-Tracking" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Analytics</Typography>
-          <EndpointRow method="GET" path="/api/find/analytics/{mint}?windows=1m,5m,1h" desc="Coin Vitalwerte & Performance-Trends" />
+          <EndpointRow method="GET" path="/api/find/analytics/{mint}?windows=1m,5m,1h" desc="Performance ueber Zeitfenster (30s bis 1h)" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Phasen-Management</Typography>
-          <EndpointRow method="GET" path="/api/find/database/phases" desc="Alle Phasen abrufen" />
-          <EndpointRow method="POST" path="/api/find/database/phases" desc="Neue Phase erstellen" />
-          <EndpointRow method="PUT" path="/api/find/database/phases/{id}" desc="Phase aktualisieren" />
-          <EndpointRow method="DELETE" path="/api/find/database/phases/{id}" desc="Phase loeschen" />
+          <EndpointRow method="GET" path="/api/find/phases" desc="Alle Phasen abrufen" />
+          <EndpointRow method="POST" path="/api/find/phases" desc="Neue Phase erstellen" />
+          <EndpointRow method="PUT" path="/api/find/phases/{id}" desc="Phase aktualisieren" />
+          <EndpointRow method="DELETE" path="/api/find/phases/{id}" desc="Phase loeschen" />
         </Chapter>
 
         {/* 6. Konfiguration */}
@@ -266,57 +308,64 @@ Einzelne Trades mit Wallet-Adresse fuer:
           expanded={expandedChapters.includes('disc-config')}
           onChange={handleChapterChange('disc-config')}
         >
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Datenbank</Typography>
-          <ConfigItem name="DB_DSN" value="postgresql://..." desc="PostgreSQL-Verbindungsstring" />
-          <ConfigItem name="DB_REFRESH_INTERVAL" value="10" range="5-300" desc="Intervall fuer DB-Abfragen (Sekunden)" />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>WebSocket</Typography>
+          <ConfigItem name="WS_URI" value="wss://pumpportal.fun/api/data" desc="WebSocket-Endpunkt" />
+          <ConfigItem name="WS_PING_INTERVAL" value="20" desc="Ping-Intervall in Sekunden" />
+          <ConfigItem name="WS_PING_TIMEOUT" value="5" desc="Ping-Timeout in Sekunden" />
+          <ConfigItem name="WS_CONNECTION_TIMEOUT" value="30" desc="Timeout fuer Nachrichten-Empfang (Sekunden)" />
+          <ConfigItem name="WS_RETRY_DELAY" value="3" desc="Basis-Wartezeit vor Reconnect (Sekunden)" />
+          <ConfigItem name="WS_MAX_RETRY_DELAY" value="60" desc="Maximale Reconnect-Wartezeit (Sekunden)" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Discovery & Filter</Typography>
-          <ConfigItem name="COIN_CACHE_SECONDS" value="120" range="10-3600" desc="Cache-Dauer fuer neue Coins" />
-          <ConfigItem name="BAD_NAMES_PATTERN" value="test|bot|rug|scam" desc="Regex fuer Coin-Filterung" />
-          <ConfigItem name="SPAM_BURST_WINDOW" value="30" range="1-300" desc="Zeitfenster fuer Spam-Erkennung (Sekunden)" />
+          <ConfigItem name="COIN_CACHE_SECONDS" value="360" range="10-3600" desc="Cache-Dauer fuer neue Coins (Sekunden)" />
+          <ConfigItem name="COIN_CACHE_MAX_SIZE" value="5000" desc="Maximale Anzahl Coins im Cache" />
+          <ConfigItem name="BAD_NAMES_PATTERN" value="test|bot|rug|scam|cant|honey|faucet" desc="Regex fuer Coin-Filterung (Laufzeit-aenderbar)" />
+          <ConfigItem name="SPAM_BURST_WINDOW" value="30" range="5-300" desc="Zeitfenster fuer Duplikat-Erkennung (Sekunden)" />
+          <ConfigItem name="DB_REFRESH_INTERVAL" value="10" range="5-300" desc="Intervall fuer DB-Sync und Cache-Check (Sekunden)" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>n8n Integration</Typography>
-          <ConfigItem name="N8N_WEBHOOK_URL" value="https://..." desc="Webhook-URL fuer Coin-Benachrichtigungen" />
-          <ConfigItem name="BATCH_SIZE" value="10" range="1-100" desc="Coins pro Batch" />
-          <ConfigItem name="BATCH_TIMEOUT" value="30" range="5-300" desc="Max. Wartezeit fuer Batch (Sekunden)" />
+          <ConfigItem name="N8N_FIND_WEBHOOK_URL" value="" desc="Webhook-URL fuer Coin-Benachrichtigungen (leer = deaktiviert)" />
+          <ConfigItem name="N8N_FIND_WEBHOOK_METHOD" value="POST" desc="HTTP-Methode (GET oder POST)" />
+          <ConfigItem name="BATCH_SIZE" value="10" range="1-100" desc="Coins pro Batch an n8n" />
+          <ConfigItem name="BATCH_TIMEOUT" value="30" range="10-300" desc="Max. Wartezeit vor Batch-Versand (Sekunden)" />
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Tracking</Typography>
-          <ConfigItem name="SOL_RESERVES_FULL" value="85.0" desc="Schwellwert fuer Bonding Curve Full (%)" />
+          <ConfigItem name="SOL_RESERVES_FULL" value="85.0" desc="SOL-Schwellwert fuer Graduation (Bonding Curve)" />
           <ConfigItem name="WHALE_THRESHOLD_SOL" value="1.0" desc="Schwellwert fuer Whale-Trades (SOL)" />
-          <ConfigItem name="TRADE_BUFFER_SECONDS" value="180" desc="Puffer fuer Trade-Aggregation (Sekunden)" />
+          <ConfigItem name="TRADE_BUFFER_SECONDS" value="180" desc="Puffer fuer Trade-Subscription nach Cache-Ablauf (Sekunden)" />
         </Chapter>
 
         {/* 7. MCP-Tools */}
         <Chapter
           id="disc-mcp"
-          title="MCP-Tools (14)"
+          title="MCP-Tools (13)"
           icon="🤖"
           expanded={expandedChapters.includes('disc-mcp')}
           onChange={handleChapterChange('disc-mcp')}
         >
           <Alert severity="info" sx={{ mb: 2 }}>
             AI-Assistenten (Claude Code, Cursor) koennen per MCP direkt mit Discovery interagieren.
+            Alle Endpoints werden automatisch als MCP-Tools bereitgestellt.
           </Alert>
 
           <Grid container spacing={1}>
             {[
-              { name: 'get_health', desc: 'Service-Status & Live-Daten', cat: 'System' },
-              { name: 'get_metrics', desc: 'Prometheus-Metriken', cat: 'System' },
-              { name: 'get_config', desc: 'Konfiguration lesen', cat: 'Config' },
-              { name: 'update_config', desc: 'Konfiguration aendern', cat: 'Config' },
-              { name: 'reload_config', desc: 'Config + Phasen neu laden', cat: 'Config' },
-              { name: 'list_phases', desc: 'Alle Phasen auflisten', cat: 'Phasen' },
-              { name: 'create_phase', desc: 'Neue Phase erstellen', cat: 'Phasen' },
-              { name: 'update_phase', desc: 'Phase bearbeiten', cat: 'Phasen' },
-              { name: 'delete_phase', desc: 'Phase loeschen', cat: 'Phasen' },
-              { name: 'get_streams', desc: 'Aktive Coin-Streams', cat: 'Daten' },
-              { name: 'get_stream_stats', desc: 'Stream-Statistiken', cat: 'Daten' },
-              { name: 'get_recent_metrics', desc: 'Letzte Metriken aus DB', cat: 'Daten' },
-              { name: 'get_coin_detail', desc: 'Vollstaendige Coin-Daten', cat: 'Daten' },
-              { name: 'get_coin_analytics', desc: 'Coin-Performance', cat: 'Daten' },
+              { name: 'find_health', desc: 'Service-Status & Live-Daten', cat: 'System' },
+              { name: 'find_get_config', desc: 'Konfiguration lesen', cat: 'Config' },
+              { name: 'find_update_config', desc: 'Konfiguration aendern', cat: 'Config' },
+              { name: 'find_reload_config', desc: 'Phasen-Config neu laden', cat: 'Config' },
+              { name: 'find_list_phases', desc: 'Alle Phasen auflisten', cat: 'Phasen' },
+              { name: 'find_create_phase', desc: 'Neue Phase erstellen', cat: 'Phasen' },
+              { name: 'find_update_phase', desc: 'Phase bearbeiten', cat: 'Phasen' },
+              { name: 'find_delete_phase', desc: 'Phase loeschen', cat: 'Phasen' },
+              { name: 'find_get_streams', desc: 'Aktive Coin-Streams', cat: 'Daten' },
+              { name: 'find_get_stream_stats', desc: 'Stream-Statistiken nach Phase', cat: 'Daten' },
+              { name: 'find_get_recent_metrics', desc: 'Letzte coin_metrics Eintraege', cat: 'Daten' },
+              { name: 'find_get_coin_detail', desc: 'Vollstaendige Coin-Daten + Live', cat: 'Daten' },
+              { name: 'find_get_coin_analytics', desc: 'Performance ueber Zeitfenster', cat: 'Daten' },
             ].map((tool) => (
               <Grid key={tool.name} size={{ xs: 12, sm: 6 }}>
                 <McpToolRow name={tool.name} desc={tool.desc} cat={tool.cat} />

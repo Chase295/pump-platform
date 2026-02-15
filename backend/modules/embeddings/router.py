@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from backend.database import get_pool
 from backend.modules.embeddings import db_queries as db
 from backend.modules.embeddings.schemas import (
     CreateConfigRequest,
@@ -190,15 +191,6 @@ async def browse_embeddings(
     )
 
 
-@router.get("/browse/{embedding_id}")
-async def get_embedding(embedding_id: int):
-    """Get single embedding details."""
-    emb = await db.get_embedding_by_id(embedding_id)
-    if not emb:
-        raise HTTPException(status_code=404, detail="Embedding not found")
-    return emb
-
-
 @router.get("/browse/by-mint/{mint}")
 async def get_embeddings_by_mint(
     mint: str,
@@ -206,6 +198,15 @@ async def get_embeddings_by_mint(
 ):
     """Get all embeddings for a specific coin."""
     return await db.get_embeddings(mint=mint, limit=limit)
+
+
+@router.get("/browse/{embedding_id}")
+async def get_embedding(embedding_id: int):
+    """Get single embedding details."""
+    emb = await db.get_embedding_by_id(embedding_id)
+    if not emb:
+        raise HTTPException(status_code=404, detail="Embedding not found")
+    return emb
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +393,6 @@ async def cluster_analysis(
     limit: int = Query(5000, ge=100, le=50000),
 ):
     """K-means cluster analysis on embeddings."""
-    from backend.database import get_pool
     pool = get_pool()
 
     conditions = []
@@ -420,7 +420,7 @@ async def cluster_analysis(
     )
 
     if len(rows) < k:
-        return {"error": f"Not enough embeddings ({len(rows)}) for {k} clusters"}
+        raise HTTPException(status_code=400, detail=f"Not enough embeddings ({len(rows)}) for {k} clusters")
 
     import numpy as np
     from sklearn.cluster import KMeans

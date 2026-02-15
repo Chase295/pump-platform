@@ -88,9 +88,11 @@ async def create_model_job_advanced(
     use_graph_features: bool = False,
     use_embedding_features: bool = False,
     use_transaction_features: bool = False,
+    use_metadata_features: bool = False,
     graph_feature_names: str = None,
     embedding_feature_names: str = None,
     transaction_feature_names: str = None,
+    metadata_feature_names: str = None,
 ):
     """
     Advanced model creation endpoint with full configuration options.
@@ -102,8 +104,6 @@ async def create_model_job_advanced(
         custom_params: Dict[str, Any] = {}
         if scale_pos_weight is not None:
             custom_params["scale_pos_weight"] = scale_pos_weight
-        custom_params["use_flag_features"] = use_flag_features
-
         parsed_phases = None
         if phases:
             try:
@@ -114,6 +114,7 @@ async def create_model_job_advanced(
         parsed_graph_names = graph_feature_names.split(",") if graph_feature_names else None
         parsed_embedding_names = embedding_feature_names.split(",") if embedding_feature_names else None
         parsed_transaction_names = transaction_feature_names.split(",") if transaction_feature_names else None
+        parsed_metadata_names = metadata_feature_names.split(",") if metadata_feature_names else None
 
         request = TrainModelRequest(
             name=name,
@@ -132,9 +133,12 @@ async def create_model_job_advanced(
             use_graph_features=use_graph_features,
             use_embedding_features=use_embedding_features,
             use_transaction_features=use_transaction_features,
+            use_metadata_features=use_metadata_features,
+            use_flag_features=use_flag_features,
             graph_feature_names=parsed_graph_names,
             embedding_feature_names=parsed_embedding_names,
             transaction_feature_names=parsed_transaction_names,
+            metadata_feature_names=parsed_metadata_names,
             params=custom_params if custom_params else None,
         )
 
@@ -222,14 +226,18 @@ async def _create_model_job(request: TrainModelRequest):
         final_params["use_embedding_features"] = True
     if request.use_transaction_features:
         final_params["use_transaction_features"] = True
+    if request.use_metadata_features:
+        final_params["use_metadata_features"] = True
     if request.graph_feature_names:
         final_params["graph_feature_names"] = request.graph_feature_names
     if request.embedding_feature_names:
         final_params["embedding_feature_names"] = request.embedding_feature_names
     if request.transaction_feature_names:
         final_params["transaction_feature_names"] = request.transaction_feature_names
+    if request.metadata_feature_names:
+        final_params["metadata_feature_names"] = request.metadata_feature_names
 
-    use_flag = final_params.get("use_flag_features", True)
+    use_flag = request.use_flag_features
 
     effective_target_var = request.target_var
     if request.use_time_based_prediction and not effective_target_var:
@@ -617,8 +625,19 @@ async def get_available_features(include_flags: bool = Query(True, description="
         "tx_whale_pct", "tx_quick_reversal_count",
     ]
 
+    metadata_features = [
+        "meta_initial_buy_sol", "meta_initial_buy_ratio",
+        "meta_token_supply_log", "meta_has_socials",
+        "meta_social_count", "meta_metadata_mutable",
+        "meta_mint_authority", "meta_risk_score",
+        "meta_top10_holders_pct", "meta_liquidity_sol",
+        "meta_is_mayhem", "meta_sol_price_usd",
+        "meta_sol_price_change_1h",
+    ]
+
     total = (len(base_features) + len(engineered_features) + len(flag_features)
-             + len(graph_features) + len(embedding_features) + len(transaction_features))
+             + len(graph_features) + len(embedding_features) + len(transaction_features)
+             + len(metadata_features))
 
     return {
         "base": sorted(base_features),
@@ -627,6 +646,7 @@ async def get_available_features(include_flags: bool = Query(True, description="
         "graph": sorted(graph_features),
         "embedding": sorted(embedding_features),
         "transaction": sorted(transaction_features),
+        "metadata": sorted(metadata_features),
         "total": total,
         "base_count": len(base_features),
         "engineered_count": len(engineered_features),
@@ -634,6 +654,7 @@ async def get_available_features(include_flags: bool = Query(True, description="
         "graph_count": len(graph_features),
         "embedding_count": len(embedding_features),
         "transaction_count": len(transaction_features),
+        "metadata_count": len(metadata_features),
     }
 
 

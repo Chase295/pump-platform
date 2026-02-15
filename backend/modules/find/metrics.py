@@ -151,16 +151,19 @@ def calculate_advanced_metrics(buf: dict) -> dict:
 
 
 async def flush_metrics_batch(batch_data: list[tuple], phases_in_batch: list[int],
-                               status: dict) -> None:
+                               status: dict) -> bool:
     """Write a batch of metric rows to coin_metrics.
 
     Args:
         batch_data: List of tuples matching the INSERT parameter order.
         phases_in_batch: Phase IDs corresponding to each row (for logging).
         status: The shared ``unified_status`` dict to update counters.
+
+    Returns:
+        True if the batch was written successfully, False otherwise.
     """
     if not batch_data:
-        return
+        return True
 
     sql = """
         INSERT INTO coin_metrics (
@@ -189,7 +192,7 @@ async def flush_metrics_batch(batch_data: list[tuple], phases_in_batch: list[int
             counts = Counter(phases_in_batch)
             details = ", ".join([f"Phase {k}: {v}" for k, v in sorted(counts.items())])
             logger.info("Saved metrics for %d coins (%s)", len(batch_data), details)
-            return
+            return True
 
         except asyncio.TimeoutError:
             logger.error("Metrics flush attempt %d/%d: pool.acquire timeout", attempt, max_attempts)
@@ -200,10 +203,11 @@ async def flush_metrics_batch(batch_data: list[tuple], phases_in_batch: list[int
             await asyncio.sleep(1.0)
 
     # Both attempts failed
-    logger.error("Metrics flush failed after %d attempts - %d rows lost", max_attempts, len(batch_data))
+    logger.error("Metrics flush failed after %d attempts - %d rows NOT saved (will retry next cycle)", max_attempts, len(batch_data))
     status["db_connected"] = False
     from backend.shared.prometheus import find_db_connected
     find_db_connected.set(0)
+    return False
 
 
 async def flush_transactions_batch(trades_data: list[tuple], status: dict) -> None:

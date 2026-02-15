@@ -37,6 +37,7 @@ import {
   Hub as GraphIcon,
   Fingerprint as EmbeddingIcon,
   Receipt as TransactionIcon,
+  Label as MetadataIcon,
   Insights as ShapIcon,
   StopCircle as StopIcon,
   Security as ShieldIcon,
@@ -54,6 +55,7 @@ import {
   GRAPH_FEATURES,
   EMBEDDING_FEATURES,
   TRANSACTION_FEATURES,
+  METADATA_FEATURES,
   getBaseFeaturesByCategory,
   getEngFeaturesByCategory,
   getHighImportanceEngFeatures,
@@ -131,6 +133,7 @@ const CreateModel: React.FC = () => {
           {form.selectedGraphFeatures.length > 0 && <Row label="Graph" value={`+${form.selectedGraphFeatures.length}`} />}
           {form.selectedEmbeddingFeatures.length > 0 && <Row label="Embedding" value={`+${form.selectedEmbeddingFeatures.length}`} />}
           {form.selectedTransactionFeatures.length > 0 && <Row label="Transaction" value={`+${form.selectedTransactionFeatures.length}`} />}
+          {form.selectedMetadataFeatures.length > 0 && <Row label="Metadata" value={`+${form.selectedMetadataFeatures.length}`} />}
           <Row label="Total Features" value={String(totalFeatures)} bold />
           <Row label="Balance" value={form.balanceMethod === 'scale_pos_weight' ? `SPW ${form.scaleWeight}x` : form.balanceMethod === 'smote' ? 'SMOTE' : 'None'} />
           {durationValid && <Row label="Period" value={`${trainingDurationHours}h`} />}
@@ -421,14 +424,15 @@ const CreateModel: React.FC = () => {
             {/* Extra Feature Sources */}
             <Typography variant="subtitle2" sx={{ mb: 1, mt: 2, fontWeight: 700 }}>Extra Sources</Typography>
             <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
-              <Button size="small" variant="outlined" onClick={() => { toggleAllExtraFeatures('selectedGraphFeatures', GRAPH_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedEmbeddingFeatures', EMBEDDING_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedTransactionFeatures', TRANSACTION_FEATURES.map((f) => f.id)); }}>All Sources</Button>
-              <Button size="small" variant="outlined" color="error" onClick={() => { updateField('selectedGraphFeatures', []); updateField('selectedEmbeddingFeatures', []); updateField('selectedTransactionFeatures', []); }}>None</Button>
+              <Button size="small" variant="outlined" onClick={() => { toggleAllExtraFeatures('selectedGraphFeatures', GRAPH_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedEmbeddingFeatures', EMBEDDING_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedTransactionFeatures', TRANSACTION_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedMetadataFeatures', METADATA_FEATURES.map((f) => f.id)); }}>All Sources</Button>
+              <Button size="small" variant="outlined" color="error" onClick={() => { updateField('selectedGraphFeatures', []); updateField('selectedEmbeddingFeatures', []); updateField('selectedTransactionFeatures', []); updateField('selectedMetadataFeatures', []); }}>None</Button>
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
               {([
                 { key: 'selectedGraphFeatures' as const, features: GRAPH_FEATURES, label: 'Graph', icon: <GraphIcon sx={{ fontSize: 18 }} />, color: '#00d4ff' },
                 { key: 'selectedEmbeddingFeatures' as const, features: EMBEDDING_FEATURES, label: 'Embedding', icon: <EmbeddingIcon sx={{ fontSize: 18 }} />, color: '#9c27b0' },
                 { key: 'selectedTransactionFeatures' as const, features: TRANSACTION_FEATURES, label: 'Transaction', icon: <TransactionIcon sx={{ fontSize: 18 }} />, color: '#00bcd4' },
+                { key: 'selectedMetadataFeatures' as const, features: METADATA_FEATURES, label: 'Metadata', icon: <MetadataIcon sx={{ fontSize: 18 }} />, color: '#ff9800' },
               ]).map((source) => {
                 const selectedCount = form[source.key].length;
                 const totalCount = source.features.length;
@@ -460,6 +464,7 @@ const CreateModel: React.FC = () => {
                   selectedGraphFeatures: { features: GRAPH_FEATURES, color: '#00d4ff' },
                   selectedEmbeddingFeatures: { features: EMBEDDING_FEATURES, color: '#9c27b0' },
                   selectedTransactionFeatures: { features: TRANSACTION_FEATURES, color: '#00bcd4' },
+                  selectedMetadataFeatures: { features: METADATA_FEATURES, color: '#ff9800' },
                 } as const;
                 const source = sourceMap[expandedExtraSource as keyof typeof sourceMap];
                 if (!source) return null;
@@ -617,6 +622,42 @@ const CreateModel: React.FC = () => {
                   label={<Typography variant="body2" sx={{ fontWeight: 600 }}>SHAP Explainability</Typography>}
                 />
                 <Typography variant="caption" color="text.secondary">Feature importance (slower training)</Typography>
+              </Box>
+
+              {/* Description */}
+              <Typography variant="subtitle2" sx={{ mb: 1, mt: 1, fontWeight: 700 }}>Description</Typography>
+              <TextField
+                value={form.description}
+                onChange={(e) => updateField('description', e.target.value)}
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                maxRows={4}
+                placeholder="Optional model description..."
+                sx={{ mb: 2 }}
+              />
+
+              {/* CV Splits */}
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Cross-Validation Splits</Typography>
+              <Box sx={{ mb: 2, px: 1 }}>
+                <Typography variant="body2" color="text.secondary">Splits: <strong>{form.cvSplits}</strong></Typography>
+                <Slider
+                  value={form.cvSplits}
+                  onChange={(_, v) => updateField('cvSplits', v as number)}
+                  min={2} max={10} step={1}
+                  marks={[{ value: 2, label: '2' }, { value: 5, label: '5' }, { value: 10, label: '10' }]}
+                  valueLabelDisplay="auto"
+                />
+              </Box>
+
+              {/* TimeSeriesSplit */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <FormControlLabel
+                  control={<Switch checked={form.useTimeseriesSplit} onChange={(e) => updateField('useTimeseriesSplit', e.target.checked)} size="small" />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>TimeSeriesSplit</Typography>}
+                />
+                <Typography variant="caption" color="text.secondary">Preserves temporal order in CV (recommended for time-series data)</Typography>
               </Box>
 
               {/* Tuning */}

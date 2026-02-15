@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -20,6 +21,7 @@ import Phases from './discovery/Phases';
 import Streams from './discovery/Streams';
 import FindConfig from './discovery/FindConfig';
 import DiscoveryInfo from './discovery/DiscoveryInfo';
+import CoinDetailPage from './discovery/CoinDetailPage';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -53,7 +55,7 @@ function a11yProps(index: number) {
   };
 }
 
-export default function Discovery() {
+function DiscoveryTabs() {
   const [tabValue, setTabValue] = useState(0);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -61,7 +63,7 @@ export default function Discovery() {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ mt: { xs: 1, sm: 2 }, mb: 4 }}>
+    <>
       <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
         Discovery (pump-find)
       </Typography>
@@ -110,6 +112,17 @@ export default function Discovery() {
       <TabPanel value={tabValue} index={4}>
         <DiscoveryInfo />
       </TabPanel>
+    </>
+  );
+}
+
+export default function Discovery() {
+  return (
+    <Container maxWidth="lg" sx={{ mt: { xs: 1, sm: 2 }, mb: 4 }}>
+      <Routes>
+        <Route index element={<DiscoveryTabs />} />
+        <Route path="coin/:mint" element={<CoinDetailPage />} />
+      </Routes>
     </Container>
   );
 }

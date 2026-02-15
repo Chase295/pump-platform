@@ -145,8 +145,8 @@ class CoinCache:
         expired_coins = total_coins - activated_coins
 
         if self.cache:
-            oldest_age = min(time.time() - d["discovered_at"] for d in self.cache.values())
-            newest_age = max(time.time() - d["discovered_at"] for d in self.cache.values())
+            oldest_age = max(time.time() - d["discovered_at"] for d in self.cache.values())
+            newest_age = min(time.time() - d["discovered_at"] for d in self.cache.values())
         else:
             oldest_age = newest_age = 0
 
@@ -169,11 +169,21 @@ class CoinFilter:
     def __init__(self, spam_burst_window: int = 30):
         self.recent_coins: list = []
         self.spam_burst_window = spam_burst_window
+        self._last_pattern: str = settings.BAD_NAMES_PATTERN
         self._bad_names_re = re.compile(
-            rf'({settings.BAD_NAMES_PATTERN})', re.IGNORECASE,
+            rf'({self._last_pattern})', re.IGNORECASE,
         )
 
+    def _refresh_regex_if_changed(self) -> None:
+        """Recompile regex if BAD_NAMES_PATTERN was changed at runtime."""
+        current = settings.BAD_NAMES_PATTERN
+        if current != self._last_pattern:
+            self._last_pattern = current
+            self._bad_names_re = re.compile(rf'({current})', re.IGNORECASE)
+            logger.info("CoinFilter: bad names regex recompiled")
+
     def should_filter_coin(self, coin_data: dict) -> tuple[bool, str | None]:
+        self._refresh_regex_if_changed()
         name = coin_data.get("name", "").strip()
         symbol = coin_data.get("symbol", "").strip()
 
@@ -229,7 +239,7 @@ async def send_batch_to_n8n(batch: list, status: dict) -> bool:
     payload = {
         "source": "pump_find_backend",
         "count": len(batch),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": batch,
     }
 
@@ -401,6 +411,8 @@ class CoinStreamer:
                 last_saved_signatures=self.last_saved_signatures,
                 stale_data_warnings=self.stale_data_warnings,
                 force_resubscribe_fn=None,
+                ath_cache=self.ath_cache,
+                subscription_watchdog=self.subscription_watchdog,
             )
             if results:
                 batch_data = [r[0] for r in results]
@@ -525,8 +537,8 @@ class CoinStreamer:
                     if mint in self.coin_cache.cache:
                         self.coin_cache.cache[mint]["n8n_sent"] = True
 
-            self.discovery_buffer = []
-            self.last_discovery_flush = time.time()
+                self.discovery_buffer = []
+                self.last_discovery_flush = time.time()
 
     # ------------------------------------------------------------------
     # Cache management
@@ -632,34 +644,37 @@ class CoinStreamer:
     # ------------------------------------------------------------------
 
     async def _force_resubscribe(self, mint: str) -> None:
-        """Force re-subscribe for a coin to renew the WebSocket subscription."""
+        """Queue a single coin for re-subscription via the batching task."""
         if mint not in self.watchlist:
             return
-        try:
-            if self.websocket:
-                await self.websocket.send(json.dumps({"method": "unsubscribeTokenTrade", "keys": [mint]}))
-                await asyncio.sleep(0.1)
-                await self.websocket.send(json.dumps({"method": "subscribeTokenTrade", "keys": [mint]}))
-                self.subscription_watchdog[mint] = time.time()
-                logger.debug("Re-subscription sent for %s", mint[:8])
-            else:
-                logger.warning("No active WebSocket for re-subscribe of %s", mint[:8])
-        except Exception as e:
-            logger.error("Re-subscribe error for %s: %s", mint[:8], e)
+        self.subscribed_mints.discard(mint)
+        self.pending_subscriptions.add(mint)
+        self.subscription_watchdog[mint] = time.time()
 
     async def _check_subscription_watchdog(self, now_ts: float) -> None:
-        """Check all active coins for prolonged inactivity."""
+        """Check active coins for prolonged inactivity and batch re-subscribe via pending_subscriptions."""
         inactive_coins = []
         for mint in self.watchlist:
             last_trade = self.last_trade_timestamps.get(mint, 0)
             time_since_trade = now_ts - last_trade
             if time_since_trade > 600:  # 10 minutes
-                inactive_coins.append((mint, time_since_trade))
+                inactive_coins.append(mint)
 
-        if inactive_coins:
-            logger.warning("[Watchdog] %d coins without trades for >10 min", len(inactive_coins))
-            for mint, inactive_time in inactive_coins:
-                await self._force_resubscribe(mint)
+        if not inactive_coins:
+            return
+
+        # Cap at 50 per watchdog round to avoid overloading the connection
+        batch = inactive_coins[:50]
+        logger.warning("[Watchdog] %d coins without trades for >10 min, re-queuing %d for subscription",
+                       len(inactive_coins), len(batch))
+
+        # Remove from subscribed_mints so the batching task will re-subscribe them
+        for mint in batch:
+            self.subscribed_mints.discard(mint)
+            self.subscription_watchdog[mint] = now_ts
+
+        # Route through the batching task (50/msg, 2s interval) instead of sending directly
+        self.pending_subscriptions.update(batch)
 
     # ------------------------------------------------------------------
     # Buffer cleanup
@@ -788,6 +803,11 @@ class CoinStreamer:
                                 for mint in to_remove:
                                     self.watchlist.pop(mint, None)
                                     self.subscribed_mints.discard(mint)
+                                    self.ath_cache.pop(mint, None)
+                                    self.last_trade_timestamps.pop(mint, None)
+                                    self.subscription_watchdog.pop(mint, None)
+                                    self.stale_data_warnings.pop(mint, None)
+                                    self.last_saved_signatures.pop(mint, None)
 
                                 to_add = current_set - self.subscribed_mints
                                 for mint in to_add:
@@ -802,7 +822,7 @@ class CoinStreamer:
                                             "next_flush": now_ts + interval,
                                             "interval": interval,
                                         }
-                                        self.subscribed_mints.add(mint)
+                                        self.pending_subscriptions.add(mint)
 
                                 self.status["db_connected"] = True
                                 find_db_connected.set(1)
@@ -898,11 +918,19 @@ class CoinStreamer:
                             last_saved_signatures=self.last_saved_signatures,
                             stale_data_warnings=self.stale_data_warnings,
                             force_resubscribe_fn=self._force_resubscribe,
+                            ath_cache=self.ath_cache,
+                            subscription_watchdog=self.subscription_watchdog,
                         )
                         if results:
                             batch_data = [r[0] for r in results]
                             phases_in_batch = [r[1] for r in results]
-                            await flush_metrics_batch(batch_data, phases_in_batch, self.status)
+                            flush_ok = await flush_metrics_batch(batch_data, phases_in_batch, self.status)
+                            if flush_ok:
+                                # Reset buffers only after successful DB write
+                                for data_tuple in batch_data:
+                                    flush_mint = data_tuple[0]  # mint is first element
+                                    if flush_mint in self.watchlist:
+                                        self.watchlist[flush_mint]["buffer"] = get_empty_buffer()
 
                         if trades_for_flush:
                             await flush_transactions_batch(trades_for_flush, self.status)

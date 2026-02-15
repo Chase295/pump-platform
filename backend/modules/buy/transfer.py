@@ -131,9 +131,29 @@ class TransferService:
         # Generate simulation signature
         tx_signature = f"SIM-TRANSFER-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
 
-        # Database transaction
+        # Database transaction with row-level locking
         async with transaction() as conn:
-            # 1. Deduct from sender
+            # 1. Lock wallet row and re-check balance
+            locked_wallet = await conn.fetchrow(
+                "SELECT * FROM wallets WHERE id = $1 FOR UPDATE",
+                wallet['id']
+            )
+            if not locked_wallet:
+                return {
+                    "status": "error",
+                    "code": "WALLET_NOT_FOUND",
+                    "message": "Wallet disappeared during transaction"
+                }
+
+            current_balance = float(locked_wallet['virtual_sol_balance'])
+            if current_balance < total_deduction:
+                return {
+                    "status": "error",
+                    "code": "INSUFFICIENT_FUNDS",
+                    "message": f"Insufficient funds. Available: {current_balance:.6f} SOL, Required: {total_deduction:.6f} SOL"
+                }
+
+            # 2. Deduct from sender
             await conn.execute(
                 """
                 UPDATE wallets
@@ -145,7 +165,7 @@ class TransferService:
                 wallet['id']
             )
 
-            # 2. Check if recipient is in our database
+            # 4. Check if recipient is in our database
             recipient_wallet = await conn.fetchrow(
                 "SELECT id, type FROM wallets WHERE address = $1",
                 to_address
@@ -164,7 +184,7 @@ class TransferService:
                     recipient_wallet['id']
                 )
 
-            # 3. Create transfer log
+            # 5. Create transfer log
             await conn.execute(
                 """
                 INSERT INTO transfer_logs (

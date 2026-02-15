@@ -70,12 +70,15 @@ class EmbeddingService:
         now = datetime.now(timezone.utc)
 
         for config_id, generator in self.generators.items():
+            config_created = 0
             try:
                 config = await db.get_config(config_id)
                 if not config or not config["is_active"]:
                     continue
 
                 window_seconds = config["window_seconds"]
+                overlap_seconds = config.get("window_overlap_seconds", 0)
+                step_seconds = max(1, window_seconds - overlap_seconds)
                 batch_size = 500  # Process up to 500 mints per window
 
                 # Find where we left off
@@ -86,7 +89,7 @@ class EmbeddingService:
                 else:
                     start_from = last_ts
 
-                # Generate non-overlapping windows
+                # Generate windows with optional overlap
                 current = start_from
                 while current + timedelta(seconds=window_seconds) <= now:
                     window_end = current + timedelta(seconds=window_seconds)
@@ -94,7 +97,7 @@ class EmbeddingService:
                     # Find all active mints in this window
                     mints = await db.get_mints_in_window(current, window_end)
                     if not mints:
-                        current = window_end
+                        current += timedelta(seconds=step_seconds)
                         continue
 
                     # Process in batches
@@ -107,7 +110,6 @@ class EmbeddingService:
                         if embeddings:
                             # Prepare rows for batch insert
                             rows = []
-                            new_ids = []
                             for mint, vector in embeddings.items():
                                 vec_str = "[" + ",".join(str(float(v)) for v in vector) + "]"
                                 fhash = generator.feature_hash(vector)
@@ -125,16 +127,17 @@ class EmbeddingService:
                                 ))
 
                             inserted = await db.insert_embeddings_batch(rows)
+                            config_created += inserted
                             results["created"] += inserted
                             embeddings_generated.labels(strategy=config["strategy"]).inc(inserted)
 
                         results["processed"] += len(batch_mints)
 
-                    current = window_end
+                    current += timedelta(seconds=step_seconds)
 
-                # Update config stats
-                if results["created"] > 0:
-                    await db.update_config_stats(config_id, results["created"])
+                # Update config stats with per-config count
+                if config_created > 0:
+                    await db.update_config_stats(config_id, config_created)
 
             except Exception as e:
                 logger.error("Error processing config %d: %s", config_id, e, exc_info=True)

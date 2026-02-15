@@ -170,10 +170,14 @@ async def switch_phase(mint: str, old_phase: int, new_phase: int) -> None:
 
 
 async def stop_tracking(mint: str, is_graduation: bool, watchlist: dict,
-                         subscribed_mints: set, dirty_aths: set) -> None:
+                         subscribed_mints: set, dirty_aths: set,
+                         ath_cache: dict = None, last_trade_timestamps: dict = None,
+                         subscription_watchdog: dict = None, stale_data_warnings: dict = None,
+                         last_saved_signatures: dict = None) -> None:
     """Stop tracking a coin -- mark it as finished or graduated in the database.
 
-    Also cleans up in-memory state (watchlist, subscribed_mints, dirty_aths).
+    Also cleans up in-memory state (watchlist, subscribed_mints, dirty_aths,
+    and all per-coin tracking dicts to prevent memory leaks).
 
     Args:
         mint: Token address.
@@ -181,6 +185,11 @@ async def stop_tracking(mint: str, is_graduation: bool, watchlist: dict,
         watchlist: Global watchlist dict.
         subscribed_mints: Set of currently subscribed mints.
         dirty_aths: Set of mints with pending ATH updates.
+        ath_cache: ATH price cache (optional, cleaned up if provided).
+        last_trade_timestamps: Last trade timestamp cache (optional).
+        subscription_watchdog: Watchdog timer cache (optional).
+        stale_data_warnings: Stale data warning counter cache (optional).
+        last_saved_signatures: Deduplication signature cache (optional).
     """
     try:
         if is_graduation:
@@ -207,6 +216,16 @@ async def stop_tracking(mint: str, is_graduation: bool, watchlist: dict,
         watchlist.pop(mint, None)
         subscribed_mints.discard(mint)
         dirty_aths.discard(mint)
+        if ath_cache is not None:
+            ath_cache.pop(mint, None)
+        if last_trade_timestamps is not None:
+            last_trade_timestamps.pop(mint, None)
+        if subscription_watchdog is not None:
+            subscription_watchdog.pop(mint, None)
+        if stale_data_warnings is not None:
+            stale_data_warnings.pop(mint, None)
+        if last_saved_signatures is not None:
+            last_saved_signatures.pop(mint, None)
         find_active_streams.set(len(watchlist))
 
 
@@ -222,6 +241,8 @@ async def check_lifecycle_and_advance(
     last_saved_signatures: dict,
     stale_data_warnings: dict,
     force_resubscribe_fn=None,
+    ath_cache: dict | None = None,
+    subscription_watchdog: dict | None = None,
 ) -> list[tuple]:
     """Run lifecycle checks (graduation, phase advance) and collect metrics to flush.
 
@@ -241,6 +262,8 @@ async def check_lifecycle_and_advance(
         last_saved_signatures: ``{mint: signature}`` for stale data detection.
         stale_data_warnings: ``{mint: count}`` of stale data warnings.
         force_resubscribe_fn: Optional async callable for re-subscribing.
+        ath_cache: ATH price cache (cleaned up on stop_tracking).
+        subscription_watchdog: Watchdog timer cache (cleaned up on stop_tracking).
 
     Returns:
         Tuple of (metrics_results, trades_for_flush):
@@ -266,7 +289,10 @@ async def check_lifecycle_and_advance(
         # Graduation check
         if current_bonding_pct >= 99.5:
             await stop_tracking(mint, is_graduation=True, watchlist=watchlist,
-                                subscribed_mints=subscribed_mints, dirty_aths=dirty_aths)
+                                subscribed_mints=subscribed_mints, dirty_aths=dirty_aths,
+                                ath_cache=ath_cache, last_trade_timestamps=last_trade_timestamps,
+                                subscription_watchdog=subscription_watchdog, stale_data_warnings=stale_data_warnings,
+                                last_saved_signatures=last_saved_signatures)
             continue
 
         # Phase upgrade check -- find the correct phase for the coin's age
@@ -290,7 +316,10 @@ async def check_lifecycle_and_advance(
             # If no suitable phase found, coin has outlived all phases
             if target_pid is None or target_pid >= 99:
                 await stop_tracking(mint, is_graduation=False, watchlist=watchlist,
-                                    subscribed_mints=subscribed_mints, dirty_aths=dirty_aths)
+                                    subscribed_mints=subscribed_mints, dirty_aths=dirty_aths,
+                                    ath_cache=ath_cache, last_trade_timestamps=last_trade_timestamps,
+                                    subscription_watchdog=subscription_watchdog, stale_data_warnings=stale_data_warnings,
+                                    last_saved_signatures=last_saved_signatures)
                 continue
 
             # Advance phase -- only update in-memory state after DB succeeds
@@ -368,9 +397,14 @@ async def check_lifecycle_and_advance(
                         t[0], now_berlin, t[1], t[2], t[3], t[4], t[5], phase_id,
                     ))
 
-            # Always reset buffer
-            entry["buffer"] = get_empty_buffer()
-            entry["next_flush"] = now_ts + entry["interval"]
+            if should_save:
+                # Buffer reset deferred to streamer.py after successful flush_metrics_batch
+                # Only update next_flush here so we don't re-collect the same interval
+                entry["next_flush"] = now_ts + entry["interval"]
+            else:
+                # No data to save -- safe to reset immediately
+                entry["buffer"] = get_empty_buffer()
+                entry["next_flush"] = now_ts + entry["interval"]
 
     metrics_results = list(zip(batch_data, phases_in_batch)) if batch_data else []
     return metrics_results, trades_for_flush

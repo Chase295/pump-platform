@@ -58,7 +58,7 @@ class TradingService:
         Returns:
             Dict with status, signature, and trade data
         """
-        # 1. Load wallet
+        # 1. Load wallet (initial read for risk checks -- re-read with lock inside transaction)
         wallet = await fetchrow(
             "SELECT * FROM wallets WHERE alias = $1",
             wallet_alias
@@ -73,7 +73,7 @@ class TradingService:
 
         wallet_id = wallet['id']
 
-        # 2. Risk Manager checks
+        # 2. Risk Manager checks (safe outside transaction -- not balance-dependent)
         risk_check = await RiskManager.check_trade_allowed(wallet_id)
         if not risk_check.allowed:
             return {
@@ -82,17 +82,7 @@ class TradingService:
                 "message": risk_check.reason
             }
 
-        # 3. Balance check (includes jito tip in total cost)
-        balance_check = await RiskManager.check_balance_sufficient(
-            wallet_id, amount_sol, include_fees=True,
-            jito_tip_lamports=jito_tip_lamports
-        )
-        if not balance_check.allowed:
-            return {
-                "status": "error",
-                "code": "INSUFFICIENT_FUNDS",
-                "message": balance_check.reason
-            }
+        # 3. Balance check moved inside transaction (see _simulate_buy)
 
         # 4. Route to TEST or REAL execution
         if wallet['type'] == 'TEST':
@@ -156,9 +146,29 @@ class TradingService:
         # Generate simulation signature
         tx_signature = f"SIM-BUY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
 
-        # Database transaction
+        # Database transaction with row-level locking to prevent double-spend
         async with transaction() as conn:
-            # 1. Deduct balance
+            # 1. Lock wallet row and re-read balance
+            locked_wallet = await conn.fetchrow(
+                "SELECT * FROM wallets WHERE id = $1 FOR UPDATE",
+                wallet['id']
+            )
+            if not locked_wallet:
+                return {
+                    "status": "error",
+                    "code": "WALLET_NOT_FOUND",
+                    "message": "Wallet disappeared during transaction"
+                }
+
+            # Balance check inside transaction (prevents race condition)
+            if locked_wallet['virtual_sol_balance'] < Decimal(str(total_cost)):
+                return {
+                    "status": "error",
+                    "code": "INSUFFICIENT_FUNDS",
+                    "message": f"Insufficient funds. Available: {float(locked_wallet['virtual_sol_balance']):.6f} SOL, Required: {total_cost:.6f} SOL"
+                }
+
+            # 2. Deduct balance
             await conn.execute(
                 """
                 UPDATE wallets
@@ -170,7 +180,7 @@ class TradingService:
                 wallet['id']
             )
 
-            # 2. Create or update position
+            # 3. Create or update position
             existing_position = await conn.fetchrow(
                 """
                 SELECT id, tokens_held, initial_sol_spent
@@ -214,7 +224,7 @@ class TradingService:
                     Decimal(str(total_cost))
                 )
 
-            # 3. Create trade log
+            # 4. Create trade log
             await conn.execute(
                 """
                 INSERT INTO trade_logs (
@@ -413,9 +423,15 @@ class TradingService:
         remaining_tokens = total_tokens - tokens_to_sell
         close_position = remaining_tokens < 0.000001  # Essentially zero
 
-        # Database transaction
+        # Database transaction with row-level locking
         async with transaction() as conn:
-            # 1. Add balance
+            # 1. Lock wallet row to prevent concurrent modifications
+            await conn.fetchrow(
+                "SELECT id FROM wallets WHERE id = $1 FOR UPDATE",
+                wallet['id']
+            )
+
+            # 2. Add balance
             await conn.execute(
                 """
                 UPDATE wallets
@@ -427,7 +443,7 @@ class TradingService:
                 wallet['id']
             )
 
-            # 2. Update or close position
+            # 3. Update or close position
             if close_position:
                 await conn.execute(
                     """
@@ -452,7 +468,7 @@ class TradingService:
                     position['id']
                 )
 
-            # 3. Create trade log
+            # 4. Create trade log
             await conn.execute(
                 """
                 INSERT INTO trade_logs (
@@ -473,7 +489,7 @@ class TradingService:
                 tx_signature
             )
 
-            # 4. Update risk metrics (inside transaction for atomicity)
+            # 5. Update risk metrics (inside transaction for atomicity)
             await RiskManager.update_metrics_after_trade(wallet['id'], pnl, conn=conn)
 
         # Get updated balance

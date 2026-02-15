@@ -426,7 +426,7 @@ function App() {
         <Layout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/discovery" element={<Discovery />} />
+            <Route path="/discovery/*" element={<Discovery />} />
             <Route path="/embeddings/*" element={<Embeddings />} />
             <Route path="/training/*" element={<Training />} />
             <Route path="/predictions/*" element={<Predictions />} />

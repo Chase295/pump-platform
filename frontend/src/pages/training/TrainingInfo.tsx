@@ -26,6 +26,7 @@ const chapterIds = [
   'train-base-features',
   'train-engineered',
   'train-extra-sources',
+  'train-metadata',
   'train-params',
   'train-metrics',
   'train-api',
@@ -60,7 +61,7 @@ const TrainingInfo: React.FC = () => (
           </Typography>
           <Box component="ul" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
             <li><Typography variant="body2">Asynchrone Job-Queue fuer Training, Test, Vergleich und Tuning</Typography></li>
-            <li><Typography variant="body2">28 Basis-Features + 66 Engineered Features + 51 Flag-Features + 22 Extra Source Features (Graph/Embedding/Transaction)</Typography></li>
+            <li><Typography variant="body2">28 Basis-Features + 66 Engineered Features + 66 Flag-Features + 35 Extra Source Features (Graph/Embedding/Transaction/Metadata)</Typography></li>
             <li><Typography variant="body2">Konfigurierbarer Vorhersage-Horizont (future_minutes) und Schwelle (min_percent_change)</Typography></li>
             <li><Typography variant="body2">Automatische Metrik-Berechnung: Accuracy, F1, Precision, Recall, ROC-AUC, MCC</Typography></li>
             <li><Typography variant="body2">Early Stopping, SHAP Feature Importance und Cross-Validation</Typography></li>
@@ -219,24 +220,24 @@ const TrainingInfo: React.FC = () => (
           </SmallTable>
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Flag-Features (51)</Typography>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Flag-Features (66)</Typography>
           <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>
             Aktivierbar mit <code>use_flag_features: true</code> (Standard: aktiv).
-            Boolesche/kategorische Features wie has_socials, has_telegram, metadata_is_mutable,
-            dev_created_many_coins etc.
+            Fuer jedes Engineered Feature wird ein <code>{'<feature>_has_data'}</code> Flag erzeugt,
+            das anzeigt ob genug Datenpunkte fuer das Rolling Window vorhanden sind.
           </Typography>
         </Chapter>
 
         {/* 4. Extra Source Features */}
         <Chapter
           id="train-extra-sources"
-          title="Extra Source Features (22)"
+          title="Extra Source Features (35)"
           icon="🔗"
           expanded={expandedChapters.includes('train-extra-sources')}
           onChange={handleChapterChange('train-extra-sources')}
         >
           <Alert severity="info" sx={{ mb: 2 }}>
-            Drei zusaetzliche Datenquellen mit insgesamt 22 Features.
+            Vier zusaetzliche Datenquellen mit insgesamt 35 Features.
             Jedes Feature ist einzeln auswaehlbar — nicht mehr nur an/aus pro Quelle.
           </Alert>
 
@@ -328,9 +329,113 @@ const TrainingInfo: React.FC = () => (
   "use_embedding_features": true,
   "embedding_feature_names": null,  // null = alle 6
 
-  "use_transaction_features": false  // komplett deaktiviert
+  "use_transaction_features": false,  // komplett deaktiviert
+
+  "use_metadata_features": true,
+  "metadata_feature_names": null  // null = alle 13
 }`}
           </CodeBlock>
+        </Chapter>
+
+        {/* 4b. Metadata Features (13) */}
+        <Chapter
+          id="train-metadata"
+          title="Metadata Features (13)"
+          icon="🏷️"
+          expanded={expandedChapters.includes('train-metadata')}
+          onChange={handleChapterChange('train-metadata')}
+        >
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Features aus <code>discovered_coins</code> und <code>exchange_rates</code>.
+            Erfassen Token-Eigenschaften zum Discovery-Zeitpunkt: Creator-Investment, Social-Praesenz,
+            Rug-Risiko-Indikatoren und SOL-Markt-Kontext.
+          </Alert>
+
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Feature</strong></TableCell>
+                  <TableCell><strong>Quelle</strong></TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><strong>ML-Nutzen</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><code>meta_initial_buy_sol</code></TableCell>
+                  <TableCell>initial_buy_sol (cap 100)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Creator-Investment in SOL</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_initial_buy_ratio</code></TableCell>
+                  <TableCell>initial_buy / market_cap</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Skin-in-the-Game relativ</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_token_supply_log</code></TableCell>
+                  <TableCell>log10(token_supply)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Skalierte Token-Supply</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_has_socials</code></TableCell>
+                  <TableCell>has_socials (0/1)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Social-Praesenz vorhanden</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_social_count</code></TableCell>
+                  <TableCell>social_count (0-4)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Quantifizierte Social-Praesenz</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_metadata_mutable</code></TableCell>
+                  <TableCell>metadata_is_mutable</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Rug-Risiko: Metadata aenderbar</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_mint_authority</code></TableCell>
+                  <TableCell>mint_authority_enabled</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Rug-Risiko: Kann nachminten</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_risk_score</code></TableCell>
+                  <TableCell>risk_score (0-1)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Vorberechneter Risiko-Score</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_top10_holders_pct</code></TableCell>
+                  <TableCell>top_10_holders_pct (0-1)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Holder-Konzentration</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_liquidity_sol</code></TableCell>
+                  <TableCell>log10(liquidity_sol + 1)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Initiale Liquiditaet</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_is_mayhem</code></TableCell>
+                  <TableCell>is_mayhem_mode (0/1)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Marktbedingung (Chaos-Modus)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_sol_price_usd</code></TableCell>
+                  <TableCell>exchange_rates</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>SOL-Preis als Markt-Kontext</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>meta_sol_price_change_1h</code></TableCell>
+                  <TableCell>Berechnet aus exchange_rates</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>SOL-Markt-Momentum (%)</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>Null-Handling</Typography>
+          <Box component="ul" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
+            <li><Typography variant="body2">Booleans (metadata_mutable, mint_authority): <code>null → 1.0</code> (riskant annehmen)</Typography></li>
+            <li><Typography variant="body2">Zahlen (risk_score, top10_holders_pct): <code>null → 0.0</code></Typography></li>
+            <li><Typography variant="body2">SOL-Preis: Naechster Eintrag in exchange_rates zum Discovery-Zeitpunkt</Typography></li>
+          </Box>
         </Chapter>
 
         {/* 5. Training-Parameter */}
@@ -419,7 +524,7 @@ const TrainingInfo: React.FC = () => (
                 <TableRow>
                   <TableCell><code>use_flag_features</code></TableCell>
                   <TableCell>true</TableCell>
-                  <TableCell>51 Flag-Features aktivieren</TableCell>
+                  <TableCell>66 Flag-Features aktivieren</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell><code>use_graph_features</code></TableCell>
@@ -450,6 +555,16 @@ const TrainingInfo: React.FC = () => (
                   <TableCell><code>transaction_feature_names</code></TableCell>
                   <TableCell>null</TableCell>
                   <TableCell>Einzelne Transaction-Features (null = alle 8)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>use_metadata_features</code></TableCell>
+                  <TableCell>false</TableCell>
+                  <TableCell>Metadata-Features laden (discovered_coins + exchange_rates)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>metadata_feature_names</code></TableCell>
+                  <TableCell>null</TableCell>
+                  <TableCell>Einzelne Metadata-Features (null = alle 13)</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell><code>phases</code></TableCell>

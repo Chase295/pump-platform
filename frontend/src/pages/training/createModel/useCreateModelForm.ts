@@ -44,6 +44,7 @@ export function useCreateModelForm() {
     selectedGraphFeatures: [],
     selectedEmbeddingFeatures: [],
     selectedTransactionFeatures: [],
+    selectedMetadataFeatures: [],
     trainStart: timeRange.current.trainStart,
     trainEnd: timeRange.current.trainEnd,
     selectedPhases: [],
@@ -54,6 +55,9 @@ export function useCreateModelForm() {
     enableShap: false,
     enableTuning: false,
     tuningIterations: 20,
+    description: '',
+    cvSplits: 5,
+    useTimeseriesSplit: true,
     activePreset: null,
   });
 
@@ -162,7 +166,7 @@ export function useCreateModelForm() {
     });
   }, []);
 
-  const toggleExtraFeature = useCallback((source: 'selectedGraphFeatures' | 'selectedEmbeddingFeatures' | 'selectedTransactionFeatures', id: string) => {
+  const toggleExtraFeature = useCallback((source: 'selectedGraphFeatures' | 'selectedEmbeddingFeatures' | 'selectedTransactionFeatures' | 'selectedMetadataFeatures', id: string) => {
     setForm((prev) => {
       const features = prev[source].includes(id)
         ? prev[source].filter((f) => f !== id)
@@ -171,7 +175,7 @@ export function useCreateModelForm() {
     });
   }, []);
 
-  const toggleAllExtraFeatures = useCallback((source: 'selectedGraphFeatures' | 'selectedEmbeddingFeatures' | 'selectedTransactionFeatures', allIds: string[]) => {
+  const toggleAllExtraFeatures = useCallback((source: 'selectedGraphFeatures' | 'selectedEmbeddingFeatures' | 'selectedTransactionFeatures' | 'selectedMetadataFeatures', allIds: string[]) => {
     setForm((prev) => {
       const allSelected = allIds.every((id) => prev[source].includes(id));
       const features = allSelected ? [] : [...allIds];
@@ -252,8 +256,9 @@ export function useCreateModelForm() {
       + form.selectedEngFeatures.length
       + form.selectedGraphFeatures.length
       + form.selectedEmbeddingFeatures.length
-      + form.selectedTransactionFeatures.length;
-  }, [form.selectedBaseFeatures, form.selectedEngFeatures, form.selectedGraphFeatures, form.selectedEmbeddingFeatures, form.selectedTransactionFeatures]);
+      + form.selectedTransactionFeatures.length
+      + form.selectedMetadataFeatures.length;
+  }, [form.selectedBaseFeatures, form.selectedEngFeatures, form.selectedGraphFeatures, form.selectedEmbeddingFeatures, form.selectedTransactionFeatures, form.selectedMetadataFeatures]);
 
   const trainingDurationHours = useMemo(() => {
     const ms = new Date(form.trainEnd).getTime() - new Date(form.trainStart).getTime();
@@ -281,12 +286,17 @@ export function useCreateModelForm() {
         use_flag_features: form.useFlagFeatures,
         early_stopping_rounds: form.earlyStoppingRounds,
         compute_shap: form.enableShap,
+        description: form.description || undefined,
+        cv_splits: form.cvSplits,
+        use_timeseries_split: form.useTimeseriesSplit,
         use_graph_features: form.selectedGraphFeatures.length > 0,
         use_embedding_features: form.selectedEmbeddingFeatures.length > 0,
         use_transaction_features: form.selectedTransactionFeatures.length > 0,
+        use_metadata_features: form.selectedMetadataFeatures.length > 0,
         graph_feature_names: form.selectedGraphFeatures.length > 0 ? form.selectedGraphFeatures : undefined,
         embedding_feature_names: form.selectedEmbeddingFeatures.length > 0 ? form.selectedEmbeddingFeatures : undefined,
         transaction_feature_names: form.selectedTransactionFeatures.length > 0 ? form.selectedTransactionFeatures : undefined,
+        metadata_feature_names: form.selectedMetadataFeatures.length > 0 ? form.selectedMetadataFeatures : undefined,
       };
       if (form.balanceMethod === 'scale_pos_weight') {
         data.scale_pos_weight = form.scaleWeight;

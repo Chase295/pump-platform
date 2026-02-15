@@ -39,6 +39,7 @@ from backend.modules.server.predictor import (
     predict_coin_all_models,
     preload_all_models,
     cache_model,
+    remove_from_cache,
 )
 from backend.modules.server.alerts import (
     send_n8n_webhook,
@@ -556,6 +557,7 @@ async def delete_model_endpoint(active_model_id: int):
         success = await delete_active_model(active_model_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Model {active_model_id} not found")
+        remove_from_cache(active_model_id)
         return {"message": f"Model {active_model_id} deleted", "active_model_id": active_model_id}
     except HTTPException:
         raise

@@ -34,6 +34,7 @@ class TrainModelRequest(BaseModel):
     # Feature engineering
     use_engineered_features: bool = Field(False, description="Use engineered pump-detection features")
     feature_engineering_windows: Optional[List[int]] = Field(None, description="Window sizes for feature engineering")
+    use_flag_features: bool = Field(True, description="Enable flag features for data availability")
 
     # SMOTE
     use_smote: bool = Field(True, description="Use SMOTE for imbalanced data")
@@ -55,10 +56,12 @@ class TrainModelRequest(BaseModel):
     use_graph_features: bool = Field(False, description="Include Neo4j graph features")
     use_embedding_features: bool = Field(False, description="Include embedding similarity features")
     use_transaction_features: bool = Field(False, description="Include transaction-level features")
+    use_metadata_features: bool = Field(False, description="Include metadata features from discovered_coins")
     # Individual feature selection per extra source (None = all when flag=True)
     graph_feature_names: Optional[List[str]] = Field(None, description="Selected graph feature names")
     embedding_feature_names: Optional[List[str]] = Field(None, description="Selected embedding feature names")
     transaction_feature_names: Optional[List[str]] = Field(None, description="Selected transaction feature names")
+    metadata_feature_names: Optional[List[str]] = Field(None, description="Selected metadata feature names")
 
     # Feature exclusion (phase 2)
     exclude_features: Optional[List[str]] = Field(None, description="Features to exclude")

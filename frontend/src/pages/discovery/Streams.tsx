@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Typography,
   Box,
@@ -89,6 +90,7 @@ type SortCol = 'token_address' | 'current_phase_id' | 'started_at' | 'ath_price_
 type SortDir = 'asc' | 'desc';
 
 const Streams: React.FC = () => {
+  const navigate = useNavigate();
   const [phaseFilter, setPhaseFilter] = useState<number | ''>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -396,9 +398,11 @@ const Streams: React.FC = () => {
                   filteredStreams.map((stream, index) => (
                     <TableRow
                       key={stream.token_address || index}
+                      onClick={() => navigate(`/discovery/coin/${stream.token_address}`)}
                       sx={{
+                        cursor: 'pointer',
                         '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
-                        '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.05)' },
+                        '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.08)' },
                         opacity: stream.is_active ? 1 : 0.5,
                       }}
                     >
@@ -410,7 +414,7 @@ const Streams: React.FC = () => {
                           <Tooltip title="Copy address">
                             <IconButton
                               size="small"
-                              onClick={() => navigator.clipboard.writeText(stream.token_address)}
+                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(stream.token_address); }}
                               sx={{ p: 0.25, opacity: 0.4, '&:hover': { opacity: 1 } }}
                             >
                               <ContentCopyIcon sx={{ fontSize: 12 }} />

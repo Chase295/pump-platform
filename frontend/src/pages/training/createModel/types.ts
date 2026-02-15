@@ -9,6 +9,7 @@ export interface CreateModelFormState {
   selectedGraphFeatures: string[];
   selectedEmbeddingFeatures: string[];
   selectedTransactionFeatures: string[];
+  selectedMetadataFeatures: string[];
   trainStart: string;
   trainEnd: string;
   selectedPhases: number[];
@@ -19,6 +20,9 @@ export interface CreateModelFormState {
   enableShap: boolean;
   enableTuning: boolean;
   tuningIterations: number;
+  description: string;
+  cvSplits: number;
+  useTimeseriesSplit: boolean;
   activePreset: string | null;
 }
 

@@ -1280,8 +1280,10 @@ CREATE TABLE IF NOT EXISTS wallets (
     virtual_loss_percent DECIMAL(5, 2) DEFAULT 1.00,
 
     -- Balances
-    virtual_sol_balance DECIMAL(20, 9) DEFAULT 10.0,
-    real_sol_balance DECIMAL(20, 9) DEFAULT 0.0,
+    virtual_sol_balance DECIMAL(20, 9) DEFAULT 10.0
+        CONSTRAINT chk_virtual_balance_non_negative CHECK (virtual_sol_balance >= 0),
+    real_sol_balance DECIMAL(20, 9) DEFAULT 0.0
+        CONSTRAINT chk_real_balance_non_negative CHECK (real_sol_balance >= 0),
 
     -- Risk management
     consecutive_losses INT DEFAULT 0,
@@ -1597,7 +1599,8 @@ INSERT INTO training_settings (key, value) VALUES
   ('default_enable_shap', 'false'),
   ('graph_features_enabled', 'true'),
   ('embedding_features_enabled', 'true'),
-  ('transaction_features_enabled', 'true')
+  ('transaction_features_enabled', 'true'),
+  ('metadata_features_enabled', 'true')
 ON CONFLICT (key) DO NOTHING;
 
 

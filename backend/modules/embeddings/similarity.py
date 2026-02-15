@@ -85,9 +85,9 @@ async def search_similar(
     """
 
     async with pool.acquire() as conn:
-        # Set HNSW search parameter for this connection
-        await conn.execute(f"SET LOCAL hnsw.ef_search = {ef_search}")
-        rows = await conn.fetch(query, *params)
+        async with conn.transaction():
+            await conn.execute(f"SET LOCAL hnsw.ef_search = {int(ef_search)}")
+            rows = await conn.fetch(query, *params)
 
     results = []
     for row in rows:

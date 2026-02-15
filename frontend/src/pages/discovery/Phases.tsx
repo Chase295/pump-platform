@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Typography,
   Box,
@@ -7,11 +7,9 @@ import {
   Alert,
   Card,
   CardContent,
-  CardHeader,
   IconButton,
   Tooltip,
   Chip,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -20,21 +18,25 @@ import {
   useMediaQuery,
   useTheme,
   Grid,
-  Divider,
+  LinearProgress,
 } from '@mui/material';
 import {
   Save as SaveIcon,
-  Refresh as RefreshIcon,
   Edit as EditIcon,
   Cancel as CancelIcon,
-  Warning as WarningIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-  Timer as TimerIcon,
-  Schedule as ScheduleIcon,
+  Layers as LayersIcon,
+  Stream as StreamIcon,
+  Star as StarIcon,
+  Hub as HubIcon,
 } from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
 import { findApi } from '../../services/api';
-import type { Phase, PhaseUpdateRequest, PhaseCreateRequest } from '../../types/find';
+import type { Phase, PhaseUpdateRequest, PhaseCreateRequest, StreamStats } from '../../types/find';
+import DiscoveryStatCard from '../../components/discovery/DiscoveryStatCard';
+import PhaseDistributionChart from '../../components/discovery/PhaseDistributionChart';
+import { getPhaseColor } from '../../utils/phaseColors';
 
 interface EditingPhase extends Phase {
   isEditing: boolean;
@@ -48,19 +50,47 @@ interface NewPhaseForm {
   max_age_minutes: number;
 }
 
+const darkTextFieldSx = {
+  '& .MuiOutlinedInput-root': {
+    color: '#fff',
+    '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+    '&:hover fieldset': { borderColor: 'rgba(0,212,255,0.5)' },
+    '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+  },
+  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' },
+  '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+  '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' },
+};
+
 const Phases: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const [phases, setPhases] = useState<EditingPhase[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string>('');
+  // --- react-query ---
+  const { data: rawPhases, isLoading, refetch } = useQuery<Phase[]>({
+    queryKey: ['find', 'phases'],
+    queryFn: async () => {
+      const res = await findApi.getPhases();
+      return res.data.phases ?? res.data;
+    },
+    refetchInterval: 30000,
+  });
 
-  // Dialog States
+  const { data: streamStats } = useQuery<StreamStats>({
+    queryKey: ['find', 'streamStats'],
+    queryFn: async () => (await findApi.getStreamStats()).data,
+    refetchInterval: 10000,
+  });
+
+  // --- local state ---
+  const [editingPhases, setEditingPhases] = useState<Record<number, EditingPhase>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [saving, setSaving] = useState(false);
+
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [phaseToDelete, setPhaseToDelete] = useState<EditingPhase | null>(null);
+  const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
   const [newPhase, setNewPhase] = useState<NewPhaseForm>({
     name: '',
     interval_seconds: 15,
@@ -68,66 +98,69 @@ const Phases: React.FC = () => {
     max_age_minutes: 60,
   });
 
-  const fetchPhases = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await findApi.getPhases();
-      const data: Phase[] = res.data.phases || [];
-      setPhases(data.map((p: Phase) => ({
-        ...p,
-        isEditing: false,
-        originalData: { ...p },
-      })));
-    } catch (err) {
-      setError('Failed to load phases');
-      console.error('Error fetching phases:', err);
-    } finally {
-      setIsLoading(false);
+  const phases = rawPhases ?? [];
+  const regularPhases = phases.filter(p => p.id < 99);
+  const systemPhases = phases.filter(p => p.id >= 99);
+  const canDeletePhases = regularPhases.length > 1;
+
+  // Derive stat values
+  const largestPhase = React.useMemo(() => {
+    if (!streamStats?.streams_by_phase) return '--';
+    let maxCount = 0;
+    let maxName = '--';
+    for (const [id, count] of Object.entries(streamStats.streams_by_phase)) {
+      if (count > maxCount) {
+        maxCount = count;
+        maxName = phases.find(p => p.id === Number(id))?.name ?? `Phase ${id}`;
+      }
     }
-  }, []);
+    return maxName;
+  }, [streamStats, phases]);
 
-  useEffect(() => {
-    fetchPhases();
-  }, [fetchPhases]);
+  // --- handlers ---
+  const getEditingPhase = (phase: Phase): EditingPhase => {
+    return editingPhases[phase.id] ?? { ...phase, isEditing: false, originalData: { ...phase } };
+  };
 
-  const handleEdit = (phaseId: number) => {
-    setPhases(prev => prev.map(p =>
-      p.id === phaseId ? { ...p, isEditing: true } : p
-    ));
+  const handleEdit = (phase: Phase) => {
+    setEditingPhases(prev => ({
+      ...prev,
+      [phase.id]: { ...phase, isEditing: true, originalData: { ...phase } },
+    }));
   };
 
   const handleCancel = (phaseId: number) => {
-    setPhases(prev => prev.map(p =>
-      p.id === phaseId ? { ...p.originalData, isEditing: false, originalData: p.originalData } : p
-    ));
+    setEditingPhases(prev => {
+      const next = { ...prev };
+      delete next[phaseId];
+      return next;
+    });
   };
 
   const handleFieldChange = (phaseId: number, field: keyof Phase, value: string | number) => {
-    setPhases(prev => prev.map(p =>
-      p.id === phaseId ? { ...p, [field]: value } : p
-    ));
+    setEditingPhases(prev => ({
+      ...prev,
+      [phaseId]: { ...prev[phaseId], [field]: value },
+    }));
   };
 
   const handleSave = async (phase: EditingPhase) => {
-    setIsLoading(true);
+    setSaving(true);
     setError(null);
 
     if (phase.interval_seconds < 1) {
       setError('Interval must be at least 1 second');
-      setIsLoading(false);
+      setSaving(false);
       return;
     }
-
     if (phase.max_age_minutes <= phase.min_age_minutes) {
       setError('Max Age must be greater than Min Age');
-      setIsLoading(false);
+      setSaving(false);
       return;
     }
 
     try {
       const updateData: PhaseUpdateRequest = {};
-
       if (phase.name !== phase.originalData.name) updateData.name = phase.name;
       if (phase.interval_seconds !== phase.originalData.interval_seconds)
         updateData.interval_seconds = phase.interval_seconds;
@@ -139,34 +172,27 @@ const Phases: React.FC = () => {
       if (Object.keys(updateData).length === 0) {
         setSuccessMessage('No changes detected');
         setTimeout(() => setSuccessMessage(''), 3000);
-        setPhases(prev => prev.map(p =>
-          p.id === phase.id ? { ...p, isEditing: false } : p
-        ));
-        setIsLoading(false);
+        handleCancel(phase.id);
+        setSaving(false);
         return;
       }
 
       const res = await findApi.updatePhase(phase.id, updateData as Record<string, unknown>);
       const result = res.data;
-
       setSuccessMessage(`Phase "${result.phase.name}" updated. ${result.updated_streams} streams adjusted.`);
       setTimeout(() => setSuccessMessage(''), 5000);
-
-      await fetchPhases();
+      handleCancel(phase.id);
+      refetch();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      const errorMessage = axiosErr.response?.data?.detail || 'Failed to save phase';
-      setError(errorMessage);
-      console.error('Error updating phase:', err);
+      setError(axiosErr.response?.data?.detail || 'Failed to save phase');
     } finally {
-      setIsLoading(false);
+      setSaving(false);
     }
   };
 
   const handleOpenAddDialog = () => {
-    const regularPhases = phases.filter(p => p.id < 99);
     const lastPhase = regularPhases[regularPhases.length - 1];
-
     setNewPhase({
       name: `Phase ${regularPhases.length + 1}`,
       interval_seconds: 15,
@@ -177,26 +203,12 @@ const Phases: React.FC = () => {
   };
 
   const handleAddPhase = async () => {
-    setIsLoading(true);
+    setSaving(true);
     setError(null);
 
-    if (!newPhase.name.trim()) {
-      setError('Name must not be empty');
-      setIsLoading(false);
-      return;
-    }
-
-    if (newPhase.interval_seconds < 1) {
-      setError('Interval must be at least 1 second');
-      setIsLoading(false);
-      return;
-    }
-
-    if (newPhase.max_age_minutes <= newPhase.min_age_minutes) {
-      setError('Max Age must be greater than Min Age');
-      setIsLoading(false);
-      return;
-    }
+    if (!newPhase.name.trim()) { setError('Name must not be empty'); setSaving(false); return; }
+    if (newPhase.interval_seconds < 1) { setError('Interval must be at least 1 second'); setSaving(false); return; }
+    if (newPhase.max_age_minutes <= newPhase.min_age_minutes) { setError('Max Age must be greater than Min Age'); setSaving(false); return; }
 
     try {
       const createData: PhaseCreateRequest = {
@@ -205,226 +217,59 @@ const Phases: React.FC = () => {
         min_age_minutes: newPhase.min_age_minutes,
         max_age_minutes: newPhase.max_age_minutes,
       };
-
       const res = await findApi.createPhase(createData);
       const result = res.data;
-
       setSuccessMessage(`Phase "${result.phase.name}" (ID: ${result.phase.id}) created.`);
       setTimeout(() => setSuccessMessage(''), 5000);
-
       setAddDialogOpen(false);
-      await fetchPhases();
+      refetch();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      const errorMessage = axiosErr.response?.data?.detail || 'Failed to create phase';
-      setError(errorMessage);
-      console.error('Error creating phase:', err);
+      setError(axiosErr.response?.data?.detail || 'Failed to create phase');
     } finally {
-      setIsLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleOpenDeleteDialog = (phase: EditingPhase) => {
+  const handleOpenDeleteDialog = (phase: Phase) => {
     setPhaseToDelete(phase);
     setDeleteDialogOpen(true);
   };
 
   const handleDeletePhase = async () => {
     if (!phaseToDelete) return;
-
-    setIsLoading(true);
+    setSaving(true);
     setError(null);
 
     try {
       const res = await findApi.deletePhase(phaseToDelete.id);
-      const result = res.data;
-
-      setSuccessMessage(result.message);
+      setSuccessMessage(res.data.message);
       setTimeout(() => setSuccessMessage(''), 5000);
-
       setDeleteDialogOpen(false);
       setPhaseToDelete(null);
-      await fetchPhases();
+      refetch();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      const errorMessage = axiosErr.response?.data?.detail || 'Failed to delete phase';
-      setError(errorMessage);
-      console.error('Error deleting phase:', err);
+      setError(axiosErr.response?.data?.detail || 'Failed to delete phase');
     } finally {
-      setIsLoading(false);
+      setSaving(false);
     }
   };
 
-  const isSystemPhase = (phaseId: number) => phaseId >= 99;
-
-  const getPhaseColor = (phaseId: number): 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' | 'default' => {
-    if (phaseId === 99) return 'error';
-    if (phaseId === 100) return 'secondary';
-    if (phaseId === 1) return 'info';
-    if (phaseId === 2) return 'warning';
-    if (phaseId === 3) return 'success';
-    return 'primary';
-  };
-
-  const regularPhaseCount = phases.filter(p => p.id < 99).length;
-  const canDeletePhases = regularPhaseCount > 1;
-
-  const PhaseCard = ({ phase }: { phase: EditingPhase }) => {
-    const isSystem = isSystemPhase(phase.id);
-
+  // --- loading state ---
+  if (isLoading && phases.length === 0) {
     return (
-      <Card
-        sx={{
-          mb: 2,
-          opacity: isSystem ? 0.7 : 1,
-          border: phase.isEditing ? '2px solid' : '1px solid',
-          borderColor: phase.isEditing ? 'primary.main' : 'divider',
-        }}
-      >
-        <CardContent sx={{ p: { xs: 2, sm: 3 }, '&:last-child': { pb: { xs: 2, sm: 3 } } }}>
-          {/* Header with ID and Actions */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Chip
-                label={`ID ${phase.id}`}
-                size="small"
-                color={getPhaseColor(phase.id)}
-              />
-              {isSystem && (
-                <Chip label="System" size="small" variant="outlined" />
-              )}
-            </Box>
-            {isSystem ? (
-              <Tooltip title="System phase (read-only)">
-                <WarningIcon fontSize="small" color="disabled" />
-              </Tooltip>
-            ) : phase.isEditing ? (
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                <IconButton
-                  size="small"
-                  color="primary"
-                  onClick={() => handleSave(phase)}
-                  disabled={isLoading}
-                >
-                  <SaveIcon fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() => handleCancel(phase.id)}
-                  disabled={isLoading}
-                >
-                  <CancelIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                <IconButton size="small" onClick={() => handleEdit(phase.id)}>
-                  <EditIcon fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() => handleOpenDeleteDialog(phase)}
-                  disabled={!canDeletePhases || isLoading}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            )}
-          </Box>
-
-          {/* Name */}
-          {phase.isEditing ? (
-            <TextField
-              size="small"
-              label="Name"
-              value={phase.name}
-              onChange={(e) => handleFieldChange(phase.id, 'name', e.target.value)}
-              fullWidth
-              sx={{ mb: 2 }}
-            />
-          ) : (
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'medium', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-              {phase.name}
-            </Typography>
-          )}
-
-          <Divider sx={{ mb: 2 }} />
-
-          {/* Stats Grid */}
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 4 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <TimerIcon fontSize="small" color="action" sx={{ mb: 0.5 }} />
-                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                  Interval
-                </Typography>
-                {phase.isEditing ? (
-                  <TextField
-                    size="small"
-                    type="number"
-                    value={phase.interval_seconds}
-                    onChange={(e) => handleFieldChange(phase.id, 'interval_seconds', parseInt(e.target.value) || 1)}
-                    inputProps={{ min: 1, max: 300, style: { textAlign: 'center', padding: '4px' } }}
-                    sx={{ width: '100%', mt: 0.5, '& input': { fontSize: { xs: '0.8rem', sm: '1rem' } } }}
-                  />
-                ) : (
-                  <Typography variant="body1" fontWeight="bold" fontFamily="monospace" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-                    {phase.interval_seconds}s
-                  </Typography>
-                )}
-              </Box>
-            </Grid>
-            <Grid size={{ xs: 4 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <ScheduleIcon fontSize="small" color="action" sx={{ mb: 0.5 }} />
-                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                  Min Age
-                </Typography>
-                {phase.isEditing ? (
-                  <TextField
-                    size="small"
-                    type="number"
-                    value={phase.min_age_minutes}
-                    onChange={(e) => handleFieldChange(phase.id, 'min_age_minutes', parseInt(e.target.value) || 0)}
-                    inputProps={{ min: 0, style: { textAlign: 'center', padding: '4px' } }}
-                    sx={{ width: '100%', mt: 0.5, '& input': { fontSize: { xs: '0.8rem', sm: '1rem' } } }}
-                  />
-                ) : (
-                  <Typography variant="body1" fontWeight="bold" fontFamily="monospace" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-                    {phase.min_age_minutes}m
-                  </Typography>
-                )}
-              </Box>
-            </Grid>
-            <Grid size={{ xs: 4 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <ScheduleIcon fontSize="small" color="action" sx={{ mb: 0.5 }} />
-                <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                  Max Age
-                </Typography>
-                {phase.isEditing ? (
-                  <TextField
-                    size="small"
-                    type="number"
-                    value={phase.max_age_minutes}
-                    onChange={(e) => handleFieldChange(phase.id, 'max_age_minutes', parseInt(e.target.value) || 1)}
-                    inputProps={{ min: 1, style: { textAlign: 'center', padding: '4px' } }}
-                    sx={{ width: '100%', mt: 0.5, '& input': { fontSize: { xs: '0.8rem', sm: '1rem' } } }}
-                  />
-                ) : (
-                  <Typography variant="body1" fontWeight="bold" fontFamily="monospace" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-                    {phase.max_age_minutes === 999999 ? '\u221e' : `${phase.max_age_minutes}m`}
-                  </Typography>
-                )}
-              </Box>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+      <Box sx={{ mt: 4 }}>
+        <LinearProgress sx={{ mb: 2, '& .MuiLinearProgress-bar': { bgcolor: '#00d4ff' } }} />
+        <Typography variant="h6" sx={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+          Loading phases...
+        </Typography>
+      </Box>
     );
-  };
+  }
+
+  // --- Phase Timeline Bar ---
+  const totalDuration = regularPhases.reduce((sum, p) => sum + (p.max_age_minutes - p.min_age_minutes), 0);
 
   return (
     <Box>
@@ -435,30 +280,26 @@ const Phases: React.FC = () => {
         justifyContent: 'space-between',
         alignItems: { xs: 'stretch', sm: 'center' },
         mb: 3,
-        gap: 2
+        gap: 2,
       }}>
-        <Typography variant={isMobile ? 'h5' : 'h4'}>
+        <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700, color: '#fff' }}>
           Tracking Phases
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
           <Button
             variant="contained"
-            color="success"
             startIcon={<AddIcon />}
             onClick={handleOpenAddDialog}
-            disabled={isLoading}
+            disabled={saving}
             size={isMobile ? 'small' : 'medium'}
+            sx={{
+              bgcolor: '#00d4ff',
+              color: '#0f0f23',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#00b8e6' },
+            }}
           >
             New Phase
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            onClick={fetchPhases}
-            disabled={isLoading}
-            size={isMobile ? 'small' : 'medium'}
-          >
-            Refresh
           </Button>
         </Box>
       </Box>
@@ -468,88 +309,388 @@ const Phases: React.FC = () => {
           {error}
         </Alert>
       )}
-
       {successMessage && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage('')}>
           {successMessage}
         </Alert>
       )}
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-          <strong>Note:</strong> Changes take effect immediately on active streams.
-          System phases (99, 100) are protected.
-        </Typography>
-      </Alert>
+      {/* A) Live Stats Row */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <DiscoveryStatCard
+            label="Total Phases"
+            value={regularPhases.length}
+            sublabel="regular phases"
+            icon={<LayersIcon fontSize="small" />}
+            accentColor="0, 212, 255"
+            loading={isLoading}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <DiscoveryStatCard
+            label="Active Streams"
+            value={streamStats?.active_streams ?? '--'}
+            sublabel="currently tracking"
+            icon={<StreamIcon fontSize="small" />}
+            accentColor="76, 175, 80"
+            loading={!streamStats}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <DiscoveryStatCard
+            label="Largest Phase"
+            value={largestPhase}
+            sublabel="most streams"
+            icon={<StarIcon fontSize="small" />}
+            accentColor="33, 150, 243"
+            loading={!streamStats}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 3 }}>
+          <DiscoveryStatCard
+            label="Total Streams"
+            value={streamStats?.total_streams ?? '--'}
+            sublabel="all phases"
+            icon={<HubIcon fontSize="small" />}
+            accentColor="156, 39, 176"
+            loading={!streamStats}
+          />
+        </Grid>
+      </Grid>
 
-      {/* Phase Count Summary */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          {regularPhaseCount} regular phases + 2 system phases
-        </Typography>
-      </Box>
-
-      {isLoading && phases.length === 0 ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <Box>
-          {/* Regular Phases */}
-          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, mt: 2 }}>
-            Regular Phases
-          </Typography>
-          {phases.filter(p => !isSystemPhase(p.id)).map((phase) => (
-            <PhaseCard key={phase.id} phase={phase} />
-          ))}
-
-          {/* System Phases */}
-          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, mt: 3 }}>
-            System Phases
-          </Typography>
-          {phases.filter(p => isSystemPhase(p.id)).map((phase) => (
-            <PhaseCard key={phase.id} phase={phase} />
-          ))}
-        </Box>
+      {/* B) Phase Timeline Bar */}
+      {regularPhases.length > 0 && totalDuration > 0 && (
+        <Card sx={{
+          mb: 3,
+          bgcolor: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(10px)',
+        }}>
+          <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.7rem', mb: 1.5 }}
+            >
+              Phase Timeline
+            </Typography>
+            <Box sx={{ display: 'flex', borderRadius: 1, overflow: 'hidden', height: { xs: 32, sm: 40 } }}>
+              {regularPhases.map((p) => {
+                const duration = p.max_age_minutes - p.min_age_minutes;
+                const pct = (duration / totalDuration) * 100;
+                const color = getPhaseColor(p.id);
+                return (
+                  <Tooltip key={p.id} title={`${p.name}: ${p.min_age_minutes}m – ${p.max_age_minutes}m (${duration}m)`}>
+                    <Box
+                      sx={{
+                        width: `${pct}%`,
+                        bgcolor: color,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: 2,
+                        transition: 'opacity 0.2s',
+                        '&:hover': { opacity: 0.8 },
+                      }}
+                    >
+                      {pct > 12 && (
+                        <Typography sx={{ fontSize: { xs: '0.55rem', sm: '0.7rem' }, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', whiteSpace: 'nowrap', px: 0.5 }}>
+                          {p.name}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Tooltip>
+                );
+              })}
+            </Box>
+            {/* Age labels */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+              <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace' }}>
+                {regularPhases[0]?.min_age_minutes}m
+              </Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace' }}>
+                {regularPhases[regularPhases.length - 1]?.max_age_minutes}m
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Explanation Card */}
-      <Card sx={{ mt: 3 }}>
-        <CardHeader
-          title="Phase Explanation"
-          titleTypographyProps={{ variant: isMobile ? 'subtitle1' : 'h6' }}
-        />
-        <CardContent sx={{ pt: 0 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-            Coins progress through phases automatically based on their age.
-            Each phase has its own tracking interval.
-          </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Chip label="99" color="error" size="small" />
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                <strong>Finished:</strong> Tracking ended
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Chip label="100" color="secondary" size="small" />
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                <strong>Graduated:</strong> Bonding curve completed
-              </Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
+      {/* C) Phase Distribution Chart */}
+      {streamStats?.streams_by_phase && phases.length > 0 && (
+        <Card sx={{
+          mb: 3,
+          bgcolor: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(10px)',
+        }}>
+          <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.7rem', mb: 2 }}
+            >
+              Stream Distribution
+            </Typography>
+            <PhaseDistributionChart
+              streamsByPhase={streamStats.streams_by_phase}
+              phases={phases}
+            />
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Add Phase Dialog */}
+      {/* D) Phase Config Cards */}
+      <Typography
+        variant="body2"
+        sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.7rem', mb: 2 }}
+      >
+        Phase Configuration
+      </Typography>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {regularPhases.map((phase) => {
+          const ep = getEditingPhase(phase);
+          const phaseColor = getPhaseColor(phase.id);
+          const streamCount = streamStats?.streams_by_phase?.[phase.id] ?? 0;
+
+          return (
+            <Grid key={phase.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+              <Card sx={{
+                bgcolor: `${phaseColor}0F`,
+                border: ep.isEditing ? `2px solid ${phaseColor}` : `1px solid ${phaseColor}40`,
+                borderLeft: `3px solid ${phaseColor}`,
+                backdropFilter: 'blur(10px)',
+                height: '100%',
+                transition: 'border-color 0.2s',
+              }}>
+                <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                  {/* Header */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                      {ep.isEditing ? (
+                        <TextField
+                          size="small"
+                          value={ep.name}
+                          onChange={(e) => handleFieldChange(phase.id, 'name', e.target.value)}
+                          sx={{ ...darkTextFieldSx, '& input': { fontSize: '0.95rem', fontWeight: 600, py: 0.5 } }}
+                        />
+                      ) : (
+                        <Typography sx={{ fontWeight: 600, color: '#fff', fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {phase.name}
+                        </Typography>
+                      )}
+                      <Chip
+                        label={`#${phase.id}`}
+                        size="small"
+                        sx={{ bgcolor: `${phaseColor}30`, color: phaseColor, fontWeight: 700, fontSize: '0.7rem', height: 22 }}
+                      />
+                      {streamCount > 0 && (
+                        <Chip
+                          label={`${streamCount}`}
+                          size="small"
+                          sx={{ bgcolor: 'rgba(76,175,80,0.15)', color: '#4caf50', fontWeight: 700, fontSize: '0.65rem', height: 20, minWidth: 28 }}
+                        />
+                      )}
+                    </Box>
+                    {ep.isEditing ? (
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton size="small" onClick={() => handleSave(ep)} disabled={saving} sx={{ color: '#00d4ff' }}>
+                          <SaveIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleCancel(phase.id)} disabled={saving} sx={{ color: '#f44336' }}>
+                          <CancelIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton size="small" onClick={() => handleEdit(phase)} sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#00d4ff' } }}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenDeleteDialog(phase)}
+                          disabled={!canDeletePhases || saving}
+                          sx={{ color: 'rgba(255,255,255,0.3)', '&:hover': { color: '#f44336' } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    )}
+                  </Box>
+
+                  {/* Stats 3-col */}
+                  <Grid container spacing={1}>
+                    <Grid size={{ xs: 4 }}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Interval
+                        </Typography>
+                        {ep.isEditing ? (
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={ep.interval_seconds}
+                            onChange={(e) => handleFieldChange(phase.id, 'interval_seconds', parseInt(e.target.value) || 1)}
+                            inputProps={{ min: 1, max: 300, style: { textAlign: 'center', padding: '4px' } }}
+                            sx={{ ...darkTextFieldSx, width: '100%', mt: 0.5, '& input': { fontSize: '0.85rem' } }}
+                          />
+                        ) : (
+                          <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                            {phase.interval_seconds}s
+                          </Typography>
+                        )}
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 4 }}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Age Range
+                        </Typography>
+                        {ep.isEditing ? (
+                          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={ep.min_age_minutes}
+                              onChange={(e) => handleFieldChange(phase.id, 'min_age_minutes', parseInt(e.target.value) || 0)}
+                              inputProps={{ min: 0, style: { textAlign: 'center', padding: '4px' } }}
+                              sx={{ ...darkTextFieldSx, '& input': { fontSize: '0.75rem' } }}
+                            />
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={ep.max_age_minutes}
+                              onChange={(e) => handleFieldChange(phase.id, 'max_age_minutes', parseInt(e.target.value) || 1)}
+                              inputProps={{ min: 1, style: { textAlign: 'center', padding: '4px' } }}
+                              sx={{ ...darkTextFieldSx, '& input': { fontSize: '0.75rem' } }}
+                            />
+                          </Box>
+                        ) : (
+                          <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                            {phase.min_age_minutes}–{phase.max_age_minutes === 999999 ? '∞' : phase.max_age_minutes}m
+                          </Typography>
+                        )}
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 4 }}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Duration
+                        </Typography>
+                        <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                          {phase.max_age_minutes === 999999 ? '∞' : `${phase.max_age_minutes - phase.min_age_minutes}m`}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+
+      {/* System Phases */}
+      {systemPhases.length > 0 && (
+        <>
+          <Typography
+            variant="body2"
+            sx={{ color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.7rem', mb: 2 }}
+          >
+            System Phases
+          </Typography>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            {systemPhases.map((phase) => {
+              const phaseColor = getPhaseColor(phase.id);
+              const streamCount = streamStats?.streams_by_phase?.[phase.id] ?? 0;
+
+              return (
+                <Grid key={phase.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+                  <Card sx={{
+                    bgcolor: `${phaseColor}08`,
+                    border: `1px solid ${phaseColor}20`,
+                    borderLeft: `3px solid ${phaseColor}40`,
+                    backdropFilter: 'blur(10px)',
+                    opacity: 0.5,
+                    height: '100%',
+                  }}>
+                    <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography sx={{ fontWeight: 600, color: '#fff', fontSize: '1rem' }}>
+                            {phase.name}
+                          </Typography>
+                          <Chip
+                            label={`#${phase.id}`}
+                            size="small"
+                            sx={{ bgcolor: `${phaseColor}30`, color: phaseColor, fontWeight: 700, fontSize: '0.7rem', height: 22 }}
+                          />
+                          <Chip
+                            label="System"
+                            size="small"
+                            variant="outlined"
+                            sx={{ borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.4)', fontSize: '0.6rem', height: 20 }}
+                          />
+                          {streamCount > 0 && (
+                            <Chip
+                              label={`${streamCount}`}
+                              size="small"
+                              sx={{ bgcolor: 'rgba(76,175,80,0.15)', color: '#4caf50', fontWeight: 700, fontSize: '0.65rem', height: 20, minWidth: 28 }}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                      <Grid container spacing={1}>
+                        <Grid size={{ xs: 4 }}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              Interval
+                            </Typography>
+                            <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                              {phase.interval_seconds}s
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid size={{ xs: 4 }}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              Age Range
+                            </Typography>
+                            <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                              {phase.min_age_minutes}–{phase.max_age_minutes === 999999 ? '∞' : phase.max_age_minutes}m
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid size={{ xs: 4 }}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              Duration
+                            </Typography>
+                            <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                              {phase.max_age_minutes === 999999 ? '∞' : `${phase.max_age_minutes - phase.min_age_minutes}m`}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </>
+      )}
+
+      {/* E) Add Phase Dialog */}
       <Dialog
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
         maxWidth="sm"
         fullWidth
         fullScreen={isMobile}
+        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none', border: '1px solid rgba(0,212,255,0.2)' } }}
       >
-        <DialogTitle>Create New Phase</DialogTitle>
+        <DialogTitle sx={{ color: '#fff' }}>Create New Phase</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
@@ -558,6 +699,7 @@ const Phases: React.FC = () => {
               onChange={(e) => setNewPhase(prev => ({ ...prev, name: e.target.value }))}
               fullWidth
               autoFocus
+              sx={darkTextFieldSx}
             />
             <TextField
               label="Interval (seconds)"
@@ -567,6 +709,7 @@ const Phases: React.FC = () => {
               inputProps={{ min: 1, max: 300 }}
               helperText="How often metrics are saved (1-300s)"
               fullWidth
+              sx={darkTextFieldSx}
             />
             <TextField
               label="Min Age (minutes)"
@@ -576,6 +719,7 @@ const Phases: React.FC = () => {
               inputProps={{ min: 0 }}
               helperText="At what age coins enter this phase"
               fullWidth
+              sx={darkTextFieldSx}
             />
             <TextField
               label="Max Age (minutes)"
@@ -585,44 +729,50 @@ const Phases: React.FC = () => {
               inputProps={{ min: 1 }}
               helperText="At what age coins leave this phase"
               fullWidth
+              sx={darkTextFieldSx}
             />
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
-          <Button onClick={() => setAddDialogOpen(false)} fullWidth={isMobile}>
+          <Button onClick={() => setAddDialogOpen(false)} fullWidth={isMobile} sx={{ color: 'rgba(255,255,255,0.6)' }}>
             Cancel
           </Button>
           <Button
             onClick={handleAddPhase}
             variant="contained"
-            color="success"
-            disabled={isLoading}
+            disabled={saving}
             fullWidth={isMobile}
+            sx={{ bgcolor: '#00d4ff', color: '#0f0f23', fontWeight: 700, '&:hover': { bgcolor: '#00b8e6' } }}
           >
             Create
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Delete Phase Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} fullScreen={isMobile}>
-        <DialogTitle>Delete Phase?</DialogTitle>
+      {/* F) Delete Phase Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        fullScreen={isMobile}
+        PaperProps={{ sx: { bgcolor: '#1a1a2e', backgroundImage: 'none', border: '1px solid rgba(244,67,54,0.3)' } }}
+      >
+        <DialogTitle sx={{ color: '#fff' }}>Delete Phase?</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            Do you want to delete <strong>"{phaseToDelete?.name}"</strong> (ID: {phaseToDelete?.id})?
+          <DialogContentText sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            Do you want to delete <strong style={{ color: '#fff' }}>"{phaseToDelete?.name}"</strong> (ID: {phaseToDelete?.id})?
             <br /><br />
             Active streams will be moved to the next phase.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ p: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)} fullWidth={isMobile}>
+          <Button onClick={() => setDeleteDialogOpen(false)} fullWidth={isMobile} sx={{ color: 'rgba(255,255,255,0.6)' }}>
             Cancel
           </Button>
           <Button
             onClick={handleDeletePhase}
             variant="contained"
             color="error"
-            disabled={isLoading}
+            disabled={saving}
             fullWidth={isMobile}
           >
             Delete

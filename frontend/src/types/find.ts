@@ -140,11 +140,41 @@ export interface StreamStats {
   streams_by_phase: Record<number, number>;
 }
 
-export interface CoinDetail {
+export interface LiveTracking {
+  price_open: number;
+  price_high: number;
+  price_low: number;
+  price_close: number;
+  volume_sol: number;
+  buy_volume_sol: number;
+  sell_volume_sol: number;
+  num_buys: number;
+  num_sells: number;
+  unique_wallets: number;
+  market_cap_sol: number;
+  interval_seconds: number;
+  next_flush_seconds: number;
+}
+
+export interface CoinDetailResponse {
+  coin: Record<string, unknown> | null;
+  stream: Stream | null;
+  latest_metrics: RecentMetric | null;
+  live_tracking: LiveTracking | null;
+}
+
+export interface WindowAnalytics {
+  price_change_pct: number | null;
+  old_price: number | null;
+  trend: 'PUMP' | 'DUMP' | 'FLAT' | 'NO_DATA';
+  data_found: boolean;
+  data_age_seconds: number | null;
+}
+
+export interface AnalyticsResponse {
   mint: string;
-  name?: string;
-  symbol?: string;
-  stream?: Stream;
-  metrics?: unknown[];
-  analytics?: unknown;
+  current_price: number;
+  last_updated: string;
+  is_active: boolean;
+  performance: Record<string, WindowAnalytics>;
 }

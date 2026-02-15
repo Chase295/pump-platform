@@ -112,6 +112,10 @@ class RobustNormalizer(BaseNormalizer):
 class IdentityNormalizer(BaseNormalizer):
     """No normalization (pass-through)."""
 
+    def __init__(self):
+        super().__init__()
+        self.fitted = True  # No fitting needed -- always ready
+
     def fit(self, data: np.ndarray) -> None:
         self.fitted = True
 
@@ -204,9 +208,11 @@ class HandcraftedV1Generator(BaseGenerator):
     STRATEGY = "handcrafted_v1"
     DIMENSIONS = 128
 
-    # Track data for normalizer fitting
-    _fit_buffer: List[np.ndarray] = []
     _fit_target: int = 1000  # Fit normalizer after this many samples
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self._fit_buffer: List[np.ndarray] = []  # Instance-level to avoid cross-config contamination
 
     async def generate(
         self,
@@ -230,8 +236,10 @@ class HandcraftedV1Generator(BaseGenerator):
                     len(self._fit_buffer), self.config.get("name", "?"),
                 )
                 self._fit_buffer.clear()
-            # Return raw (unnormalized) until fitted
-            return raw
+                # Now fitted -- normalize and return this vector
+                return self.normalizer.transform(raw)
+            # Not yet fitted -- skip storing to avoid mixed-scale embeddings
+            return None
 
         return self.normalizer.transform(raw)
 
@@ -259,7 +267,13 @@ class HandcraftedV1Generator(BaseGenerator):
                     len(self._fit_buffer), self.config.get("name", "?"),
                 )
                 self._fit_buffer.clear()
-            return raw_features
+                # Now fitted -- normalize and return this batch
+                return {
+                    mint: self.normalizer.transform(vec)
+                    for mint, vec in raw_features.items()
+                }
+            # Not yet fitted -- skip to avoid mixed-scale embeddings
+            return {}
 
         return {
             mint: self.normalizer.transform(vec)

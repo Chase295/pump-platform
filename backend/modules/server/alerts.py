@@ -284,7 +284,16 @@ async def evaluate_pending_predictions(batch_size: int = 100) -> Dict[str, int]:
                     WHERE id = $14
                 """, *update_data))
 
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            failed_count = 0
+            for r in results:
+                if isinstance(r, Exception):
+                    failed_count += 1
+                    logger.error("Alert evaluation UPDATE failed: %s", r)
+            if failed_count > 0:
+                logger.error("%d/%d alert evaluation UPDATEs failed in batch",
+                             failed_count, len(batch))
+                stats['errors'] += failed_count
 
         logger.debug(f"{len(updates_to_execute)} updates executed in {total_batches} batches")
 
