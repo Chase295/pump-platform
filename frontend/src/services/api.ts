@@ -109,15 +109,17 @@ export const trainingApi = {
 
   // Testing & comparison
   testModel: (id: number, data: { test_start: string; test_end: string }) =>
-    api.post(`/training/models/${id}/test`, data),
+    api.post(`/training/models/${id}/test`, null, { params: data }),
   compareModels: (modelIds: number[], data: { test_start: string; test_end: string }) =>
-    api.post('/training/models/compare', data, { params: { model_ids: modelIds.join(',') } }),
+    api.post('/training/models/compare', null, { params: { model_ids: modelIds.join(','), ...data } }),
   listTestResults: (params?: { limit?: number; offset?: number }) =>
     api.get('/training/test-results', { params }),
   getTestResult: (id: number) => api.get(`/training/test-results/${id}`),
+  deleteTestResult: (id: number) => api.delete(`/training/test-results/${id}`),
   listComparisons: (params?: { limit?: number; offset?: number }) =>
     api.get('/training/comparisons', { params }),
   getComparison: (id: number) => api.get(`/training/comparisons/${id}`),
+  deleteComparison: (id: number) => api.delete(`/training/comparisons/${id}`),
 
   // Features & data
   getFeatures: (includeFlags = true) =>
