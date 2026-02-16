@@ -250,7 +250,7 @@ const TestResults: React.FC = () => {
     if (!selectedModelId || !testStart || !testEnd) return;
     try {
       setSubmitting(true);
-      await trainingApi.testModel(selectedModelId as number, { test_start: testStart, test_end: testEnd });
+      await trainingApi.testModel(selectedModelId as number, { test_start: new Date(testStart).toISOString(), test_end: new Date(testEnd).toISOString() });
       setSnackbar({ open: true, message: 'Test job started successfully!', severity: 'success' });
       setNewTestOpen(false);
       loadTestResults();

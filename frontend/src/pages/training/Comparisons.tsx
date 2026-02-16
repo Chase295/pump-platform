@@ -235,7 +235,7 @@ const Comparisons: React.FC = () => {
     if (selectedModelIds.length < 2 || !compareStart || !compareEnd) return;
     try {
       setSubmitting(true);
-      await trainingApi.compareModels(selectedModelIds, { test_start: compareStart, test_end: compareEnd });
+      await trainingApi.compareModels(selectedModelIds, { test_start: new Date(compareStart).toISOString(), test_end: new Date(compareEnd).toISOString() });
       setSnackbar({ open: true, message: 'Comparison job started successfully!', severity: 'success' });
       setNewCompareOpen(false);
       loadComparisons();
