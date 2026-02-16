@@ -692,7 +692,7 @@ async def list_jobs(
         *params,
     )
     result = []
-    jsonb_fields = ['train_features', 'train_phases', 'train_params', 'compare_model_ids']
+    jsonb_fields = ['train_features', 'train_phases', 'train_params', 'compare_model_ids', 'tune_param_space', 'tune_results']
     for row in rows:
         d = dict(row)
         d = convert_jsonb_fields(d, jsonb_fields, direction="from")

@@ -501,7 +501,7 @@ async def list_jobs_endpoint(
 
         converted = []
         for job in jobs:
-            job_dict = convert_jsonb_fields(dict(job), ["train_features", "train_phases", "train_params"], direction="from")
+            job_dict = convert_jsonb_fields(dict(job), ["train_features", "train_phases", "train_params", "compare_model_ids", "tune_param_space", "tune_results"], direction="from")
 
             result_model = None
             result_test = None
@@ -540,7 +540,7 @@ async def get_job_endpoint(job_id: int):
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    job_dict = convert_jsonb_fields(dict(job), ["train_features", "train_phases", "train_params"], direction="from")
+    job_dict = convert_jsonb_fields(dict(job), ["train_features", "train_phases", "train_params", "compare_model_ids", "tune_param_space", "tune_results"], direction="from")
 
     result_model = None
     result_test = None
