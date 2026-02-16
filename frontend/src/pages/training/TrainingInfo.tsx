@@ -34,6 +34,7 @@ const chapterIds = [
   'train-strategy',
   'train-optimization',
   'train-metrics',
+  'train-settings',
   'train-api',
 ];
 
@@ -86,7 +87,7 @@ const TrainingInfo: React.FC = () => (
             ueber Features, Trainings-Strategie und Optimierung.
           </Typography>
           <Box component="ul" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
-            <li><Typography variant="body2"><strong>195 Features total:</strong> 28 Basis + 66 Engineered + 66 Flag + 35 Extra Sources</Typography></li>
+            <li><Typography variant="body2"><strong>197 Features total:</strong> 28 Basis + 66 Engineered + 66 Flag + 37 Extra Sources</Typography></li>
             <li><Typography variant="body2"><strong>6 Feature-Quellen:</strong> Base, Engineered, Graph (Neo4j), Embedding (pgvector), Transaction, Metadata</Typography></li>
             <li><Typography variant="body2"><strong>5 Presets:</strong> Fast Pump, Standard, Moonshot, Rug Shield, Custom</Typography></li>
             <li><Typography variant="body2"><strong>4 Job-Typen:</strong> Train, Test (Backtesting), Compare (2-4 Modelle), Tune (Hyperparameter)</Typography></li>
@@ -512,7 +513,7 @@ Beispiel: Direction=DOWN, 20%, 10min
           onChange={handleChapterChange('train-extra-sources')}
         >
           <Typography variant="body1" sx={{ mb: 2 }}>
-            Vier zusaetzliche Datenquellen mit insgesamt 35 Features.
+            Vier zusaetzliche Datenquellen mit insgesamt 37 Features.
             Jedes Feature ist einzeln auswaehlbar. Die Buttons "Recommended" (Graph + Embedding) und "All" setzen Gruppen.
           </Typography>
 
@@ -599,7 +600,7 @@ Beispiel: Direction=DOWN, 20%, 10min
           <Divider sx={{ my: 2 }} />
 
           {/* Metadata */}
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Metadata Features — 13 Features</Typography>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Metadata Features — 15 Features</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Token-Eigenschaften aus <code>discovered_coins</code> und <code>exchange_rates</code> zum Discovery-Zeitpunkt.
           </Typography>
@@ -617,8 +618,10 @@ Beispiel: Direction=DOWN, 20%, 10min
                 <TableRow><TableCell><code>meta_token_supply_log</code></TableCell><TableCell>Log10 der Token-Supply</TableCell></TableRow>
                 <TableRow><TableCell><code>meta_has_socials</code></TableCell><TableCell>Social-Media-Praesenz vorhanden (0/1)</TableCell></TableRow>
                 <TableRow><TableCell><code>meta_social_count</code></TableCell><TableCell>Anzahl Social-Links (0-4)</TableCell></TableRow>
-                <TableRow><TableCell><code>meta_metadata_mutable</code></TableCell><TableCell>Rug-Risiko: Metadata aenderbar (null→1=riskant)</TableCell></TableRow>
-                <TableRow><TableCell><code>meta_mint_authority</code></TableCell><TableCell>Rug-Risiko: Kann nachminten (null→1=riskant)</TableCell></TableRow>
+                <TableRow><TableCell><code>meta_metadata_mutable</code></TableCell><TableCell>Rug-Risiko: Metadata aenderbar (null→0.5, true→1, false→0)</TableCell></TableRow>
+                <TableRow><TableCell><code>meta_metadata_mutable_known</code></TableCell><TableCell>Ob der Wert bekannt ist (0=unbekannt/null, 1=bekannt)</TableCell></TableRow>
+                <TableRow><TableCell><code>meta_mint_authority</code></TableCell><TableCell>Rug-Risiko: Kann nachminten (null→0.5, true→1, false→0)</TableCell></TableRow>
+                <TableRow><TableCell><code>meta_mint_authority_known</code></TableCell><TableCell>Ob der Wert bekannt ist (0=unbekannt/null, 1=bekannt)</TableCell></TableRow>
                 <TableRow><TableCell><code>meta_risk_score</code></TableCell><TableCell>Vorberechneter Risiko-Score (0-1)</TableCell></TableRow>
                 <TableRow><TableCell><code>meta_top10_holders_pct</code></TableCell><TableCell>Holder-Konzentration (0-1)</TableCell></TableRow>
                 <TableRow><TableCell><code>meta_liquidity_sol</code></TableCell><TableCell>Initiale Liquiditaet log10(SOL+1)</TableCell></TableRow>
@@ -1290,7 +1293,168 @@ TP = True Positive  → korrekt: Pump vorhergesagt und Pump passiert`}
           </Alert>
         </Chapter>
 
-        {/* ── 12. API & MCP ─────────────────────────────────────── */}
+        {/* ── 12. Settings ──────────────────────────────────────── */}
+        <Chapter
+          id="train-settings"
+          title="Training Settings"
+          icon="⚙️"
+          expanded={expandedChapters.includes('train-settings')}
+          onChange={handleChapterChange('train-settings')}
+        >
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            Zentrale Konfiguration fuer Auto-Retrain, Drift Detection und Training-Defaults.
+            Erreichbar ueber Training → Settings.
+          </Typography>
+
+          {/* Auto-Retrain */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#4caf50' }}>Auto-Retrain</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Automatisches Nachtrainieren von Modellen nach einem konfigurierbaren Zeitplan.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Parameter</strong></TableCell>
+                  <TableCell><strong>Optionen</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><code>Enabled</code></TableCell>
+                  <TableCell>ON / OFF</TableCell>
+                  <TableCell>Aktiviert/deaktiviert das gesamte Auto-Retrain-System.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Schedule</code></TableCell>
+                  <TableCell>6h — 168h (7 Tage)</TableCell>
+                  <TableCell>Wie oft das System pruefen soll ob ein Retrain noetig ist. Presets: 6h, 12h, Daily, 2 Days, Weekly.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Training Data Window</code></TableCell>
+                  <TableCell>12h — 168h</TableCell>
+                  <TableCell>Wie viel historische Daten fuer das Retraining verwendet werden.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Base Models</code></TableCell>
+                  <TableCell>Multi-Select (Checkbox-Liste)</TableCell>
+                  <TableCell>
+                    <strong>Mehrere Modelle</strong> koennen als Basis ausgewaehlt werden. Fuer jedes selektierte Modell wird
+                    ein separater TRAIN-Job erstellt mit den Features, Parametern und Phasen des Originals.
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Auto-Deploy</code></TableCell>
+                  <TableCell>ON / OFF</TableCell>
+                  <TableCell>Ersetzt automatisch das aktive Prediction-Modell wenn <strong>irgendein</strong> nachtrainiertes Modell hoehere Accuracy zeigt.</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <strong>Multi-Model Workflow:</strong> Waehle mehrere Base Models (z.B. ein XGBoost und ein LightGBM) aus.
+            Beim naechsten Retrain-Zyklus werden alle parallel neu trainiert. Mit Auto-Deploy gewinnt das beste Modell automatisch.
+          </Alert>
+
+          <Divider sx={{ my: 2 }} />
+
+          {/* Drift Detection */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#ff9800' }}>Drift Detection</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Ueberwacht die Accuracy aktiver Modelle und reagiert wenn die Performance unter einen Schwellwert faellt.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Parameter</strong></TableCell>
+                  <TableCell><strong>Optionen</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><code>Enabled</code></TableCell>
+                  <TableCell>ON / OFF</TableCell>
+                  <TableCell>Aktiviert die Drift-Ueberwachung.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Accuracy Threshold</code></TableCell>
+                  <TableCell>30% — 80%</TableCell>
+                  <TableCell>Unter diesem Wert wird Drift erkannt. Basiert auf Alert-Evaluations der letzten 24h.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Check Interval</code></TableCell>
+                  <TableCell>1h — 24h</TableCell>
+                  <TableCell>Wie oft der Drift-Check ausgefuehrt wird.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Action</code></TableCell>
+                  <TableCell>Log Only | Auto-Retrain | Notify</TableCell>
+                  <TableCell>
+                    <strong>Log Only:</strong> Drift wird geloggt, keine Aktion.
+                    <strong> Auto-Retrain:</strong> Startet automatisch einen Retrain-Job.
+                    <strong> Notify:</strong> Sendet Benachrichtigung via n8n Webhook.
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Divider sx={{ my: 2 }} />
+
+          {/* Training Defaults */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#00d4ff' }}>Training Defaults</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Standard-Werte die beim Erstellen neuer Modelle vorbelegt werden. Individuell ueberschreibbar pro Modell.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Parameter</strong></TableCell>
+                  <TableCell><strong>Default</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><code>Default Model Type</code></TableCell>
+                  <TableCell>XGBoost</TableCell>
+                  <TableCell>Standard ML-Algorithmus fuer neue Modelle.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Default Training Window</code></TableCell>
+                  <TableCell>48h</TableCell>
+                  <TableCell>Standard-Zeitraum fuer Trainingsdaten.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Early Stopping</code></TableCell>
+                  <TableCell>10 Runden</TableCell>
+                  <TableCell>Standard-Patience fuer Early Stopping. 0 = deaktiviert.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>SHAP</code></TableCell>
+                  <TableCell>OFF</TableCell>
+                  <TableCell>Standard-Einstellung fuer SHAP-Analyse bei neuen Modellen.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Feature Sources</code></TableCell>
+                  <TableCell>Alle aktiv</TableCell>
+                  <TableCell>Pro Quelle (Graph, Embedding, Transaction, Metadata) einzeln konfigurierbare Default-Features.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>Metadata Master Toggle</code></TableCell>
+                  <TableCell>ON</TableCell>
+                  <TableCell>Globaler Schalter: aktiviert/deaktiviert Metadata-Features fuer alle neuen Modelle.</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+        </Chapter>
+
+        {/* ── 13. API & MCP ─────────────────────────────────────── */}
         <Chapter
           id="train-api"
           title="API-Endpunkte & MCP-Tools"
