@@ -19,6 +19,7 @@ import pandas as pd
 from backend.config import settings
 from backend.database import get_pool
 from backend.modules.training.trainer import ModelCache, load_model_from_binary
+from backend.modules.training.features import add_pump_detection_features
 
 logger = logging.getLogger(__name__)
 
@@ -170,20 +171,40 @@ async def prepare_features(
     if not required_features:
         raise ValueError("Model has no features defined")
 
-    # Get latest coin metrics
-    row = await pool.fetchrow("""
+    # Read model params for feature engineering config
+    params = model_config.get('params', {}) or {}
+    use_engineered = params.get('use_engineered_features', False)
+    window_sizes = params.get('feature_engineering_windows', [5, 10, 15])
+    use_flags = params.get('use_flag_features', True)
+    history_limit = (max(window_sizes) + 5) if use_engineered else 1
+
+    # Get coin metrics (enough history for rolling windows if needed)
+    rows = await pool.fetch("""
         SELECT *
         FROM coin_metrics
         WHERE mint = $1
         ORDER BY timestamp DESC
-        LIMIT 1
-    """, coin_id)
+        LIMIT $2
+    """, coin_id, history_limit)
 
-    if not row:
+    if not rows:
         raise ValueError(f"No metrics found for coin {coin_id}")
 
-    # Compute extra-source features if model was trained with them
-    params = model_config.get('params', {}) or {}
+    if use_engineered and len(rows) > 1:
+        # Build DataFrame for feature engineering (chronological order)
+        df = pd.DataFrame([dict(r) for r in reversed(rows)])
+        # Convert Decimal to float for numeric columns
+        from decimal import Decimal
+        for col in df.columns:
+            if df[col].dtype == object:
+                first_val = df[col].dropna().iloc[0] if len(df[col].dropna()) > 0 else None
+                if isinstance(first_val, Decimal):
+                    df[col] = df[col].astype(float)
+        df = add_pump_detection_features(df, window_sizes=window_sizes, include_flags=use_flags)
+        row = df.iloc[-1]  # latest row with all computed features
+    else:
+        row = rows[0]  # single row, dict-like asyncpg Record
+
     extra_features: Dict[str, float] = {}
 
     if params.get('use_graph_features'):
@@ -210,11 +231,26 @@ async def prepare_features(
         except Exception as e:
             logger.warning(f"Failed to compute transaction features for {coin_id[:8]}...: {e}")
 
+    if params.get('use_metadata_features') or params.get('use_market_context'):
+        try:
+            from backend.modules.training.metadata_features import compute_metadata_features
+            meta_data = await compute_metadata_features([coin_id])
+            extra_features.update(meta_data.get(coin_id, {}))
+        except Exception as e:
+            logger.warning(f"Failed to compute metadata features for {coin_id[:8]}...: {e}")
+
     # Extract features from metrics + extra sources
     feature_values = []
+    is_series = isinstance(row, pd.Series)
     for feature in required_features:
-        # Try coin_metrics first
-        value = row.get(feature)
+        # Try coin_metrics / engineered features first
+        if is_series:
+            value = row.get(feature)
+            # pandas returns NaN for missing, treat as None
+            if value is not None and pd.isna(value):
+                value = None
+        else:
+            value = row.get(feature)
 
         # Then try extra-source features
         if value is None and feature in extra_features:
@@ -222,8 +258,9 @@ async def prepare_features(
 
         if value is None:
             # Try to compute missing features if possible
-            if feature == 'price_vs_ath_pct' and row.get('price_close') and row.get('ath_price_sol'):
-                value = ((float(row['price_close']) - float(row['ath_price_sol'])) / float(row['ath_price_sol'])) * 100
+            price_close = row.get('price_close') if is_series else row.get('price_close')
+            if feature == 'price_vs_ath_pct' and price_close and row.get('ath_price_sol'):
+                value = ((float(price_close) - float(row.get('ath_price_sol'))) / float(row.get('ath_price_sol'))) * 100
             elif feature == 'buy_pressure_ratio':
                 buy_vol = float(row.get('buy_volume_sol') or 0)
                 sell_vol = float(row.get('sell_volume_sol') or 0)

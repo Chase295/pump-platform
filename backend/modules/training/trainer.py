@@ -651,6 +651,11 @@ async def train_model(
 
     use_engineered_features = final_params.get("use_engineered_features", False)
 
+    # Market context flag activates metadata features (SOL price + macro context)
+    if final_params.get("use_market_context") and not use_metadata_features:
+        use_metadata_features = True
+        logger.info("use_market_context enabled → activating metadata features")
+
     # Remove ATH features from DB loading list (they are computed in Python)
     ath_feature_names = [
         "rolling_ath", "ath_distance_pct", "ath_breakout", "minutes_since_ath",
@@ -923,10 +928,23 @@ async def test_model(
     if model["target_variable"] not in features_for_loading:
         features_for_loading.append(model["target_variable"])
 
+    # Read extra-source feature flags from params (same as training)
+    use_graph_features = params.get("use_graph_features", False)
+    use_embedding_features = params.get("use_embedding_features", False)
+    use_transaction_features = params.get("use_transaction_features", False)
+    use_metadata_features = params.get("use_metadata_features", False)
+    if params.get("use_market_context") and not use_metadata_features:
+        use_metadata_features = True
+    include_ath = params.get("include_ath", use_engineered)
+
     # Load test data
     test_data = await load_training_data(
         train_start=test_start, train_end=test_end,
-        features=features_for_loading, phases=phases, include_ath=False,
+        features=features_for_loading, phases=phases, include_ath=include_ath,
+        use_graph_features=use_graph_features,
+        use_embedding_features=use_embedding_features,
+        use_transaction_features=use_transaction_features,
+        use_metadata_features=use_metadata_features,
     )
     if len(test_data) == 0:
         raise ValueError("No test data found!")

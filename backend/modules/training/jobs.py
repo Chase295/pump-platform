@@ -235,6 +235,40 @@ async def process_train_job(job: Dict[str, Any]) -> None:
 
     logger.info("Job %d: model %d created (name: %s)", job_id, model_id, original_model_name)
 
+    # Auto-trigger tuning if requested via _tune_after_training param
+    tune_after = params.get('_tune_after_training', False)
+    if tune_after and model_id:
+        tune_iters = params.get('_tune_iterations', 20)
+        tune_iters = min(max(int(tune_iters), 10), 100)
+        try:
+            pool = get_pool()
+            tune_job_id = await pool.fetchval(
+                """
+                INSERT INTO ml_jobs (job_type, priority, tune_model_id, tune_strategy, tune_n_iterations, status)
+                VALUES ('TUNE', 5, $1, 'random', $2, 'PENDING')
+                RETURNING id
+                """,
+                model_id, tune_iters,
+            )
+            logger.info("Auto-triggered tuning for model %d (%d iterations, job %d)", model_id, tune_iters, tune_job_id)
+        except Exception as e:
+            logger.warning("Failed to auto-trigger tuning for model %d: %s", model_id, e)
+
+    # Auto-deploy check for auto-retrain jobs
+    if params.get('_auto_retrain_source') and model_id:
+        try:
+            from backend.modules.training.auto_retrain import get_training_setting
+            auto_deploy = await get_training_setting('auto_retrain_auto_deploy', False)
+            base_model_id = params.get('_auto_retrain_base_model_id')
+            if auto_deploy and base_model_id:
+                logger.info(
+                    "Auto-retrain complete. New model %d (F1=%.4f) vs base model %s. "
+                    "Auto-deploy is enabled — consider activating via prediction_active_models.",
+                    model_id, training_result.get("f1", 0), base_model_id,
+                )
+        except Exception as e:
+            logger.warning("Auto-deploy check failed: %s", e)
+
     # Progress 100%
     await update_job_status(
         job_id, status="COMPLETED", progress=1.0,

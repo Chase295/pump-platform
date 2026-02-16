@@ -125,7 +125,7 @@ class TrainModelRequest(BaseModel):
     @validator('direction')
     def validate_direction(cls, v, values):
         if values.get('use_time_based_prediction', False):
-            allowed = ['up', 'down', 'both']
+            allowed = ['up', 'down']
             if v not in allowed:
                 raise ValueError(f'direction must be one of {allowed}')
         return v

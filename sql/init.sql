@@ -594,7 +594,7 @@ CREATE TABLE IF NOT EXISTS ml_models (
     low_importance_features JSONB,
     early_stopping_rounds INTEGER,
 
-    CONSTRAINT chk_ml_model_type CHECK (model_type IN ('random_forest', 'xgboost', 'gradient_boosting', 'logistic_regression', 'neural_network')),
+    CONSTRAINT chk_ml_model_type CHECK (model_type IN ('xgboost', 'lightgbm')),
     CONSTRAINT chk_ml_status CHECK (status IN ('TRAINING', 'READY', 'FAILED')),
     CONSTRAINT chk_ml_operator CHECK (target_operator IS NULL OR target_operator IN ('>', '<', '>=', '<=', '=')),
     CONSTRAINT chk_ml_target_direction CHECK (target_direction IS NULL OR target_direction IN ('up', 'down')),
@@ -958,7 +958,7 @@ CREATE TABLE IF NOT EXISTS prediction_active_models (
     simulated_profit_pct NUMERIC(8, 4),
 
     -- Constraints
-    CONSTRAINT chk_pam_model_type CHECK (model_type IN ('random_forest', 'xgboost')),
+    CONSTRAINT chk_pam_model_type CHECK (model_type IN ('xgboost', 'lightgbm')),
     CONSTRAINT chk_pam_operator CHECK (target_operator IS NULL OR target_operator IN ('>', '<', '>=', '<=', '=')),
     CONSTRAINT chk_pam_direction CHECK (target_direction IS NULL OR target_direction IN ('up', 'down')),
 
@@ -1574,11 +1574,8 @@ ON CONFLICT (name) DO NOTHING;
 -- ============================================================================
 
 INSERT INTO ref_model_types (id, name, description, default_params) VALUES
-(1, 'random_forest', 'Random Forest Classifier', '{"n_estimators": 100, "max_depth": 10, "min_samples_split": 2}'::jsonb),
-(2, 'xgboost', 'XGBoost Classifier', '{"n_estimators": 100, "max_depth": 6, "learning_rate": 0.1}'::jsonb),
-(3, 'gradient_boosting', 'Gradient Boosting Classifier', '{"n_estimators": 100, "max_depth": 3, "learning_rate": 0.1}'::jsonb),
-(4, 'logistic_regression', 'Logistic Regression', '{"C": 1.0, "max_iter": 100}'::jsonb),
-(5, 'neural_network', 'Neural Network (MLP)', '{"hidden_layers": [100, 50], "activation": "relu", "max_iter": 200}'::jsonb)
+(1, 'xgboost', 'XGBoost Classifier', '{"n_estimators": 100, "max_depth": 6, "learning_rate": 0.1}'::jsonb),
+(2, 'lightgbm', 'LightGBM Classifier', '{"n_estimators": 100, "max_depth": 6, "learning_rate": 0.1, "num_leaves": 31}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 

@@ -363,6 +363,12 @@ def get_engineered_feature_names(window_sizes: List[int] = None) -> List[str]:
             f'ath_distance_trend_{w}', f'ath_approach_{w}', f'ath_breakout_count_{w}',
             f'ath_breakout_volume_ma_{w}', f'ath_age_trend_{w}',
         ])
+    # ATH non-windowed features
+    features.extend(['rolling_ath', 'price_vs_ath_pct', 'ath_breakout', 'minutes_since_ath'])
+    # Power features
+    features.extend(['buy_sell_ratio', 'whale_dominance'])
+    for w in window_sizes:
+        features.extend([f'price_acceleration_{w}', f'volume_spike_{w}'])
     return features
 
 

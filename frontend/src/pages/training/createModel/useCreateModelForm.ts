@@ -315,6 +315,11 @@ export function useCreateModelForm() {
         else if (!isNaN(Number(trimmed))) parsedParams[key.trim()] = Number(trimmed);
         else parsedParams[key.trim()] = trimmed;
       }
+      // Add tuning params if enabled
+      if (form.enableTuning) {
+        parsedParams._tune_after_training = true;
+        parsedParams._tune_iterations = form.tuningIterations;
+      }
       if (Object.keys(parsedParams).length > 0) {
         data.params = parsedParams;
       }
