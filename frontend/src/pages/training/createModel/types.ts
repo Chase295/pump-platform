@@ -23,6 +23,10 @@ export interface CreateModelFormState {
   description: string;
   cvSplits: number;
   useTimeseriesSplit: boolean;
+  customParams: Record<string, string>;
+  excludeFeatures: string[];
+  useMarketContext: boolean;
+  featureWindows: number[];
   activePreset: string | null;
 }
 

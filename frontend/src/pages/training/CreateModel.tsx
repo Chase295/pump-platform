@@ -22,6 +22,8 @@ import {
   Collapse,
   useMediaQuery,
   useTheme,
+  Autocomplete,
+  IconButton,
 } from '@mui/material';
 import {
   RocketLaunch as RocketIcon,
@@ -43,6 +45,11 @@ import {
   Security as ShieldIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
+  Delete as DeleteIcon,
+  Public as MarketIcon,
+  Timeline as WindowsIcon,
+  Block as ExcludeIcon,
+  Code as ParamsIcon,
 } from '@mui/icons-material';
 
 import { useCreateModelForm } from './createModel/useCreateModelForm';
@@ -675,6 +682,126 @@ const CreateModel: React.FC = () => {
                   <Slider value={form.tuningIterations} onChange={(_, v) => updateField('tuningIterations', v as number)} min={10} max={100} step={10} valueLabelDisplay="auto" />
                 </Box>
               )}
+
+              {/* Market Context */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, mt: 1 }}>
+                <MarketIcon sx={{ fontSize: 20, color: form.useMarketContext ? '#4caf50' : '#666' }} />
+                <FormControlLabel
+                  control={<Switch checked={form.useMarketContext} onChange={(e) => updateField('useMarketContext', e.target.checked)} size="small" />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Market Context</Typography>}
+                />
+                <Typography variant="caption" color="text.secondary">Include SOL price & macro context as features</Typography>
+              </Box>
+
+              {/* Feature Engineering Windows */}
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <WindowsIcon sx={{ fontSize: 18 }} /> Feature Engineering Windows
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                Window sizes for rolling feature calculations (only used with engineered features)
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                {[5, 10, 15, 20, 30, 60].map((w) => {
+                  const active = form.featureWindows.includes(w);
+                  return (
+                    <Chip
+                      key={w}
+                      label={`${w}`}
+                      size="small"
+                      variant={active ? 'filled' : 'outlined'}
+                      onClick={() => {
+                        const next = active
+                          ? form.featureWindows.filter((v) => v !== w)
+                          : [...form.featureWindows, w].sort((a, b) => a - b);
+                        updateField('featureWindows', next);
+                      }}
+                      sx={{
+                        bgcolor: active ? 'rgba(0,212,255,0.2)' : 'transparent',
+                        borderColor: active ? '#00d4ff' : undefined,
+                        color: active ? '#00d4ff' : undefined,
+                        fontWeight: active ? 700 : 400,
+                      }}
+                    />
+                  );
+                })}
+              </Box>
+
+              {/* Feature Exclusion */}
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ExcludeIcon sx={{ fontSize: 18 }} /> Exclude Features
+              </Typography>
+              <Autocomplete
+                multiple
+                size="small"
+                options={[
+                  ...BASE_FEATURES.map((f) => f.id),
+                  ...ENGINEERING_FEATURES.map((f) => f.id),
+                  ...GRAPH_FEATURES.map((f) => f.id),
+                  ...EMBEDDING_FEATURES.map((f) => f.id),
+                  ...TRANSACTION_FEATURES.map((f) => f.id),
+                  ...METADATA_FEATURES.map((f) => f.id),
+                ]}
+                value={form.excludeFeatures}
+                onChange={(_, val) => updateField('excludeFeatures', val)}
+                renderInput={(params) => <TextField {...params} placeholder="Select features to exclude..." />}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => {
+                    const { key, ...rest } = getTagProps({ index });
+                    return <Chip key={key} label={option} size="small" color="error" variant="outlined" {...rest} />;
+                  })
+                }
+                sx={{ mb: 2 }}
+              />
+
+              {/* Custom Hyperparameters */}
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ParamsIcon sx={{ fontSize: 18 }} /> Custom Hyperparameters
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                Override model hyperparameters (e.g. max_depth, learning_rate, n_estimators)
+              </Typography>
+              {Object.entries(form.customParams).map(([key, val]) => (
+                <Box key={key} sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
+                  <TextField size="small" value={key} disabled sx={{ flex: 1 }} />
+                  <TextField
+                    size="small"
+                    value={val}
+                    onChange={(e) => {
+                      const next = { ...form.customParams, [key]: e.target.value };
+                      updateField('customParams', next);
+                    }}
+                    sx={{ flex: 1 }}
+                    placeholder="Value"
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      const next = { ...form.customParams };
+                      delete next[key];
+                      updateField('customParams', next);
+                    }}
+                    sx={{ color: '#f44336' }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+              <Autocomplete
+                freeSolo
+                size="small"
+                options={['max_depth', 'learning_rate', 'n_estimators', 'subsample', 'colsample_bytree', 'num_leaves', 'min_child_weight', 'reg_alpha', 'reg_lambda'].filter(
+                  (o) => !(o in form.customParams)
+                )}
+                renderInput={(params) => <TextField {...params} placeholder="Add parameter..." />}
+                onChange={(_, val) => {
+                  if (val && typeof val === 'string' && val.trim()) {
+                    updateField('customParams', { ...form.customParams, [val.trim()]: '' });
+                  }
+                }}
+                value={null}
+                blurOnSelect
+                sx={{ mb: 2 }}
+              />
             </AccordionDetails>
           </Accordion>
         </Box>

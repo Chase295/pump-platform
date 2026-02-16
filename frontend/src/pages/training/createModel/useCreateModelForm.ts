@@ -58,6 +58,10 @@ export function useCreateModelForm() {
     description: '',
     cvSplits: 5,
     useTimeseriesSplit: true,
+    customParams: {},
+    excludeFeatures: [],
+    useMarketContext: false,
+    featureWindows: [5, 10, 15],
     activePreset: null,
   });
 
@@ -297,7 +301,23 @@ export function useCreateModelForm() {
         embedding_feature_names: form.selectedEmbeddingFeatures.length > 0 ? form.selectedEmbeddingFeatures : undefined,
         transaction_feature_names: form.selectedTransactionFeatures.length > 0 ? form.selectedTransactionFeatures : undefined,
         metadata_feature_names: form.selectedMetadataFeatures.length > 0 ? form.selectedMetadataFeatures : undefined,
+        use_market_context: form.useMarketContext,
+        exclude_features: form.excludeFeatures.length > 0 ? form.excludeFeatures : undefined,
+        feature_engineering_windows: form.selectedEngFeatures.length > 0 ? form.featureWindows : undefined,
       };
+      // Parse custom params and merge into params dict
+      const parsedParams: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(form.customParams)) {
+        if (!key.trim() || !val.trim()) continue;
+        const trimmed = val.trim();
+        if (trimmed === 'true') parsedParams[key.trim()] = true;
+        else if (trimmed === 'false') parsedParams[key.trim()] = false;
+        else if (!isNaN(Number(trimmed))) parsedParams[key.trim()] = Number(trimmed);
+        else parsedParams[key.trim()] = trimmed;
+      }
+      if (Object.keys(parsedParams).length > 0) {
+        data.params = parsedParams;
+      }
       if (form.balanceMethod === 'scale_pos_weight') {
         data.scale_pos_weight = form.scaleWeight;
         data.use_smote = false;

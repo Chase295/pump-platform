@@ -196,6 +196,8 @@ async def _create_model_job(request: TrainModelRequest):
 
     # Build final params
     final_params = request.params or {}
+    if request.scale_pos_weight is not None:
+        final_params["scale_pos_weight"] = request.scale_pos_weight
     if request.use_time_based_prediction:
         final_params["_time_based"] = {
             "enabled": True,

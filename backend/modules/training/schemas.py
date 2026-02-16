@@ -46,6 +46,9 @@ class TrainModelRequest(BaseModel):
     # Market context (phase 2)
     use_market_context: bool = Field(False, description="Use market context for training")
 
+    # Scale positive weight (alternative to SMOTE)
+    scale_pos_weight: Optional[float] = Field(None, description="Class weight for positive samples")
+
     # Early Stopping
     early_stopping_rounds: int = Field(10, description="Early stopping rounds (0=disabled)")
 
