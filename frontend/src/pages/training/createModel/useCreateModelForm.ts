@@ -119,16 +119,50 @@ export function useCreateModelForm() {
   const applyPreset = useCallback((presetId: string) => {
     const preset = PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
-    setForm((prev) => ({
-      ...prev,
-      ...preset.values,
-      modelType: prev.modelType,
-      name: presetId !== 'custom' ? `${presetId}_${new Date().toISOString().slice(0, 10)}` : prev.name,
-      trainStart: prev.trainStart,
-      trainEnd: prev.trainEnd,
-      selectedPhases: prev.selectedPhases,
-      activePreset: presetId,
-    }));
+    setForm((prev) => {
+      // Start from initial defaults, then apply preset, preserving user context
+      const defaults: CreateModelFormState = {
+        name: '',
+        modelType: prev.modelType,
+        direction: 'up',
+        futureMinutes: 10,
+        minPercentChange: 10,
+        selectedBaseFeatures: ['price_close', 'volume_sol', 'buy_pressure_ratio'],
+        selectedEngFeatures: [],
+        selectedGraphFeatures: [],
+        selectedEmbeddingFeatures: [],
+        selectedTransactionFeatures: [],
+        selectedMetadataFeatures: [],
+        trainStart: prev.trainStart,
+        trainEnd: prev.trainEnd,
+        selectedPhases: prev.selectedPhases,
+        balanceMethod: 'scale_pos_weight',
+        scaleWeight: 100,
+        useFlagFeatures: true,
+        earlyStoppingRounds: 10,
+        enableShap: false,
+        enableTuning: false,
+        tuningIterations: 20,
+        description: '',
+        cvSplits: 5,
+        useTimeseriesSplit: true,
+        customParams: {},
+        excludeFeatures: [],
+        useMarketContext: false,
+        featureWindows: [5, 10, 15],
+        activePreset: presetId,
+      };
+      return {
+        ...defaults,
+        ...preset.values,
+        modelType: prev.modelType,
+        name: presetId !== 'custom' ? `${presetId}_${new Date().toISOString().slice(0, 10)}` : prev.name,
+        trainStart: prev.trainStart,
+        trainEnd: prev.trainEnd,
+        selectedPhases: prev.selectedPhases,
+        activePreset: presetId,
+      };
+    });
     setResult(null);
   }, []);
 
@@ -345,14 +379,14 @@ export function useCreateModelForm() {
       }
 
       const resp = await trainingApi.createModel(data);
-      const jobId = resp.data?.job_id;
+      const jobId = resp.data?.job_id ?? resp.data?.id;
 
       setResult({
         success: true,
         message: form.enableTuning
-          ? `Model "${form.name}" training started! Tuning will run after training.`
-          : `Model "${form.name}" training started!`,
-        jobId,
+          ? `Model "${form.name}" training started!${jobId ? ` Job #${jobId}` : ''} Tuning will run after training.`
+          : `Model "${form.name}" training started!${jobId ? ` Job #${jobId}` : ''}`,
+        jobId: jobId ?? undefined,
       });
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }; message?: string };

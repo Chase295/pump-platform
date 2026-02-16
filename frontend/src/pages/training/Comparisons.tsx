@@ -61,6 +61,10 @@ const formatPct = (v?: number) => {
   return `${(v * 100).toFixed(1)}%`;
 };
 
+/** Extract model IDs from comparison, supporting both new array and legacy dual-ID format. */
+const getComparisonModelIds = (c: ComparisonResponse): number[] =>
+  c.model_ids ?? [c.model_a_id, c.model_b_id].filter((id): id is number => id != null);
+
 const medalColors: Record<number, string> = {
   0: '#FFD700', // Gold
   1: '#C0C0C0', // Silver
@@ -150,7 +154,7 @@ const Comparisons: React.FC = () => {
   const stats = useMemo(() => {
     const total = comparisons.length;
     const withWinner = comparisons.filter((c) => c.winner_id).length;
-    const uniqueModels = new Set(comparisons.flatMap((c) => c.model_ids ?? [c.model_a_id, c.model_b_id].filter(Boolean)));
+    const uniqueModels = new Set(comparisons.flatMap((c) => getComparisonModelIds(c)));
     return { total, withWinner, uniqueModels: uniqueModels.size };
   }, [comparisons]);
 
@@ -403,7 +407,7 @@ const Comparisons: React.FC = () => {
 
                   {/* Models chips */}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
-                    {(comparison.model_ids ?? [comparison.model_a_id, comparison.model_b_id].filter(Boolean)).map((mid) => (
+                    {getComparisonModelIds(comparison).map((mid) => (
                       <Chip
                         key={mid}
                         label={`Model #${mid}`}
