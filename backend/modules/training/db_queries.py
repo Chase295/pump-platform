@@ -327,11 +327,13 @@ async def list_models(
 
 
 async def delete_model(model_id: int) -> bool:
-    """Soft-delete a model."""
+    """Soft-delete a model and clear from cache."""
     await execute(
         "UPDATE ml_models SET is_deleted = TRUE, deleted_at = NOW() WHERE id = $1",
         model_id,
     )
+    from backend.modules.training.trainer import ModelCache
+    ModelCache.remove(model_id)
     return True
 
 

@@ -58,7 +58,7 @@ async def update_training_settings(updates: Dict[str, Any]) -> Dict[str, Any]:
     pool = get_pool()
     import json
     for key, value in updates.items():
-        json_value = json.dumps(value)
+        json_value = value if isinstance(value, str) else json.dumps(value)
         await pool.execute(
             """
             INSERT INTO training_settings (key, value, updated_at)
@@ -165,20 +165,26 @@ class AutoRetrainManager:
         if not enabled:
             return
 
-        base_model_id = await get_training_setting("auto_retrain_base_model_id")
-        if not base_model_id:
+        # Support new array field with fallback to legacy single ID
+        base_model_ids = await get_training_setting("auto_retrain_base_model_ids")
+        if not base_model_ids or not isinstance(base_model_ids, list):
+            legacy_id = await get_training_setting("auto_retrain_base_model_id")
+            base_model_ids = [legacy_id] if legacy_id else []
+        if not base_model_ids:
             return
 
-        schedule = await get_training_setting("auto_retrain_schedule", "daily")
-        logger.info("Auto-retrain check: base_model=%s, schedule=%s", base_model_id, schedule)
+        # Schedule: numeric hours (new) or legacy string
+        schedule = await get_training_setting("auto_retrain_schedule", 24)
+        if isinstance(schedule, str):
+            schedule = {"daily": 24, "every_2_days": 48, "weekly": 168}.get(schedule, 24)
+        schedule = int(schedule)
+        # Use training window setting if available
+        window_hours = await get_training_setting("auto_retrain_training_window_hours")
+
+        logger.info("Auto-retrain check: base_models=%s, schedule=%dh", base_model_ids, schedule)
 
         try:
             from backend.modules.training.db_queries import get_model, create_job
-
-            model = await get_model(int(base_model_id))
-            if not model or model.get("is_deleted"):
-                logger.warning("Auto-retrain base model %s not found", base_model_id)
-                return
 
             # Check if we already retrained recently
             pool = get_pool()
@@ -194,32 +200,44 @@ class AutoRetrainManager:
 
             if last_retrain:
                 hours_since = (datetime.now(timezone.utc) - last_retrain["created_at"]).total_seconds() / 3600
-                min_hours = {"daily": 20, "every_2_days": 44, "weekly": 164}.get(schedule, 20)
-                if hours_since < min_hours:
+                # Require at least 80% of schedule interval before next retrain
+                if hours_since < schedule * 0.8:
                     return
 
-            # Create a new TRAIN job with recent data
             now = datetime.now(timezone.utc)
-            params = model.get("params", {}) or {}
-            train_duration = (model["train_end"] - model["train_start"]).total_seconds()
-            new_end = now
-            new_start = now - timedelta(seconds=train_duration)
 
-            job_id = await create_job(
-                job_type="TRAIN",
-                priority=3,
-                train_model_type=model["model_type"],
-                train_target_var=model["target_variable"],
-                train_operator=model.get("target_operator"),
-                train_value=float(model["target_value"]) if model.get("target_value") else None,
-                train_start=new_start,
-                train_end=new_end,
-                train_features=model["features"],
-                train_phases=model["phases"],
-                train_params=params,
-                progress_msg=f"{model['name']}_auto-retrain_{now.strftime('%Y%m%d')}",
-            )
-            logger.info("Auto-retrain job created: %d (base model: %s)", job_id, base_model_id)
+            for mid in base_model_ids:
+                try:
+                    model = await get_model(int(mid))
+                    if not model or model.get("is_deleted"):
+                        logger.warning("Auto-retrain base model %s not found or deleted, skipping", mid)
+                        continue
+
+                    params = model.get("params", {}) or {}
+                    if window_hours:
+                        train_duration = int(window_hours) * 3600
+                    else:
+                        train_duration = (model["train_end"] - model["train_start"]).total_seconds()
+                    new_end = now
+                    new_start = now - timedelta(seconds=train_duration)
+
+                    job_id = await create_job(
+                        job_type="TRAIN",
+                        priority=3,
+                        train_model_type=model["model_type"],
+                        train_target_var=model["target_variable"],
+                        train_operator=model.get("target_operator"),
+                        train_value=float(model["target_value"]) if model.get("target_value") else None,
+                        train_start=new_start,
+                        train_end=new_end,
+                        train_features=model["features"],
+                        train_phases=model["phases"],
+                        train_params=params,
+                        progress_msg=f"{model['name']}_auto-retrain_{now.strftime('%Y%m%d')}",
+                    )
+                    logger.info("Auto-retrain job created: %d (base model: %s)", job_id, mid)
+                except Exception as e:
+                    logger.error("Auto-retrain failed for model %s: %s", mid, e, exc_info=True)
 
         except Exception as e:
-            logger.error("Auto-retrain failed: %s", e, exc_info=True)
+            logger.error("Auto-retrain check failed: %s", e, exc_info=True)
