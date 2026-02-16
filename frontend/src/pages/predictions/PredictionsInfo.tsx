@@ -22,7 +22,6 @@ import {
   CodeBlock,
   EndpointRow,
   McpToolRow,
-  ConfigItem,
   InfoPageWrapper,
 } from '../../components/shared/InfoChapter';
 
@@ -72,10 +71,12 @@ const PredictionsInfo: React.FC = () => (
             <li><Typography variant="body2">Alert-System mit konfigurierbaren Thresholds und n8n-Integration</Typography></li>
             <li><Typography variant="body2">ATH-Tracking waehrend der Auswertungsperiode</Typography></li>
             <li><Typography variant="body2">Coin-Ignore-System gegen zu haeufige Scans</Typography></li>
+            <li><Typography variant="body2">Prediction Defaults: Standardwerte fuer neu importierte Modelle</Typography></li>
+            <li><Typography variant="body2">Log Retention: Begrenzung der gespeicherten Vorhersagen pro Coin</Typography></li>
           </Box>
           <Typography variant="body2" sx={{ mt: 2, fontStyle: 'italic', color: 'text.secondary' }}>
-            Workflow: Modell importieren &rarr; Alert-Config einstellen &rarr; Aktivieren &rarr; Automatische Vorhersagen
-            &rarr; Alerts an n8n &rarr; Auswertung & Statistiken
+            Workflow: Defaults konfigurieren &rarr; Modell importieren &rarr; Alert-Config anpassen
+            &rarr; Aktivieren &rarr; Automatische Vorhersagen &rarr; Alerts an n8n &rarr; Auswertung & Statistiken
           </Typography>
         </Chapter>
 
@@ -98,7 +99,11 @@ const PredictionsInfo: React.FC = () => (
               <TableBody>
                 <TableRow>
                   <TableCell>Modell-Import</TableCell>
-                  <TableCell>Laedt Modell vom Training Service herunter und speichert es lokal</TableCell>
+                  <TableCell>Laedt Modell vom Training Service und speichert es lokal. Wendet dabei die konfigurierten Prediction Defaults an.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Prediction Defaults</TableCell>
+                  <TableCell>Globale Standardwerte (Alert-Threshold, n8n, Ignore, Log Retention), die beim Import automatisch auf jedes neue Modell angewendet werden.</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>Aktivieren/Deaktivieren</TableCell>
@@ -113,8 +118,16 @@ const PredictionsInfo: React.FC = () => (
                   <TableCell>Modelle koennen fuer spezifische Coin-Phasen (1, 2, 3...) konfiguriert werden</TableCell>
                 </TableRow>
                 <TableRow>
+                  <TableCell>Log Retention</TableCell>
+                  <TableCell>Begrenzt die Anzahl gespeicherter Vorhersagen pro Coin (getrennt nach negativ/positiv/alert). 0 = unbegrenzt.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Ignorierte an n8n</TableCell>
+                  <TableCell>Optional: Auch ignorierte Vorhersagen (durch Cooldown uebersprungen) an n8n senden (send_ignored_to_n8n)</TableCell>
+                </TableRow>
+                <TableRow>
                   <TableCell>Statistiken</TableCell>
-                  <TableCell>Detaillierte Performance-Metriken (Success-Rate, Profit/Loss)</TableCell>
+                  <TableCell>Detaillierte Performance-Metriken (Success-Rate, Profit/Loss), filterbar in der Log-Ansicht</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -132,7 +145,7 @@ const PredictionsInfo: React.FC = () => (
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>Alert-Threshold</Typography>
           <Typography variant="body2" sx={{ mb: 2 }}>
             Der Alert-Threshold bestimmt, ab welcher Wahrscheinlichkeit eine Vorhersage als "Alert" gilt.
-            Standard: 70% (0.7). Konfigurierbar pro Modell.
+            Standard: 70% (0.7). Konfigurierbar pro Modell ueber Alert-Config oder global ueber Prediction Defaults.
           </Typography>
 
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>Send-Modi (n8n)</Typography>
@@ -153,7 +166,7 @@ const PredictionsInfo: React.FC = () => (
             </Table>
           </SmallTable>
 
-          <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>Coin-Ignore-System</Typography>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>Coin-Ignore-System (Cooldowns)</Typography>
           <SmallTable>
             <Table size="small">
               <TableHead>
@@ -166,12 +179,31 @@ const PredictionsInfo: React.FC = () => (
                 <TableRow><TableCell><code>ignore_bad_seconds</code></TableCell><TableCell>Ignoriert Coin nach negativer Vorhersage (&lt; 50%)</TableCell></TableRow>
                 <TableRow><TableCell><code>ignore_positive_seconds</code></TableCell><TableCell>Ignoriert Coin nach positiver Vorhersage (&ge; 50% aber &lt; Threshold)</TableCell></TableRow>
                 <TableRow><TableCell><code>ignore_alert_seconds</code></TableCell><TableCell>Ignoriert Coin nach Alert (&ge; Threshold)</TableCell></TableRow>
+                <TableRow><TableCell><code>send_ignored_to_n8n</code></TableCell><TableCell>Wenn true, werden auch ignorierte Vorhersagen an n8n gesendet</TableCell></TableRow>
               </TableBody>
             </Table>
           </SmallTable>
-          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}>
             Wenn ein Coin ignoriert wird, wird er komplett uebersprungen - keine Vorhersage, kein Log.
+            Ausnahme: Wenn send_ignored_to_n8n aktiviert ist, wird trotzdem an n8n gesendet.
           </Typography>
+
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>Log Retention (Max Log Entries)</Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Einstellung</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow><TableCell><code>max_log_entries_per_coin_negative</code></TableCell><TableCell>Max. gespeicherte negative Vorhersagen pro Coin (0 = unbegrenzt)</TableCell></TableRow>
+                <TableRow><TableCell><code>max_log_entries_per_coin_positive</code></TableCell><TableCell>Max. gespeicherte positive Vorhersagen pro Coin (0 = unbegrenzt)</TableCell></TableRow>
+                <TableRow><TableCell><code>max_log_entries_per_coin_alert</code></TableCell><TableCell>Max. gespeicherte Alert-Vorhersagen pro Coin (0 = unbegrenzt)</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
         </Chapter>
 
         {/* 4. Evaluation & Statistiken */}
@@ -228,7 +260,7 @@ const PredictionsInfo: React.FC = () => (
         >
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>LISTEN/NOTIFY (Echtzeit)</Typography>
           <List dense>
-            <ListItem><ListItemText primary="PostgreSQL LISTEN/NOTIFY fuer Echtzeit-Erkennung (&lt; 100ms Latency)" /></ListItem>
+            <ListItem><ListItemText primary="PostgreSQL LISTEN/NOTIFY fuer Echtzeit-Erkennung (< 100ms Latency)" /></ListItem>
             <ListItem><ListItemText primary="Automatischer Trigger in coin_metrics sendet NOTIFY bei jedem INSERT" /></ListItem>
             <ListItem><ListItemText primary="Fallback: Polling alle 30 Sekunden" /></ListItem>
           </List>
@@ -244,13 +276,14 @@ const PredictionsInfo: React.FC = () => (
   2. Event-Handler erkennt neuen Eintrag
   3. Prueft Coin-Filter (all/whitelist)
   4. Prueft Phasen-Filter
-  5. Prueft Coin-Ignore-Status
-  6. Laedt Coin-Historie fuer Feature-Engineering
-  7. Macht Vorhersage mit allen aktiven Modellen
-  8. Speichert in model_predictions
-  9. Aktualisiert Coin-Ignore-Cache
-  10. Sendet an n8n (wenn konfiguriert)
-  11. Background-Job evaluiert automatisch`}
+  5. Prueft Coin-Ignore-Status (Cooldowns)
+  6. Prueft Log Retention (max_log_entries)
+  7. Laedt Coin-Historie fuer Feature-Engineering
+  8. Macht Vorhersage mit allen aktiven Modellen
+  9. Speichert in model_predictions
+  10. Aktualisiert Coin-Ignore-Cache
+  11. Sendet an n8n (wenn konfiguriert + send_mode passt)
+  12. Background-Job evaluiert automatisch`}
           </CodeBlock>
         </Chapter>
 
@@ -262,32 +295,65 @@ const PredictionsInfo: React.FC = () => (
           expanded={expandedChapters.includes('pred-settings')}
           onChange={handleChapterChange('pred-settings')}
         >
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>System-Einstellungen</Typography>
-          <ConfigItem name="DB_DSN" value="postgresql://..." desc="PostgreSQL Verbindungs-String" />
-          <ConfigItem name="TRAINING_SERVICE_API_URL" value="http://training:8000" desc="URL zum Training Service (fuer Modell-Import)" />
-          <ConfigItem name="N8N_WEBHOOK_URL" value="http://n8n:5678/webhook/..." desc="Globale n8n Webhook-URL" />
-
-          <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Modell-spezifische Einstellungen</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Prediction Defaults (global)</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, color: 'text.secondary' }}>
+            Unter dem Tab "Defaults" koennen globale Standardwerte gesetzt werden.
+            Diese werden automatisch auf jedes neu importierte Modell angewendet.
+          </Typography>
           <SmallTable>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell><strong>Einstellung</strong></TableCell>
+                  <TableCell><strong>Key</strong></TableCell>
                   <TableCell><strong>Default</strong></TableCell>
                   <TableCell><strong>Beschreibung</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 <TableRow><TableCell>alert_threshold</TableCell><TableCell>0.7</TableCell><TableCell>Min. Wahrscheinlichkeit fuer Alert</TableCell></TableRow>
-                <TableRow><TableCell>n8n_webhook_url</TableCell><TableCell>-</TableCell><TableCell>Modell-spezifische Webhook-URL</TableCell></TableRow>
                 <TableRow><TableCell>n8n_enabled</TableCell><TableCell>true</TableCell><TableCell>n8n-Integration aktiviert</TableCell></TableRow>
+                <TableRow><TableCell>n8n_webhook_url</TableCell><TableCell>""</TableCell><TableCell>Webhook-URL fuer n8n</TableCell></TableRow>
                 <TableRow><TableCell>n8n_send_mode</TableCell><TableCell>["all"]</TableCell><TableCell>Welche Vorhersagen gesendet werden</TableCell></TableRow>
-                <TableRow><TableCell>coin_filter_mode</TableCell><TableCell>"all"</TableCell><TableCell>all, whitelist</TableCell></TableRow>
-                <TableRow><TableCell>phases</TableCell><TableCell>null</TableCell><TableCell>Erlaubte Coin-Phasen (Array)</TableCell></TableRow>
-                <TableRow><TableCell>ignore_bad_seconds</TableCell><TableCell>0</TableCell><TableCell>Ignore nach negativ</TableCell></TableRow>
-                <TableRow><TableCell>ignore_positive_seconds</TableCell><TableCell>0</TableCell><TableCell>Ignore nach positiv</TableCell></TableRow>
-                <TableRow><TableCell>ignore_alert_seconds</TableCell><TableCell>0</TableCell><TableCell>Ignore nach Alert</TableCell></TableRow>
+                <TableRow><TableCell>ignore_bad_seconds</TableCell><TableCell>0</TableCell><TableCell>Cooldown nach negativ (Sekunden)</TableCell></TableRow>
+                <TableRow><TableCell>ignore_positive_seconds</TableCell><TableCell>0</TableCell><TableCell>Cooldown nach positiv (Sekunden)</TableCell></TableRow>
+                <TableRow><TableCell>ignore_alert_seconds</TableCell><TableCell>0</TableCell><TableCell>Cooldown nach Alert (Sekunden)</TableCell></TableRow>
+                <TableRow><TableCell>max_log_entries_per_coin_negative</TableCell><TableCell>0</TableCell><TableCell>Max. Logs pro Coin (negativ, 0 = unbegrenzt)</TableCell></TableRow>
+                <TableRow><TableCell>max_log_entries_per_coin_positive</TableCell><TableCell>0</TableCell><TableCell>Max. Logs pro Coin (positiv, 0 = unbegrenzt)</TableCell></TableRow>
+                <TableRow><TableCell>max_log_entries_per_coin_alert</TableCell><TableCell>0</TableCell><TableCell>Max. Logs pro Coin (alert, 0 = unbegrenzt)</TableCell></TableRow>
+                <TableRow><TableCell>send_ignored_to_n8n</TableCell><TableCell>false</TableCell><TableCell>Ignorierte trotzdem an n8n senden</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Modell-spezifische Einstellungen</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, color: 'text.secondary' }}>
+            Jedes importierte Modell hat eigene Einstellungen, die ueber die Alert-Config-Seite oder API angepasst werden koennen.
+            Beim Import werden die Prediction Defaults als Startwerte verwendet.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Einstellung</strong></TableCell>
+                  <TableCell><strong>Bereich</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow><TableCell>alert_threshold</TableCell><TableCell>0.01 - 0.99</TableCell><TableCell>Min. Wahrscheinlichkeit fuer Alert</TableCell></TableRow>
+                <TableRow><TableCell>n8n_webhook_url</TableCell><TableCell>URL</TableCell><TableCell>Modell-spezifische Webhook-URL</TableCell></TableRow>
+                <TableRow><TableCell>n8n_enabled</TableCell><TableCell>true/false</TableCell><TableCell>n8n-Integration aktiviert</TableCell></TableRow>
+                <TableRow><TableCell>n8n_send_mode</TableCell><TableCell>Array</TableCell><TableCell>Welche Vorhersagen gesendet werden</TableCell></TableRow>
+                <TableRow><TableCell>coin_filter_mode</TableCell><TableCell>"all" / "whitelist"</TableCell><TableCell>Coin-Filter-Modus</TableCell></TableRow>
+                <TableRow><TableCell>coin_whitelist</TableCell><TableCell>Array</TableCell><TableCell>Erlaubte Coin-Mints (bei Whitelist-Modus)</TableCell></TableRow>
+                <TableRow><TableCell>ignore_bad_seconds</TableCell><TableCell>0 - 86400</TableCell><TableCell>Cooldown nach negativ</TableCell></TableRow>
+                <TableRow><TableCell>ignore_positive_seconds</TableCell><TableCell>0 - 86400</TableCell><TableCell>Cooldown nach positiv</TableCell></TableRow>
+                <TableRow><TableCell>ignore_alert_seconds</TableCell><TableCell>0 - 86400</TableCell><TableCell>Cooldown nach Alert</TableCell></TableRow>
+                <TableRow><TableCell>max_log_entries_per_coin_negative</TableCell><TableCell>0 - 1000</TableCell><TableCell>Max. Logs pro Coin (negativ)</TableCell></TableRow>
+                <TableRow><TableCell>max_log_entries_per_coin_positive</TableCell><TableCell>0 - 1000</TableCell><TableCell>Max. Logs pro Coin (positiv)</TableCell></TableRow>
+                <TableRow><TableCell>max_log_entries_per_coin_alert</TableCell><TableCell>0 - 1000</TableCell><TableCell>Max. Logs pro Coin (alert)</TableCell></TableRow>
+                <TableRow><TableCell>send_ignored_to_n8n</TableCell><TableCell>true/false</TableCell><TableCell>Ignorierte an n8n senden</TableCell></TableRow>
               </TableBody>
             </Table>
           </SmallTable>
@@ -296,48 +362,54 @@ const PredictionsInfo: React.FC = () => (
         {/* 7. API-Endpunkte */}
         <Chapter
           id="pred-api"
-          title="API-Endpunkte"
+          title="API-Endpunkte (27)"
           icon="🔌"
           expanded={expandedChapters.includes('pred-api')}
           onChange={handleChapterChange('pred-api')}
         >
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Modell-Verwaltung</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Modell-Verwaltung (10)</Typography>
           <EndpointRow method="GET" path="/api/server/models/available" desc="Verfuegbare Modelle vom Training Service" />
-          <EndpointRow method="POST" path="/api/server/models/import" desc="Modell importieren" />
-          <EndpointRow method="GET" path="/api/server/models" desc="Alle aktiven Modelle" />
+          <EndpointRow method="GET" path="/api/server/models/available/{model_id}" desc="Details eines verfuegbaren Modells" />
+          <EndpointRow method="POST" path="/api/server/models/import" desc="Modell importieren (wendet Defaults an)" />
+          <EndpointRow method="GET" path="/api/server/models" desc="Alle Modelle (Alias fuer /models/active)" />
+          <EndpointRow method="GET" path="/api/server/models/active" desc="Aktive Modelle auflisten" />
           <EndpointRow method="GET" path="/api/server/models/{id}" desc="Modell-Details" />
           <EndpointRow method="POST" path="/api/server/models/{id}/activate" desc="Modell aktivieren" />
           <EndpointRow method="POST" path="/api/server/models/{id}/deactivate" desc="Modell deaktivieren" />
-          <EndpointRow method="PATCH" path="/api/server/models/{id}/rename" desc="Modell umbenennen" />
-          <EndpointRow method="DELETE" path="/api/server/models/{id}" desc="Modell loeschen" />
-          <EndpointRow method="GET" path="/api/server/models/{id}/statistics" desc="Modell-Statistiken" />
+          <EndpointRow method="PATCH" path="/api/server/models/{id}/rename" desc="Modell umbenennen (custom_name)" />
+          <EndpointRow method="DELETE" path="/api/server/models/{id}" desc="Modell und alle Predictions loeschen" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Alert-Konfiguration</Typography>
-          <EndpointRow method="PATCH" path="/api/server/models/{id}/alert-config" desc="Alert-Config aendern" />
-          <EndpointRow method="PATCH" path="/api/server/models/{id}/ignore-settings" desc="Ignore-Settings aendern" />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Modell-Konfiguration (6)</Typography>
+          <EndpointRow method="PATCH" path="/api/server/models/{id}/alert-config" desc="Alert-Config aendern (Threshold, n8n, Filter)" />
+          <EndpointRow method="GET" path="/api/server/models/{id}/ignore-settings" desc="Ignore-Cooldowns abfragen" />
+          <EndpointRow method="PATCH" path="/api/server/models/{id}/ignore-settings" desc="Ignore-Cooldowns aendern" />
+          <EndpointRow method="GET" path="/api/server/models/{id}/max-log-entries" desc="Log Retention abfragen" />
+          <EndpointRow method="PATCH" path="/api/server/models/{id}/max-log-entries" desc="Log Retention aendern" />
+          <EndpointRow method="GET" path="/api/server/models/{id}/n8n-status" desc="n8n Webhook-Status pruefen" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Vorhersagen</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Vorhersagen (5)</Typography>
           <EndpointRow method="POST" path="/api/server/predict" desc="Manuelle Vorhersage fuer Coin" />
-          <EndpointRow method="GET" path="/api/server/predictions" desc="Alle Vorhersagen (mit Filtern)" />
-          <EndpointRow method="GET" path="/api/server/model-predictions" desc="Model-Predictions (neue Architektur)" />
+          <EndpointRow method="GET" path="/api/server/predictions" desc="Predictions mit Filtern abfragen" />
           <EndpointRow method="GET" path="/api/server/predictions/latest/{coin_id}" desc="Neueste Vorhersage fuer Coin" />
+          <EndpointRow method="DELETE" path="/api/server/models/{id}/predictions" desc="Alle Predictions eines Modells loeschen" />
+          <EndpointRow method="GET" path="/api/server/models/{id}/coin/{coin_id}" desc="Coin-Details mit Preishistorie & Evaluations" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Alerts</Typography>
-          <EndpointRow method="GET" path="/api/server/alerts" desc="Alert-Log mit Filtern" />
-          <EndpointRow method="GET" path="/api/server/alerts/{id}" desc="Alert-Details" />
-          <EndpointRow method="GET" path="/api/server/alerts/statistics" desc="Alert-Statistiken" />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Alert-Statistiken (1)</Typography>
+          <EndpointRow method="GET" path="/api/server/alerts/statistics" desc="Alert-Statistiken (Success-Rate, Profit/Loss)" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>System</Typography>
-          <EndpointRow method="GET" path="/api/server/health" desc="Health Check" />
-          <EndpointRow method="GET" path="/api/server/stats" desc="Service-Statistiken" />
-          <EndpointRow method="GET" path="/api/server/config" desc="Konfiguration laden" />
-          <EndpointRow method="POST" path="/api/server/config" desc="Konfiguration speichern" />
-          <EndpointRow method="POST" path="/api/server/system/restart" desc="Service neustarten" />
-          <EndpointRow method="GET" path="/api/server/logs" desc="Log-Zeilen abrufen" />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Prediction Defaults (2)</Typography>
+          <EndpointRow method="GET" path="/api/server/defaults" desc="Aktuelle Defaults abfragen" />
+          <EndpointRow method="PATCH" path="/api/server/defaults" desc="Defaults aktualisieren (UPSERT)" />
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>System (3)</Typography>
+          <EndpointRow method="GET" path="/api/server/health" desc="Health Check (DB + Alert-Evaluator)" />
+          <EndpointRow method="GET" path="/api/server/stats" desc="Service-Statistiken (Modelle, Predictions 24h)" />
+          <EndpointRow method="POST" path="/api/server/system/preload-models" desc="Alle aktiven Modelle in den Speicher laden" />
         </Chapter>
 
         {/* 8. Filter & Suche */}
@@ -348,123 +420,148 @@ const PredictionsInfo: React.FC = () => (
           expanded={expandedChapters.includes('pred-filters')}
           onChange={handleChapterChange('pred-filters')}
         >
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Alert-Log Filter</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>GET /predictions Filter</Typography>
           <SmallTable>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell><strong>Filter</strong></TableCell>
                   <TableCell><strong>Parameter</strong></TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><strong>Werte</strong></TableCell>
+                  <TableCell><strong>Typ</strong></TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><strong>Beschreibung</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                <TableRow><TableCell>Status</TableCell><TableCell><code>status</code></TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>pending, success, failed, expired</TableCell></TableRow>
-                <TableRow><TableCell>Vorhersage-Typ</TableCell><TableCell><code>prediction_type</code></TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>time_based, classic</TableCell></TableRow>
-                <TableRow><TableCell>Coin-ID</TableCell><TableCell><code>coin_id</code></TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Mint-Adresse</TableCell></TableRow>
-                <TableRow><TableCell>Von/Bis Datum</TableCell><TableCell><code>date_from, date_to</code></TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>ISO-Format</TableCell></TableRow>
-                <TableRow><TableCell>Unique Coins</TableCell><TableCell><code>unique_coins</code></TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>true/false</TableCell></TableRow>
+                <TableRow><TableCell><code>active_model_id</code></TableCell><TableCell>int</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Modell-ID</TableCell></TableRow>
+                <TableRow><TableCell><code>coin_id</code></TableCell><TableCell>string</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Mint-Adresse</TableCell></TableRow>
+                <TableRow><TableCell><code>prediction</code></TableCell><TableCell>int</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Vorhersage-Wert (0 oder 1)</TableCell></TableRow>
+                <TableRow><TableCell><code>min_probability</code></TableCell><TableCell>float</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Min. Wahrscheinlichkeit (0.0 - 1.0)</TableCell></TableRow>
+                <TableRow><TableCell><code>tag</code></TableCell><TableCell>string</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>negativ, positiv, alert</TableCell></TableRow>
+                <TableRow><TableCell><code>status</code></TableCell><TableCell>string</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>aktiv, inaktiv</TableCell></TableRow>
+                <TableRow><TableCell><code>evaluation_result</code></TableCell><TableCell>string</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>success, failed, not_applicable</TableCell></TableRow>
+                <TableRow><TableCell><code>limit</code></TableCell><TableCell>int</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>1 - 10.000 (Default: 50)</TableCell></TableRow>
+                <TableRow><TableCell><code>offset</code></TableCell><TableCell>int</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Offset fuer Pagination</TableCell></TableRow>
               </TableBody>
             </Table>
           </SmallTable>
 
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Vorhersagen Filter</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>GET /alerts/statistics Filter</Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Parameter</strong></TableCell>
+                  <TableCell><strong>Typ</strong></TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><strong>Beschreibung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow><TableCell><code>model_id</code></TableCell><TableCell>int</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Nur Statistiken fuer dieses Modell</TableCell></TableRow>
+                <TableRow><TableCell><code>date_from</code></TableCell><TableCell>string</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Startdatum (ISO-Format)</TableCell></TableRow>
+                <TableRow><TableCell><code>date_to</code></TableCell><TableCell>string</TableCell><TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Enddatum (ISO-Format)</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Frontend Log-Filter (Client-seitig)</Typography>
+          <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>
+            Die Model-Logs-Seite bietet zusaetzliche Client-seitige Filter mit Operator-Vergleichen:
+          </Typography>
           <SmallTable>
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell><strong>Filter</strong></TableCell>
-                  <TableCell><strong>Parameter</strong></TableCell>
+                  <TableCell><strong>Operatoren</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                <TableRow><TableCell>Modell</TableCell><TableCell><code>active_model_id</code></TableCell></TableRow>
-                <TableRow><TableCell>Coin-ID</TableCell><TableCell><code>coin_id</code></TableCell></TableRow>
-                <TableRow><TableCell>Tag</TableCell><TableCell><code>tag</code> (negativ, positiv, alert)</TableCell></TableRow>
-                <TableRow><TableCell>Status</TableCell><TableCell><code>status</code> (aktiv, inaktiv)</TableCell></TableRow>
-                <TableRow><TableCell>Min. Probability</TableCell><TableCell><code>min_probability</code> (0.0 - 1.0)</TableCell></TableRow>
+                <TableRow><TableCell>Coin-ID Suche</TableCell><TableCell>Textsuche (contains)</TableCell></TableRow>
+                <TableRow><TableCell>Tag</TableCell><TableCell>Multi-Select (alert, positiv, negativ)</TableCell></TableRow>
+                <TableRow><TableCell>Evaluation</TableCell><TableCell>Multi-Select (success, failed, pending, expired)</TableCell></TableRow>
+                <TableRow><TableCell>Probability</TableCell><TableCell>&gt; &lt; &ge; &le; = (in %)</TableCell></TableRow>
+                <TableRow><TableCell>Actual Change</TableCell><TableCell>&gt; &lt; &ge; &le; = (in %)</TableCell></TableRow>
+                <TableRow><TableCell>ATH High / ATH Low</TableCell><TableCell>&gt; &lt; &ge; &le; = (in %)</TableCell></TableRow>
               </TableBody>
             </Table>
           </SmallTable>
+          <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+            Statistiken (Overview, Alert Evaluation, Performance) werden live aus den gefilterten Daten berechnet.
+          </Typography>
         </Chapter>
 
         {/* 9. MCP-Tools */}
         <Chapter
           id="pred-mcp"
-          title="MCP-Tools (38+)"
+          title="MCP-Tools (27)"
           icon="🤖"
           expanded={expandedChapters.includes('pred-mcp')}
           onChange={handleChapterChange('pred-mcp')}
         >
           <Alert severity="info" sx={{ mb: 2 }}>
-            Alle REST-Endpoints werden automatisch als MCP-Tools exponiert.
+            Alle REST-Endpoints werden automatisch als MCP-Tools exponiert (fastapi-mcp).
+            Tool-Namen entsprechen den FastAPI-Funktionsnamen.
           </Alert>
 
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Model-Tools (9)</Typography>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Model-Tools (10)</Typography>
           <Grid container spacing={1} sx={{ mb: 2 }}>
             {[
-              { name: 'list_active_models', desc: 'Alle aktiven Modelle' },
-              { name: 'list_available_models', desc: 'Verfuegbare Modelle vom Training Service' },
-              { name: 'import_model', desc: 'Modell importieren' },
-              { name: 'get_model_details', desc: 'Modell-Details' },
-              { name: 'activate_model', desc: 'Modell aktivieren' },
-              { name: 'deactivate_model', desc: 'Modell deaktivieren' },
-              { name: 'rename_model', desc: 'Modell umbenennen' },
-              { name: 'delete_model', desc: 'Modell loeschen' },
-              { name: 'update_model_metrics', desc: 'Performance-Metriken aktualisieren' },
+              { name: 'get_available_models_endpoint', desc: 'Verfuegbare Modelle vom Training Service' },
+              { name: 'get_available_model_details_endpoint', desc: 'Details eines verfuegbaren Modells' },
+              { name: 'import_model_endpoint', desc: 'Modell importieren (wendet Defaults an)' },
+              { name: 'get_models_endpoint', desc: 'Alle Modelle auflisten (Alias)' },
+              { name: 'get_active_models_endpoint', desc: 'Aktive Modelle auflisten' },
+              { name: 'get_active_model_endpoint', desc: 'Modell-Details abfragen' },
+              { name: 'activate_model_endpoint', desc: 'Modell aktivieren' },
+              { name: 'deactivate_model_endpoint', desc: 'Modell deaktivieren' },
+              { name: 'rename_model_endpoint', desc: 'Modell umbenennen' },
+              { name: 'delete_model_endpoint', desc: 'Modell loeschen' },
             ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="Models" /></Grid>)}
           </Grid>
 
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Prediction-Tools (7)</Typography>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Config-Tools (6)</Typography>
           <Grid container spacing={1} sx={{ mb: 2 }}>
             {[
-              { name: 'predict_coin', desc: 'ML-Vorhersage fuer Coin' },
-              { name: 'get_predictions', desc: 'Historische Vorhersagen' },
-              { name: 'get_latest_prediction', desc: 'Neueste fuer Coin' },
-              { name: 'get_model_predictions', desc: 'Model-Predictions' },
-              { name: 'delete_model_predictions', desc: 'Predictions loeschen' },
-              { name: 'reset_model_statistics', desc: 'Statistiken zuruecksetzen' },
-              { name: 'get_coin_details', desc: 'Coin-Details mit Preishistorie' },
-            ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="Predictions" /></Grid>)}
-          </Grid>
-
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Config-Tools (7)</Typography>
-          <Grid container spacing={1} sx={{ mb: 2 }}>
-            {[
-              { name: 'update_alert_config', desc: 'Alert-Config aendern' },
-              { name: 'get_model_statistics', desc: 'Performance-Statistiken' },
-              { name: 'get_n8n_status', desc: 'n8n Webhook-Status' },
-              { name: 'get_ignore_settings', desc: 'Ignore-Einstellungen' },
-              { name: 'update_ignore_settings', desc: 'Ignore-Einstellungen aendern' },
-              { name: 'get_max_log_entries', desc: 'Max Log-Eintraege' },
-              { name: 'update_max_log_entries', desc: 'Max Log-Eintraege aendern' },
+              { name: 'update_alert_config_endpoint', desc: 'Alert-Config aendern (Threshold, n8n, Filter)' },
+              { name: 'get_ignore_settings_endpoint', desc: 'Ignore-Cooldowns abfragen' },
+              { name: 'update_ignore_settings_endpoint', desc: 'Ignore-Cooldowns aendern' },
+              { name: 'get_max_log_entries_endpoint', desc: 'Log Retention abfragen' },
+              { name: 'update_max_log_entries_endpoint', desc: 'Log Retention aendern' },
+              { name: 'get_n8n_status_endpoint', desc: 'n8n Webhook-Status pruefen' },
             ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="Config" /></Grid>)}
           </Grid>
 
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Alert-Tools (5)</Typography>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Prediction-Tools (5)</Typography>
           <Grid container spacing={1} sx={{ mb: 2 }}>
             {[
-              { name: 'get_alerts', desc: 'Alerts mit Filtern' },
-              { name: 'get_alert_details', desc: 'Alert-Details' },
-              { name: 'get_alert_statistics', desc: 'Alert-Statistiken' },
-              { name: 'get_all_models_alert_statistics', desc: 'Batch Alert-Stats' },
-              { name: 'delete_model_alerts', desc: 'Alerts loeschen' },
+              { name: 'predict_endpoint', desc: 'ML-Vorhersage fuer Coin ausfuehren' },
+              { name: 'get_predictions_endpoint', desc: 'Predictions mit Filtern abfragen' },
+              { name: 'get_latest_prediction_endpoint', desc: 'Neueste Vorhersage fuer Coin' },
+              { name: 'delete_model_predictions_endpoint', desc: 'Alle Predictions eines Modells loeschen' },
+              { name: 'get_coin_details_endpoint', desc: 'Coin-Details mit Preishistorie & Evaluations' },
+            ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="Predictions" /></Grid>)}
+          </Grid>
+
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Alert-Tools (1)</Typography>
+          <Grid container spacing={1} sx={{ mb: 2 }}>
+            {[
+              { name: 'get_alert_statistics_endpoint', desc: 'Alert-Statistiken (Success-Rate, Profit/Loss)' },
             ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="Alerts" /></Grid>)}
           </Grid>
 
-          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>System-Tools (10)</Typography>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>Defaults-Tools (2)</Typography>
+          <Grid container spacing={1} sx={{ mb: 2 }}>
+            {[
+              { name: 'get_defaults_endpoint', desc: 'Aktuelle Prediction Defaults abfragen' },
+              { name: 'update_defaults_endpoint', desc: 'Prediction Defaults aktualisieren' },
+            ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="Defaults" /></Grid>)}
+          </Grid>
+
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>System-Tools (3)</Typography>
           <Grid container spacing={1}>
             {[
-              { name: 'health_check', desc: 'Service-Status' },
-              { name: 'get_stats', desc: 'Service-Statistiken' },
-              { name: 'get_system_config', desc: 'Konfiguration laden' },
-              { name: 'update_configuration', desc: 'Konfiguration speichern' },
-              { name: 'get_logs', desc: 'Log-Zeilen' },
-              { name: 'restart_system', desc: 'Service neustarten' },
-              { name: 'delete_old_logs', desc: 'Alte Logs loeschen' },
-              { name: 'migrate_performance_metrics', desc: 'DB-Migration' },
-              { name: 'debug_active_models', desc: 'Debug: Modelle' },
-              { name: 'debug_coin_metrics', desc: 'Debug: Metriken' },
+              { name: 'health_check', desc: 'Service-Status (DB + Alert-Evaluator)' },
+              { name: 'get_stats', desc: 'Service-Statistiken (Modelle, Predictions 24h)' },
+              { name: 'preload_models_endpoint', desc: 'Alle aktiven Modelle in Speicher laden' },
             ].map((t) => <Grid key={t.name} size={{ xs: 12, sm: 6 }}><McpToolRow name={t.name} desc={t.desc} cat="System" /></Grid>)}
           </Grid>
         </Chapter>
