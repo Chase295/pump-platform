@@ -165,7 +165,11 @@ async def load_training_data(
             try:
                 from backend.modules.training.embedding_features import compute_embedding_features, EMBEDDING_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                emb_feats = await compute_embedding_features(unique_mints)
+                # Pass per-mint timestamps for future time filtering support
+                mint_ts = None
+                if 'timestamp' in data.columns:
+                    mint_ts = data.groupby('mint')['timestamp'].max().to_dict()
+                emb_feats = await compute_embedding_features(unique_mints, timestamps=mint_ts)
                 for feat_name in EMBEDDING_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: emb_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Embedding features added: %d features for %d mints", len(EMBEDDING_FEATURE_NAMES), len(unique_mints))
@@ -177,7 +181,12 @@ async def load_training_data(
             try:
                 from backend.modules.training.transaction_features import compute_transaction_features, TRANSACTION_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                tx_feats = await compute_transaction_features(unique_mints)
+                # Build per-mint cutoff timestamps to prevent data leakage:
+                # use the latest timestamp per mint in the training window
+                mint_timestamps = None
+                if 'timestamp' in data.columns:
+                    mint_timestamps = data.groupby('mint')['timestamp'].max().to_dict()
+                tx_feats = await compute_transaction_features(unique_mints, timestamps=mint_timestamps)
                 for feat_name in TRANSACTION_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: tx_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Transaction features added: %d features for %d mints", len(TRANSACTION_FEATURE_NAMES), len(unique_mints))
@@ -189,7 +198,11 @@ async def load_training_data(
             try:
                 from backend.modules.training.metadata_features import compute_metadata_features, METADATA_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                meta_feats = await compute_metadata_features(unique_mints)
+                # Pass per-mint timestamps for SOL price lookup
+                mint_timestamps = None
+                if 'timestamp' in data.columns:
+                    mint_timestamps = data.groupby('mint')['timestamp'].max().to_dict()
+                meta_feats = await compute_metadata_features(unique_mints, timestamps=mint_timestamps)
                 for feat_name in METADATA_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: meta_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Metadata features added: %d features for %d mints", len(METADATA_FEATURE_NAMES), len(unique_mints))
@@ -268,12 +281,19 @@ def create_time_based_labels(
     else:
         labels = (percent_change <= -min_percent_change).astype(int)
 
-    labels = labels.fillna(0).astype(int)
-
+    # Do NOT fill NaN with 0 — rows at the end of the time window lack future
+    # data and cannot be labeled.  Return them as NaN so the caller can drop them.
     if 'mint' in data.columns:
         labels = labels.reindex(original_index)
 
-    logger.info("Labels: %d positive, %d negative", labels.sum(), len(labels) - labels.sum())
+    nan_count = int(labels.isna().sum())
+    valid = labels.dropna()
+    pos = int(valid.sum()) if len(valid) > 0 else 0
+    neg = len(valid) - pos
+    if nan_count > 0:
+        logger.info("Labels: %d positive, %d negative, %d dropped (insufficient future data)", pos, neg, nan_count)
+    else:
+        logger.info("Labels: %d positive, %d negative", pos, neg)
     return labels
 
 
@@ -500,7 +520,7 @@ def add_pump_detection_features(
             else:
                 df[f'price_change_{w}'] = df['price_close'].diff(w).fillna(0)
                 shifted = df['price_close'].shift(w)
-            df[f'price_roc_{w}'] = ((df['price_close'] - shifted) / shifted * 100).fillna(0)
+            df[f'price_roc_{w}'] = np.where(shifted != 0, (df['price_close'] - shifted) / shifted * 100, 0.0)
             if include_flags:
                 df[f'price_change_{w}_has_data'] = (df['coin_age_minutes'] >= w).astype(int)
                 df[f'price_roc_{w}_has_data'] = (df['coin_age_minutes'] >= w).astype(int)
@@ -526,18 +546,20 @@ def add_pump_detection_features(
         df['price_vs_ath_pct'] = ((df['price_close'] - df['rolling_ath']) / df['rolling_ath'] * 100).fillna(0)
         df['ath_breakout'] = (df['price_close'] >= df['rolling_ath'] * 0.999).astype(int)
 
-        df['minutes_since_ath'] = 0
-        if 'mint' in df.columns:
+        df['minutes_since_ath'] = 0.0
+        if 'mint' in df.columns and 'timestamp' in df.columns:
             for mint_val in df['mint'].unique():
                 mask = df['mint'] == mint_val
                 prices = df.loc[mask, 'price_close'].values
                 ath_vals = df.loc[mask, 'rolling_ath'].values
+                timestamps = df.loc[mask, 'timestamp'].values
                 minutes_since = []
-                last_ath_idx = 0
+                last_ath_time = timestamps[0]
                 for i in range(len(prices)):
                     if prices[i] >= ath_vals[i] * 0.999:
-                        last_ath_idx = i
-                    minutes_since.append(i - last_ath_idx)
+                        last_ath_time = timestamps[i]
+                    delta = (timestamps[i] - last_ath_time) / np.timedelta64(1, 'm')
+                    minutes_since.append(float(delta))
                 df.loc[mask, 'minutes_since_ath'] = minutes_since
 
         for w in window_sizes:

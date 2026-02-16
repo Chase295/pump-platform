@@ -57,7 +57,7 @@ from backend.modules.training.db_queries import (
     get_coin_phases,
     convert_jsonb_fields,
 )
-from backend.modules.training.features import get_flag_feature_names
+from backend.modules.training.features import get_flag_feature_names, get_engineered_feature_names, BASE_FEATURES
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +197,10 @@ async def _create_model_job(request: TrainModelRequest):
     # Build final params
     final_params = request.params or {}
     if request.scale_pos_weight is not None:
-        final_params["scale_pos_weight"] = request.scale_pos_weight
+        clamped = max(1.0, min(1000.0, request.scale_pos_weight))
+        if clamped != request.scale_pos_weight:
+            logger.warning("scale_pos_weight clamped from %.1f to %.1f (range: 1-1000)", request.scale_pos_weight, clamped)
+        final_params["scale_pos_weight"] = clamped
     if request.use_time_based_prediction:
         final_params["_time_based"] = {
             "enabled": True,
@@ -208,8 +211,7 @@ async def _create_model_job(request: TrainModelRequest):
     if request.use_engineered_features:
         final_params["use_engineered_features"] = True
         final_params["feature_engineering_windows"] = request.feature_engineering_windows or [5, 10, 15]
-    if not request.use_smote:
-        final_params["use_smote"] = False
+    final_params["use_smote"] = request.use_smote
     if not request.use_timeseries_split:
         final_params["use_timeseries_split"] = False
     if request.cv_splits:
@@ -240,6 +242,14 @@ async def _create_model_job(request: TrainModelRequest):
         final_params["metadata_feature_names"] = request.metadata_feature_names
 
     use_flag = request.use_flag_features
+
+    # Validate feature names (warn, don't block)
+    known_features = set(BASE_FEATURES) | set(get_engineered_feature_names())
+    # Add ATH features computed in Python
+    known_features.update(["rolling_ath", "price_vs_ath_pct", "ath_breakout", "minutes_since_ath"])
+    unknown_features = [f for f in request.features if f not in known_features]
+    if unknown_features:
+        logger.warning("Unknown feature names in request (will be ignored if not in data): %s", unknown_features)
 
     effective_target_var = request.target_var
     if request.use_time_based_prediction and not effective_target_var:
@@ -631,7 +641,8 @@ async def get_available_features(include_flags: bool = Query(True, description="
         "meta_initial_buy_sol", "meta_initial_buy_ratio",
         "meta_token_supply_log", "meta_has_socials",
         "meta_social_count", "meta_metadata_mutable",
-        "meta_mint_authority", "meta_risk_score",
+        "meta_metadata_mutable_known", "meta_mint_authority",
+        "meta_mint_authority_known", "meta_risk_score",
         "meta_top10_holders_pct", "meta_liquidity_sol",
         "meta_is_mayhem", "meta_sol_price_usd",
         "meta_sol_price_change_1h",

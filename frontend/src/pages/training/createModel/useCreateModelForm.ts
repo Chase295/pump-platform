@@ -122,6 +122,7 @@ export function useCreateModelForm() {
     setForm((prev) => ({
       ...prev,
       ...preset.values,
+      modelType: prev.modelType,
       name: presetId !== 'custom' ? `${presetId}_${new Date().toISOString().slice(0, 10)}` : prev.name,
       trainStart: prev.trainStart,
       trainEnd: prev.trainEnd,
@@ -255,14 +256,21 @@ export function useCreateModelForm() {
   }, [form, dataAvailability]);
 
   // ── Computed ────────────────────────────────────────────────
+  // Count flag features: each windowed eng feature (ending with _5, _10, _15 etc.) gets a _has_data companion
+  const flagFeatureCount = useMemo(() => {
+    if (!form.useFlagFeatures || form.selectedEngFeatures.length === 0) return 0;
+    return form.selectedEngFeatures.filter((f) => /_\d+$/.test(f)).length;
+  }, [form.useFlagFeatures, form.selectedEngFeatures]);
+
   const totalFeatures = useMemo(() => {
     return form.selectedBaseFeatures.length
       + form.selectedEngFeatures.length
+      + flagFeatureCount
       + form.selectedGraphFeatures.length
       + form.selectedEmbeddingFeatures.length
       + form.selectedTransactionFeatures.length
       + form.selectedMetadataFeatures.length;
-  }, [form.selectedBaseFeatures, form.selectedEngFeatures, form.selectedGraphFeatures, form.selectedEmbeddingFeatures, form.selectedTransactionFeatures, form.selectedMetadataFeatures]);
+  }, [form.selectedBaseFeatures, form.selectedEngFeatures, flagFeatureCount, form.selectedGraphFeatures, form.selectedEmbeddingFeatures, form.selectedTransactionFeatures, form.selectedMetadataFeatures]);
 
   const trainingDurationHours = useMemo(() => {
     const ms = new Date(form.trainEnd).getTime() - new Date(form.trainStart).getTime();
@@ -371,6 +379,7 @@ export function useCreateModelForm() {
     setTimeQuickRange,
     validation,
     totalFeatures,
+    flagFeatureCount,
     trainingDurationHours,
     availablePhases,
     phasesLoading,

@@ -6,7 +6,8 @@ in the training pipeline.
 """
 
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,25 @@ EMBEDDING_FEATURE_NAMES = [
 ]
 
 
-async def compute_embedding_features(mints: List[str]) -> Dict[str, Dict[str, float]]:
+async def compute_embedding_features(
+    mints: List[str],
+    timestamps: Optional[Dict[str, datetime]] = None,
+) -> Dict[str, Dict[str, float]]:
     """Compute embedding similarity features for a list of mints.
 
     Uses pgvector to find similarity to labeled pump/rug patterns.
+
+    Args:
+        mints: List of mint addresses.
+        timestamps: Optional {mint: cutoff_timestamp} for time filtering.
+                    Note: similarity search currently uses all embeddings;
+                    this parameter is reserved for future filtering support.
+
     Returns {mint: {feature_name: value}}.
     Falls back to zeros if embeddings are unavailable.
     """
+    if timestamps:
+        logger.debug("Embedding features: timestamp filtering not yet implemented in pgvector search")
     result: Dict[str, Dict[str, float]] = {}
     default_features = {name: 0.0 for name in EMBEDDING_FEATURE_NAMES}
 

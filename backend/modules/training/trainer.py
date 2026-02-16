@@ -73,7 +73,7 @@ DEFAULT_FEATURES = [
     "buy_pressure_ratio", "unique_signer_ratio",
     "whale_buy_volume_sol", "whale_sell_volume_sol",
     "volatility_pct", "avg_trade_size_sol",
-    "ath_price_sol", "price_vs_ath_pct", "minutes_since_ath",
+    "rolling_ath", "price_vs_ath_pct", "minutes_since_ath",
 ]
 
 
@@ -249,6 +249,15 @@ def train_model_sync(
             raise ValueError("target_var, target_operator and target_value are required for rule-based prediction")
         labels = create_labels(data, target_var, target_operator, target_value)
 
+    # Drop rows with NaN labels (insufficient future data at end of window)
+    nan_mask = labels.isna()
+    if nan_mask.any():
+        n_dropped = int(nan_mask.sum())
+        logger.info("Dropping %d rows with NaN labels (insufficient future data)", n_dropped)
+        valid_mask = ~nan_mask
+        data = data.loc[valid_mask].reset_index(drop=True)
+        labels = labels.loc[valid_mask].reset_index(drop=True).astype(int)
+
     positive_count = int(labels.sum())
     negative_count = len(labels) - positive_count
 
@@ -398,46 +407,76 @@ def train_model_sync(
         X_final_train, X_final_test = X.iloc[last_train_idx], X.iloc[last_test_idx]
         y_final_train, y_final_test = y[last_train_idx], y[last_test_idx]
     else:
+        from sklearn.model_selection import KFold, cross_validate
+
+        n_splits = params.get("cv_splits", 5)
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        temp_model = create_model_instance(model_type, params)
+        cv_results = cross_validate(
+            estimator=temp_model, X=X, y=y, cv=kf,
+            scoring=["accuracy", "f1", "precision", "recall"],
+            return_train_score=True, n_jobs=-1,
+        )
+        train_test_gap = cv_results["train_accuracy"].mean() - cv_results["test_accuracy"].mean()
+        if train_test_gap > 0.1:
+            logger.warning("OVERFITTING detected: train-test gap %.2f%%", train_test_gap * 100)
+
         X_final_train, X_final_test, y_final_train, y_final_test = train_test_split(
             X, y, test_size=0.2, random_state=42,
         )
 
     # ------------------------------------------------------------------
-    # 3.5 SMOTE
+    # 3.5 Auto scale_pos_weight (computed on ORIGINAL data, before SMOTE)
     # ------------------------------------------------------------------
-    use_smote = params.get("use_smote", True)
+    if "scale_pos_weight" not in params:
+        n_pos_orig = int(y_final_train.sum())
+        n_neg_orig = len(y_final_train) - n_pos_orig
+        if n_pos_orig > 0 and n_neg_orig / n_pos_orig > 5:
+            auto_weight = n_neg_orig / n_pos_orig
+            params["scale_pos_weight"] = auto_weight
+            logger.info("Auto scale_pos_weight=%.1f (ratio: %d:%d)", auto_weight, n_neg_orig, n_pos_orig)
+
+    # ------------------------------------------------------------------
+    # 3.6 SMOTE
+    # ------------------------------------------------------------------
+    use_smote = params.get("use_smote", False)
     if use_smote:
         positive_ratio = y_final_train.sum() / len(y_final_train) if len(y_final_train) > 0 else 0
+        minority_count = int(y_final_train.sum())
         if positive_ratio < 0.3 or positive_ratio > 0.7:
-            try:
-                from imblearn.over_sampling import SMOTE
-                from imblearn.under_sampling import RandomUnderSampler
-                from imblearn.pipeline import Pipeline as ImbPipeline
+            if minority_count < 3:
+                logger.warning(
+                    "SMOTE skipped: only %d minority samples (need >= 3). "
+                    "Falling back to scale_pos_weight.",
+                    minority_count,
+                )
+                if "scale_pos_weight" not in params:
+                    n_neg = len(y_final_train) - minority_count
+                    if minority_count > 0:
+                        params["scale_pos_weight"] = n_neg / minority_count
+                        logger.info("Fallback scale_pos_weight=%.1f", params["scale_pos_weight"])
+            else:
+                try:
+                    from imblearn.over_sampling import SMOTE
+                    from imblearn.under_sampling import RandomUnderSampler
+                    from imblearn.pipeline import Pipeline as ImbPipeline
 
-                k_neighbors = min(5, max(1, int(y_final_train.sum()) - 1))
-                smote = SMOTE(sampling_strategy=0.5, random_state=42, k_neighbors=k_neighbors)
-                under = RandomUnderSampler(sampling_strategy=0.8, random_state=42)
-                pipeline = ImbPipeline([("smote", smote), ("under", under)])
+                    k_neighbors = min(5, minority_count - 1)
+                    smote = SMOTE(sampling_strategy=0.5, random_state=42, k_neighbors=k_neighbors)
+                    under = RandomUnderSampler(sampling_strategy=0.8, random_state=42)
+                    pipeline = ImbPipeline([("smote", smote), ("under", under)])
 
-                X_balanced, y_balanced = pipeline.fit_resample(X_final_train, y_final_train)
-                logger.info("SMOTE: %d -> %d samples", len(X_final_train), len(X_balanced))
+                    X_balanced, y_balanced = pipeline.fit_resample(X_final_train, y_final_train)
+                    logger.info("SMOTE: %d -> %d samples", len(X_final_train), len(X_balanced))
 
-                X_final_train = pd.DataFrame(X_balanced, columns=available_features)
-                y_final_train = y_balanced
-            except Exception as exc:
-                logger.warning("SMOTE failed: %s -- continuing without", exc)
+                    X_final_train = pd.DataFrame(X_balanced, columns=available_features)
+                    y_final_train = y_balanced
+                except Exception as exc:
+                    logger.warning("SMOTE failed: %s -- continuing without", exc)
 
     # ------------------------------------------------------------------
     # 4. Train
     # ------------------------------------------------------------------
-    # Auto scale_pos_weight if not set and data is imbalanced
-    if "scale_pos_weight" not in params:
-        n_pos = int(y_final_train.sum())
-        n_neg = len(y_final_train) - n_pos
-        if n_pos > 0 and n_neg / n_pos > 5:
-            auto_weight = n_neg / n_pos
-            params["scale_pos_weight"] = auto_weight
-            logger.info("Auto scale_pos_weight=%.1f (ratio: %d:%d)", auto_weight, n_neg, n_pos)
 
     model = create_model_instance(model_type, params)
 
@@ -446,7 +485,13 @@ def train_model_sync(
     best_iteration = None
     best_score = None
 
-    if early_stopping_rounds > 0 and len(X_final_train) > 100:
+    if early_stopping_rounds > 0 and len(X_final_train) <= 50:
+        logger.warning(
+            "Early stopping disabled: only %d training samples (need > 50). "
+            "Set early_stopping_rounds=0 to suppress this warning.",
+            len(X_final_train),
+        )
+    if early_stopping_rounds > 0 and len(X_final_train) > 50:
         split_idx = int(len(X_final_train) * 0.8)
         X_tr, X_val = X_final_train.iloc[:split_idx], X_final_train.iloc[split_idx:]
         y_tr, y_val = y_final_train[:split_idx], y_final_train[split_idx:]
@@ -505,11 +550,8 @@ def train_model_sync(
         except Exception:
             pass
 
-    cm = confusion_matrix(y_final_test, y_pred)
-    if cm.size == 4:
-        tn, fp, fn, tp = cm.ravel()
-    else:
-        tn, fp, fn, tp = 0, 0, 0, 0
+    cm = confusion_matrix(y_final_test, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel()
 
     fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
     fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
@@ -809,6 +851,13 @@ def _test_model_sync(
             raise ValueError("Model has no target_operator/target_value for rule-based prediction")
         labels = create_labels(test_data, model["target_variable"], model["target_operator"], float(model["target_value"]))
 
+    # Drop rows with NaN labels (insufficient future data at end of window)
+    nan_mask = labels.isna()
+    if nan_mask.any():
+        valid_mask = ~nan_mask
+        test_data = test_data.loc[valid_mask].reset_index(drop=True)
+        labels = labels.loc[valid_mask].reset_index(drop=True).astype(int)
+
     # Predict
     avail = [f for f in features if f in test_data.columns]
     X_test = test_data[avail].values
@@ -823,8 +872,8 @@ def _test_model_sync(
     rec = recall_score(y_test, y_pred)
     roc = roc_auc_score(y_test, y_proba) if y_proba is not None else None
 
-    cm = confusion_matrix(y_test, y_pred)
-    tn, fp, fn, tp = (cm.ravel() if cm.size == 4 else (0, 0, 0, 0))
+    cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel()
     mcc_val = matthews_corrcoef(y_test, y_pred)
     fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
     fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0

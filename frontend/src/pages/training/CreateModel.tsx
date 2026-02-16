@@ -10,9 +10,6 @@ import {
   Checkbox,
   Slider,
   TextField,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   CircularProgress,
   Switch,
   FormControlLabel,
@@ -35,7 +32,6 @@ import {
   Science as ScienceIcon,
   Warning as WarningIcon,
   Tune as TuneIcon,
-  ExpandMore as ExpandMoreIcon,
   Hub as GraphIcon,
   Fingerprint as EmbeddingIcon,
   Receipt as TransactionIcon,
@@ -87,6 +83,39 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
   </Paper>
 );
 
+// ── SubGroup separator within a Section ──────────────────────
+const SubGroup: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
+  <Box sx={{ mt: 2.5, pt: 2, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+    <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5, color: 'rgba(255,255,255,0.7)' }}>
+      {icon} {title}
+    </Typography>
+    {children}
+  </Box>
+);
+
+// ── Consistent toggle layout ─────────────────────────────────
+const ToggleRow: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  activeColor?: string;
+  children?: React.ReactNode;
+}> = ({ icon, label, description, checked, onChange, activeColor = '#00d4ff', children }) => (
+  <Box sx={{ mb: children && checked ? 0.5 : 1.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ color: checked ? activeColor : '#666', display: 'flex' }}>{icon}</Box>
+      <FormControlLabel
+        control={<Switch checked={checked} onChange={(e) => onChange(e.target.checked)} size="small" />}
+        label={<Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>}
+      />
+      <Typography variant="caption" color="text.secondary">{description}</Typography>
+    </Box>
+    {children && checked && <Box sx={{ pl: 4.5, pr: 1, mt: 0.5 }}>{children}</Box>}
+  </Box>
+);
+
 const CreateModel: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -106,6 +135,7 @@ const CreateModel: React.FC = () => {
     setTimeQuickRange,
     validation,
     totalFeatures,
+    flagFeatureCount,
     trainingDurationHours,
     availablePhases,
     phasesLoading,
@@ -118,6 +148,9 @@ const CreateModel: React.FC = () => {
   const [expandedBaseCat, setExpandedBaseCat] = useState<string | null>(null);
   const [expandedEngCat, setExpandedEngCat] = useState<string | null>(null);
   const [expandedExtraSource, setExpandedExtraSource] = useState<string | null>(null);
+  const [expandedExcludeCat, setExpandedExcludeCat] = useState<string | null>(null);
+  const [flagFeaturesExpanded, setFlagFeaturesExpanded] = useState(false);
+  const [expandedFlagCat, setExpandedFlagCat] = useState<string | null>(null);
 
   // ── Summary content (shared between sidebar and mobile bar) ─
   const SummaryContent = () => {
@@ -141,6 +174,7 @@ const CreateModel: React.FC = () => {
           {form.selectedEmbeddingFeatures.length > 0 && <Row label="Embedding" value={`+${form.selectedEmbeddingFeatures.length}`} />}
           {form.selectedTransactionFeatures.length > 0 && <Row label="Transaction" value={`+${form.selectedTransactionFeatures.length}`} />}
           {form.selectedMetadataFeatures.length > 0 && <Row label="Metadata" value={`+${form.selectedMetadataFeatures.length}`} />}
+          {flagFeatureCount > 0 && <Row label="Flags" value={`+${flagFeatureCount}`} />}
           <Row label="Total Features" value={String(totalFeatures)} bold />
           <Row label="Balance" value={form.balanceMethod === 'scale_pos_weight' ? `SPW ${form.scaleWeight}x` : form.balanceMethod === 'smote' ? 'SMOTE' : 'None'} />
           {durationValid && <Row label="Period" value={`${trainingDurationHours}h`} />}
@@ -284,6 +318,18 @@ const CreateModel: React.FC = () => {
                 </ToggleButton>
               </ToggleButtonGroup>
             </Box>
+            <TextField
+              label="Description"
+              value={form.description}
+              onChange={(e) => updateField('description', e.target.value)}
+              size="small"
+              fullWidth
+              multiline
+              minRows={2}
+              maxRows={4}
+              placeholder="What is this model for?"
+              sx={{ mt: 2 }}
+            />
           </Section>
 
           {/* Section 2: Prediction Target */}
@@ -429,9 +475,12 @@ const CreateModel: React.FC = () => {
             </Collapse>
 
             {/* Extra Feature Sources */}
-            <Typography variant="subtitle2" sx={{ mb: 1, mt: 2, fontWeight: 700 }}>Extra Sources</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 1, mt: 2, fontWeight: 700 }}>
+              Extra Sources ({form.selectedGraphFeatures.length + form.selectedEmbeddingFeatures.length + form.selectedTransactionFeatures.length + form.selectedMetadataFeatures.length}/{GRAPH_FEATURES.length + EMBEDDING_FEATURES.length + TRANSACTION_FEATURES.length + METADATA_FEATURES.length})
+            </Typography>
             <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
-              <Button size="small" variant="outlined" onClick={() => { toggleAllExtraFeatures('selectedGraphFeatures', GRAPH_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedEmbeddingFeatures', EMBEDDING_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedTransactionFeatures', TRANSACTION_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedMetadataFeatures', METADATA_FEATURES.map((f) => f.id)); }}>All Sources</Button>
+              <Button size="small" variant="outlined" onClick={() => { toggleAllExtraFeatures('selectedGraphFeatures', GRAPH_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedEmbeddingFeatures', EMBEDDING_FEATURES.map((f) => f.id)); updateField('selectedTransactionFeatures', []); updateField('selectedMetadataFeatures', []); }}>+ Recommended</Button>
+              <Button size="small" variant="outlined" onClick={() => { toggleAllExtraFeatures('selectedGraphFeatures', GRAPH_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedEmbeddingFeatures', EMBEDDING_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedTransactionFeatures', TRANSACTION_FEATURES.map((f) => f.id)); toggleAllExtraFeatures('selectedMetadataFeatures', METADATA_FEATURES.map((f) => f.id)); }}>All</Button>
               <Button size="small" variant="outlined" color="error" onClick={() => { updateField('selectedGraphFeatures', []); updateField('selectedEmbeddingFeatures', []); updateField('selectedTransactionFeatures', []); updateField('selectedMetadataFeatures', []); }}>None</Button>
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
@@ -496,6 +545,264 @@ const CreateModel: React.FC = () => {
                 );
               })()}
             </Collapse>
+
+            {/* Feature Configuration */}
+            <SubGroup title="Feature Configuration" icon={<TuneIcon sx={{ fontSize: 18 }} />}>
+              {/* Flag Features — category chips like Base/Engineered */}
+              {(() => {
+                // Build all possible flag features grouped by eng category
+                const allFlags = ENGINEERING_FEATURES.map((f) => ({ id: `${f.id}_has_data`, parentId: f.id, category: f.category }));
+                const activeFlags = allFlags.filter((f) => form.useFlagFeatures && form.selectedEngFeatures.includes(f.parentId) && !form.excludeFeatures.includes(f.id));
+                const toggleFlagFeature = (flagId: string, parentId: string) => {
+                  // If parent eng feature isn't selected, select it first
+                  if (!form.selectedEngFeatures.includes(parentId)) {
+                    updateField('selectedEngFeatures', [...form.selectedEngFeatures, parentId]);
+                    if (!form.useFlagFeatures) updateField('useFlagFeatures', true);
+                    return;
+                  }
+                  // If flag features are off, turn them on
+                  if (!form.useFlagFeatures) {
+                    updateField('useFlagFeatures', true);
+                    return;
+                  }
+                  // Toggle via excludeFeatures
+                  const isActive = !form.excludeFeatures.includes(flagId);
+                  updateField('excludeFeatures', isActive
+                    ? [...form.excludeFeatures, flagId]
+                    : form.excludeFeatures.filter((id) => id !== flagId));
+                };
+                const toggleFlagCategory = (catFlags: typeof allFlags) => {
+                  const catFlagIds = catFlags.map((f) => f.id);
+                  const catParentIds = catFlags.map((f) => f.parentId);
+                  const allActive = catFlags.every((f) => form.selectedEngFeatures.includes(f.parentId) && !form.excludeFeatures.includes(f.id));
+                  if (allActive && form.useFlagFeatures) {
+                    // Deactivate: add all to excludeFeatures
+                    updateField('excludeFeatures', [...new Set([...form.excludeFeatures, ...catFlagIds])]);
+                  } else {
+                    // Activate: ensure parent eng features selected, remove from exclude
+                    const newEng = [...new Set([...form.selectedEngFeatures, ...catParentIds])];
+                    updateField('selectedEngFeatures', newEng);
+                    updateField('excludeFeatures', form.excludeFeatures.filter((id) => !catFlagIds.includes(id)));
+                    if (!form.useFlagFeatures) updateField('useFlagFeatures', true);
+                  }
+                };
+                return (
+                  <Box sx={{ mb: 1.5 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <ShieldIcon sx={{ fontSize: 18, color: '#ff9800' }} /> Flag Features ({activeFlags.length}/{allFlags.length})
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                      _has_data companion features — indicates whether enough data exists for windowed metrics
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+                      <Button size="small" variant="outlined" onClick={() => {
+                        const highImpFlags = allFlags.filter((f) => ENGINEERING_FEATURES.find((e) => e.id === f.parentId)?.importance === 'high');
+                        const highParentIds = highImpFlags.map((f) => f.parentId);
+                        const highFlagIds = highImpFlags.map((f) => f.id);
+                        updateField('useFlagFeatures', true);
+                        updateField('selectedEngFeatures', [...new Set([...form.selectedEngFeatures, ...highParentIds])]);
+                        const nonHighFlagIds = allFlags.filter((f) => !highFlagIds.includes(f.id)).map((f) => f.id);
+                        updateField('excludeFeatures', [...new Set([...form.excludeFeatures.filter((id) => !highFlagIds.includes(id)), ...nonHighFlagIds])]);
+                      }}>High Importance</Button>
+                      <Button size="small" variant="outlined" onClick={() => {
+                        updateField('useFlagFeatures', true);
+                        updateField('selectedEngFeatures', [...new Set([...form.selectedEngFeatures, ...ENGINEERING_FEATURES.map((f) => f.id)])]);
+                        updateField('excludeFeatures', form.excludeFeatures.filter((id) => !allFlags.some((f) => f.id === id)));
+                      }}>All</Button>
+                      <Button size="small" variant="outlined" color="error" onClick={() => {
+                        updateField('excludeFeatures', [...new Set([...form.excludeFeatures, ...allFlags.map((f) => f.id)])]);
+                      }}>None</Button>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+                      {ENGINEERING_CATEGORIES.map((cat) => {
+                        const catFlags = allFlags.filter((f) => f.category === cat.id);
+                        if (catFlags.length === 0) return null;
+                        const selectedCount = catFlags.filter((f) => form.useFlagFeatures && form.selectedEngFeatures.includes(f.parentId) && !form.excludeFeatures.includes(f.id)).length;
+                        const allSelected = selectedCount === catFlags.length;
+                        const isExpanded = flagFeaturesExpanded && expandedFlagCat === cat.id;
+                        return (
+                          <Chip
+                            key={cat.id}
+                            label={`${cat.name} ${selectedCount}/${catFlags.length}`}
+                            size="small"
+                            variant={selectedCount > 0 ? 'filled' : 'outlined'}
+                            onClick={() => { setFlagFeaturesExpanded(isExpanded ? false : true); setExpandedFlagCat(isExpanded ? null : cat.id); }}
+                            onDelete={() => toggleFlagCategory(catFlags)}
+                            deleteIcon={allSelected ? <CheckIcon sx={{ fontSize: 16 }} /> : undefined}
+                            sx={{
+                              bgcolor: allSelected ? 'rgba(255,152,0,0.2)' : selectedCount > 0 ? 'rgba(255,255,255,0.08)' : 'transparent',
+                              borderColor: isExpanded ? '#ff9800' : undefined,
+                            }}
+                          />
+                        );
+                      })}
+                    </Box>
+                    <Collapse in={flagFeaturesExpanded && expandedFlagCat !== null}>
+                      {expandedFlagCat && (() => {
+                        const catFlags = allFlags.filter((f) => f.category === expandedFlagCat);
+                        return (
+                          <Paper sx={{ p: 1.5, mb: 1, bgcolor: 'rgba(255,152,0,0.05)', border: '1px solid rgba(255,152,0,0.2)', borderRadius: 1 }}>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {catFlags.map((flag) => {
+                                const isActive = form.useFlagFeatures && form.selectedEngFeatures.includes(flag.parentId) && !form.excludeFeatures.includes(flag.id);
+                                return (
+                                  <Chip
+                                    key={flag.id}
+                                    label={flag.id}
+                                    size="small"
+                                    icon={<Checkbox checked={isActive} sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
+                                    onClick={() => toggleFlagFeature(flag.id, flag.parentId)}
+                                    variant={isActive ? 'filled' : 'outlined'}
+                                    sx={{ bgcolor: isActive ? 'rgba(255,152,0,0.15)' : 'transparent' }}
+                                  />
+                                );
+                              })}
+                            </Box>
+                          </Paper>
+                        );
+                      })()}
+                    </Collapse>
+                  </Box>
+                );
+              })()}
+              {form.selectedEngFeatures.length > 0 && (
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <WindowsIcon sx={{ fontSize: 18 }} /> Feature Windows
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                    Window sizes for rolling feature calculations
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                    {[5, 10, 15, 20, 30, 60].map((w) => {
+                      const active = form.featureWindows.includes(w);
+                      return (
+                        <Chip
+                          key={w}
+                          label={`${w}`}
+                          size="small"
+                          variant={active ? 'filled' : 'outlined'}
+                          onClick={() => {
+                            const next = active
+                              ? form.featureWindows.filter((v) => v !== w)
+                              : [...form.featureWindows, w].sort((a, b) => a - b);
+                            updateField('featureWindows', next);
+                          }}
+                          sx={{
+                            bgcolor: active ? 'rgba(0,212,255,0.2)' : 'transparent',
+                            borderColor: active ? '#00d4ff' : undefined,
+                            color: active ? '#00d4ff' : undefined,
+                            fontWeight: active ? 700 : 400,
+                          }}
+                        />
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <ExcludeIcon sx={{ fontSize: 18 }} /> Exclude Features ({form.excludeFeatures.length})
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+                  <Button size="small" variant="outlined" color="error" onClick={() => {
+                    const allIds = [
+                      ...BASE_FEATURES.map((f) => f.id),
+                      ...ENGINEERING_FEATURES.map((f) => f.id),
+                      ...GRAPH_FEATURES.map((f) => f.id),
+                      ...EMBEDDING_FEATURES.map((f) => f.id),
+                      ...TRANSACTION_FEATURES.map((f) => f.id),
+                      ...METADATA_FEATURES.map((f) => f.id),
+                    ];
+                    updateField('excludeFeatures', allIds);
+                  }}>All</Button>
+                  <Button size="small" variant="outlined" onClick={() => updateField('excludeFeatures', [])}>None</Button>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+                  {([
+                    { key: 'base', label: 'Base', features: BASE_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#00d4ff' },
+                    { key: 'engineered', label: 'Engineered', features: ENGINEERING_FEATURES.map((f) => ({ id: f.id, name: f.id })), color: '#9c27b0' },
+                    { key: 'graph', label: 'Graph', features: GRAPH_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#00d4ff' },
+                    { key: 'embedding', label: 'Embedding', features: EMBEDDING_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#9c27b0' },
+                    { key: 'transaction', label: 'Transaction', features: TRANSACTION_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#00bcd4' },
+                    { key: 'metadata', label: 'Metadata', features: METADATA_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#ff9800' },
+                  ]).map((source) => {
+                    const excludedCount = source.features.filter((f) => form.excludeFeatures.includes(f.id)).length;
+                    const allExcluded = excludedCount === source.features.length;
+                    const isExpanded = expandedExcludeCat === source.key;
+                    return (
+                      <Chip
+                        key={source.key}
+                        label={`${source.label} ${excludedCount}/${source.features.length}`}
+                        size="small"
+                        variant={excludedCount > 0 ? 'filled' : 'outlined'}
+                        onClick={() => setExpandedExcludeCat(isExpanded ? null : source.key)}
+                        onDelete={() => {
+                          const ids = source.features.map((f) => f.id);
+                          const next = allExcluded
+                            ? form.excludeFeatures.filter((id) => !ids.includes(id))
+                            : [...new Set([...form.excludeFeatures, ...ids])];
+                          updateField('excludeFeatures', next);
+                        }}
+                        deleteIcon={allExcluded ? <CheckIcon sx={{ fontSize: 16 }} /> : undefined}
+                        sx={{
+                          bgcolor: allExcluded ? 'rgba(244,67,54,0.2)' : excludedCount > 0 ? 'rgba(244,67,54,0.1)' : 'transparent',
+                          borderColor: isExpanded ? '#f44336' : excludedCount > 0 ? 'rgba(244,67,54,0.5)' : undefined,
+                          color: excludedCount > 0 ? '#f44336' : undefined,
+                        }}
+                      />
+                    );
+                  })}
+                </Box>
+                <Collapse in={expandedExcludeCat !== null}>
+                  {expandedExcludeCat && (() => {
+                    const sourceMap: Record<string, { features: { id: string; name: string }[]; color: string }> = {
+                      base: { features: BASE_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#00d4ff' },
+                      engineered: { features: ENGINEERING_FEATURES.map((f) => ({ id: f.id, name: f.id })), color: '#9c27b0' },
+                      graph: { features: GRAPH_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#00d4ff' },
+                      embedding: { features: EMBEDDING_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#9c27b0' },
+                      transaction: { features: TRANSACTION_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#00bcd4' },
+                      metadata: { features: METADATA_FEATURES.map((f) => ({ id: f.id, name: f.name })), color: '#ff9800' },
+                    };
+                    const source = sourceMap[expandedExcludeCat];
+                    if (!source) return null;
+                    return (
+                      <Paper sx={{ p: 1.5, mb: 1, bgcolor: 'rgba(244,67,54,0.05)', border: '1px solid rgba(244,67,54,0.2)', borderRadius: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          {source.features.map((f) => {
+                            const isExcluded = form.excludeFeatures.includes(f.id);
+                            return (
+                              <Chip
+                                key={f.id}
+                                label={f.name}
+                                size="small"
+                                icon={<Checkbox checked={isExcluded} sx={{ p: 0, '& .MuiSvgIcon-root': { fontSize: 16 } }} />}
+                                onClick={() => {
+                                  const next = isExcluded
+                                    ? form.excludeFeatures.filter((id) => id !== f.id)
+                                    : [...form.excludeFeatures, f.id];
+                                  updateField('excludeFeatures', next);
+                                }}
+                                variant={isExcluded ? 'filled' : 'outlined'}
+                                sx={{ bgcolor: isExcluded ? 'rgba(244,67,54,0.15)' : 'transparent' }}
+                              />
+                            );
+                          })}
+                        </Box>
+                      </Paper>
+                    );
+                  })()}
+                </Collapse>
+              </Box>
+              <ToggleRow
+                icon={<MarketIcon sx={{ fontSize: 20 }} />}
+                label="Market Context"
+                description="Include SOL price & macro indicators"
+                checked={form.useMarketContext}
+                onChange={(v) => updateField('useMarketContext', v)}
+                activeColor="#4caf50"
+              />
+            </SubGroup>
           </Section>
 
           {/* Section 4: Training Data */}
@@ -554,101 +861,47 @@ const CreateModel: React.FC = () => {
             )}
           </Section>
 
-          {/* Section 5: Advanced Options (collapsed) */}
-          <Accordion sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px !important', mb: 2, '&:before': { display: 'none' } }}>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#ff9800', fontSize: '1rem' }}>Advanced Options</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              {/* Balance Method */}
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Balance Method</Typography>
-              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                {([
-                  { id: 'scale_pos_weight' as const, label: 'SPW', desc: 'Recommended', color: '#ff9800', icon: <BalanceIcon sx={{ fontSize: 18 }} /> },
-                  { id: 'smote' as const, label: 'SMOTE', desc: 'Synthetic oversampling', color: '#00bcd4', icon: <ScienceIcon sx={{ fontSize: 18 }} /> },
-                  { id: 'none' as const, label: 'None', desc: 'Not recommended', color: '#666', icon: <WarningIcon sx={{ fontSize: 18 }} /> },
-                ]).map((b) => (
-                  <Chip
-                    key={b.id}
-                    icon={b.icon}
-                    label={b.label}
-                    onClick={() => updateField('balanceMethod', b.id)}
-                    variant={form.balanceMethod === b.id ? 'filled' : 'outlined'}
-                    sx={{
-                      borderColor: form.balanceMethod === b.id ? b.color : undefined,
-                      bgcolor: form.balanceMethod === b.id ? `${b.color}25` : 'transparent',
-                      color: form.balanceMethod === b.id ? b.color : undefined,
-                      '& .MuiChip-icon': { color: form.balanceMethod === b.id ? b.color : undefined },
-                    }}
-                  />
-                ))}
-              </Box>
-              {form.balanceMethod === 'scale_pos_weight' && (
-                <Box sx={{ mb: 2, px: 1 }}>
-                  <Typography variant="body2" color="text.secondary">Weight: <strong>{form.scaleWeight}x</strong></Typography>
-                  <Slider
-                    value={form.scaleWeight}
-                    onChange={(_, v) => updateField('scaleWeight', v as number)}
-                    min={10} max={300}
-                    marks={[{ value: 50, label: '50' }, { value: 100, label: '100' }, { value: 200, label: '200' }]}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-              )}
-
-              {/* Flag Features */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <FormControlLabel
-                  control={<Switch checked={form.useFlagFeatures} onChange={(e) => updateField('useFlagFeatures', e.target.checked)} size="small" />}
-                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Flag Features</Typography>}
+          {/* Section 5: Training Strategy */}
+          <Section title="Training Strategy">
+            {/* Balance Method */}
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Class Balancing</Typography>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+              {([
+                { id: 'scale_pos_weight' as const, label: 'SPW', desc: 'Recommended', color: '#ff9800', icon: <BalanceIcon sx={{ fontSize: 18 }} /> },
+                { id: 'smote' as const, label: 'SMOTE', desc: 'Synthetic oversampling', color: '#00bcd4', icon: <ScienceIcon sx={{ fontSize: 18 }} /> },
+                { id: 'none' as const, label: 'None', desc: 'Not recommended', color: '#666', icon: <WarningIcon sx={{ fontSize: 18 }} /> },
+              ]).map((b) => (
+                <Chip
+                  key={b.id}
+                  icon={b.icon}
+                  label={b.label}
+                  onClick={() => updateField('balanceMethod', b.id)}
+                  variant={form.balanceMethod === b.id ? 'filled' : 'outlined'}
+                  sx={{
+                    borderColor: form.balanceMethod === b.id ? b.color : undefined,
+                    bgcolor: form.balanceMethod === b.id ? `${b.color}25` : 'transparent',
+                    color: form.balanceMethod === b.id ? b.color : undefined,
+                    '& .MuiChip-icon': { color: form.balanceMethod === b.id ? b.color : undefined },
+                  }}
                 />
-                <Typography variant="caption" color="text.secondary">Shows model whether eng features have enough data</Typography>
-              </Box>
-
-              {/* Early Stopping */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <StopIcon sx={{ fontSize: 20, color: form.earlyStoppingRounds > 0 ? '#ff9800' : '#666' }} />
-                <FormControlLabel
-                  control={<Switch checked={form.earlyStoppingRounds > 0} onChange={(e) => updateField('earlyStoppingRounds', e.target.checked ? 10 : 0)} size="small" />}
-                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Early Stopping</Typography>}
-                />
-                <Typography variant="caption" color="text.secondary">Prevents overfitting</Typography>
-              </Box>
-              {form.earlyStoppingRounds > 0 && (
-                <Box sx={{ mb: 2, px: 3 }}>
-                  <Typography variant="body2" color="text.secondary">Patience: {form.earlyStoppingRounds} rounds</Typography>
-                  <Slider value={form.earlyStoppingRounds} onChange={(_, v) => updateField('earlyStoppingRounds', v as number)} min={5} max={50} step={5} valueLabelDisplay="auto" />
-                </Box>
-              )}
-
-              {/* SHAP */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <ShapIcon sx={{ fontSize: 20, color: form.enableShap ? '#9c27b0' : '#666' }} />
-                <FormControlLabel
-                  control={<Switch checked={form.enableShap} onChange={(e) => updateField('enableShap', e.target.checked)} size="small" />}
-                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>SHAP Explainability</Typography>}
-                />
-                <Typography variant="caption" color="text.secondary">Feature importance (slower training)</Typography>
-              </Box>
-
-              {/* Description */}
-              <Typography variant="subtitle2" sx={{ mb: 1, mt: 1, fontWeight: 700 }}>Description</Typography>
-              <TextField
-                value={form.description}
-                onChange={(e) => updateField('description', e.target.value)}
-                size="small"
-                fullWidth
-                multiline
-                minRows={2}
-                maxRows={4}
-                placeholder="Optional model description..."
-                sx={{ mb: 2 }}
-              />
-
-              {/* CV Splits */}
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Cross-Validation Splits</Typography>
+              ))}
+            </Box>
+            {form.balanceMethod === 'scale_pos_weight' && (
               <Box sx={{ mb: 2, px: 1 }}>
-                <Typography variant="body2" color="text.secondary">Splits: <strong>{form.cvSplits}</strong></Typography>
+                <Typography variant="body2" color="text.secondary">Weight: <strong>{form.scaleWeight}x</strong></Typography>
+                <Slider
+                  value={form.scaleWeight}
+                  onChange={(_, v) => updateField('scaleWeight', v as number)}
+                  min={10} max={300}
+                  marks={[{ value: 50, label: '50' }, { value: 100, label: '100' }, { value: 200, label: '200' }]}
+                  valueLabelDisplay="auto"
+                />
+              </Box>
+            )}
+
+            <SubGroup title="Validation">
+              <Box sx={{ mb: 2, px: 1 }}>
+                <Typography variant="body2" color="text.secondary">CV Splits: <strong>{form.cvSplits}</strong></Typography>
                 <Slider
                   value={form.cvSplits}
                   onChange={(_, v) => updateField('cvSplits', v as number)}
@@ -657,153 +910,106 @@ const CreateModel: React.FC = () => {
                   valueLabelDisplay="auto"
                 />
               </Box>
+              <ToggleRow
+                icon={<WindowsIcon sx={{ fontSize: 20 }} />}
+                label="TimeSeriesSplit"
+                description="Preserves temporal order (recommended)"
+                checked={form.useTimeseriesSplit}
+                onChange={(v) => updateField('useTimeseriesSplit', v)}
+              />
+            </SubGroup>
 
-              {/* TimeSeriesSplit */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <FormControlLabel
-                  control={<Switch checked={form.useTimeseriesSplit} onChange={(e) => updateField('useTimeseriesSplit', e.target.checked)} size="small" />}
-                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>TimeSeriesSplit</Typography>}
-                />
-                <Typography variant="caption" color="text.secondary">Preserves temporal order in CV (recommended for time-series data)</Typography>
-              </Box>
-
-              {/* Tuning */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TuneIcon sx={{ fontSize: 20, color: form.enableTuning ? '#00d4ff' : '#666' }} />
-                <FormControlLabel
-                  control={<Switch checked={form.enableTuning} onChange={(e) => updateField('enableTuning', e.target.checked)} size="small" />}
-                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Hyperparameter Tuning</Typography>}
-                />
-                <Typography variant="caption" color="text.secondary">Auto-optimize after training</Typography>
-              </Box>
-              {form.enableTuning && (
-                <Box sx={{ mb: 1, px: 3 }}>
-                  <Typography variant="body2" color="text.secondary">Iterations: {form.tuningIterations}</Typography>
-                  <Slider value={form.tuningIterations} onChange={(_, v) => updateField('tuningIterations', v as number)} min={10} max={100} step={10} valueLabelDisplay="auto" />
+            <SubGroup title="Overfitting Protection">
+              <ToggleRow
+                icon={<StopIcon sx={{ fontSize: 20 }} />}
+                label="Early Stopping"
+                description="Stops when validation score stops improving"
+                checked={form.earlyStoppingRounds > 0}
+                onChange={(v) => updateField('earlyStoppingRounds', v ? 10 : 0)}
+                activeColor="#ff9800"
+              >
+                <Box sx={{ px: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Patience: {form.earlyStoppingRounds} rounds</Typography>
+                  <Slider value={form.earlyStoppingRounds} onChange={(_, v) => updateField('earlyStoppingRounds', v as number)} min={5} max={50} step={5} valueLabelDisplay="auto" />
                 </Box>
-              )}
+              </ToggleRow>
+            </SubGroup>
+          </Section>
 
-              {/* Market Context */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, mt: 1 }}>
-                <MarketIcon sx={{ fontSize: 20, color: form.useMarketContext ? '#4caf50' : '#666' }} />
-                <FormControlLabel
-                  control={<Switch checked={form.useMarketContext} onChange={(e) => updateField('useMarketContext', e.target.checked)} size="small" />}
-                  label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Market Context</Typography>}
-                />
-                <Typography variant="caption" color="text.secondary">Include SOL price & macro context as features</Typography>
+          {/* Section 6: Optimization */}
+          <Section title="Optimization">
+            <ToggleRow
+              icon={<TuneIcon sx={{ fontSize: 20 }} />}
+              label="Hyperparameter Tuning"
+              description="Auto-optimize after training"
+              checked={form.enableTuning}
+              onChange={(v) => updateField('enableTuning', v)}
+            >
+              <Box sx={{ px: 1 }}>
+                <Typography variant="body2" color="text.secondary">Iterations: {form.tuningIterations}</Typography>
+                <Slider value={form.tuningIterations} onChange={(_, v) => updateField('tuningIterations', v as number)} min={10} max={100} step={10} valueLabelDisplay="auto" />
               </Box>
+            </ToggleRow>
+            <ToggleRow
+              icon={<ShapIcon sx={{ fontSize: 20 }} />}
+              label="SHAP Explainability"
+              description="Feature importance scores (increases training time)"
+              checked={form.enableShap}
+              onChange={(v) => updateField('enableShap', v)}
+              activeColor="#9c27b0"
+            />
 
-              {/* Feature Engineering Windows */}
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <WindowsIcon sx={{ fontSize: 18 }} /> Feature Engineering Windows
-              </Typography>
+            <SubGroup title="Custom Hyperparameters" icon={<ParamsIcon sx={{ fontSize: 18 }} />}>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                Window sizes for rolling feature calculations (only used with engineered features)
+                Override {form.modelType === 'lightgbm' ? 'LightGBM' : 'XGBoost'} hyperparameters
               </Typography>
-              <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                {[5, 10, 15, 20, 30, 60].map((w) => {
-                  const active = form.featureWindows.includes(w);
-                  return (
-                    <Chip
-                      key={w}
-                      label={`${w}`}
+              <Paper sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: 1 }}>
+                {Object.entries(form.customParams).map(([key, val]) => (
+                  <Box key={key} sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
+                    <TextField size="small" value={key} disabled sx={{ flex: 1 }} />
+                    <TextField
                       size="small"
-                      variant={active ? 'filled' : 'outlined'}
-                      onClick={() => {
-                        const next = active
-                          ? form.featureWindows.filter((v) => v !== w)
-                          : [...form.featureWindows, w].sort((a, b) => a - b);
-                        updateField('featureWindows', next);
+                      value={val}
+                      onChange={(e) => {
+                        const next = { ...form.customParams, [key]: e.target.value };
+                        updateField('customParams', next);
                       }}
-                      sx={{
-                        bgcolor: active ? 'rgba(0,212,255,0.2)' : 'transparent',
-                        borderColor: active ? '#00d4ff' : undefined,
-                        color: active ? '#00d4ff' : undefined,
-                        fontWeight: active ? 700 : 400,
-                      }}
+                      sx={{ flex: 1 }}
+                      placeholder="Value"
                     />
-                  );
-                })}
-              </Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        const next = { ...form.customParams };
+                        delete next[key];
+                        updateField('customParams', next);
+                      }}
+                      sx={{ color: '#f44336' }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+                <Autocomplete
+                  freeSolo
+                  size="small"
+                  options={(form.modelType === 'lightgbm'
+                    ? ['num_leaves', 'max_depth', 'learning_rate', 'n_estimators', 'min_data_in_leaf', 'bagging_fraction', 'feature_fraction', 'lambda_l1', 'lambda_l2', 'min_gain_to_split', 'max_bin']
+                    : ['max_depth', 'learning_rate', 'n_estimators', 'min_child_weight', 'gamma', 'subsample', 'colsample_bytree', 'reg_alpha', 'reg_lambda', 'max_bin']
+                  ).filter((o) => !(o in form.customParams))}
+                  renderInput={(params) => <TextField {...params} placeholder="Add parameter..." />}
+                  onChange={(_, val) => {
+                    if (val && typeof val === 'string' && val.trim()) {
+                      updateField('customParams', { ...form.customParams, [val.trim()]: '' });
+                    }
+                  }}
+                  value={null}
+                  blurOnSelect
+                />
+              </Paper>
+            </SubGroup>
+          </Section>
 
-              {/* Feature Exclusion */}
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <ExcludeIcon sx={{ fontSize: 18 }} /> Exclude Features
-              </Typography>
-              <Autocomplete
-                multiple
-                size="small"
-                options={[
-                  ...BASE_FEATURES.map((f) => f.id),
-                  ...ENGINEERING_FEATURES.map((f) => f.id),
-                  ...GRAPH_FEATURES.map((f) => f.id),
-                  ...EMBEDDING_FEATURES.map((f) => f.id),
-                  ...TRANSACTION_FEATURES.map((f) => f.id),
-                  ...METADATA_FEATURES.map((f) => f.id),
-                ]}
-                value={form.excludeFeatures}
-                onChange={(_, val) => updateField('excludeFeatures', val)}
-                renderInput={(params) => <TextField {...params} placeholder="Select features to exclude..." />}
-                renderTags={(value, getTagProps) =>
-                  value.map((option, index) => {
-                    const { key, ...rest } = getTagProps({ index });
-                    return <Chip key={key} label={option} size="small" color="error" variant="outlined" {...rest} />;
-                  })
-                }
-                sx={{ mb: 2 }}
-              />
-
-              {/* Custom Hyperparameters */}
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <ParamsIcon sx={{ fontSize: 18 }} /> Custom Hyperparameters
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                Override model hyperparameters (e.g. max_depth, learning_rate, n_estimators)
-              </Typography>
-              {Object.entries(form.customParams).map(([key, val]) => (
-                <Box key={key} sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
-                  <TextField size="small" value={key} disabled sx={{ flex: 1 }} />
-                  <TextField
-                    size="small"
-                    value={val}
-                    onChange={(e) => {
-                      const next = { ...form.customParams, [key]: e.target.value };
-                      updateField('customParams', next);
-                    }}
-                    sx={{ flex: 1 }}
-                    placeholder="Value"
-                  />
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      const next = { ...form.customParams };
-                      delete next[key];
-                      updateField('customParams', next);
-                    }}
-                    sx={{ color: '#f44336' }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              ))}
-              <Autocomplete
-                freeSolo
-                size="small"
-                options={['max_depth', 'learning_rate', 'n_estimators', 'subsample', 'colsample_bytree', 'num_leaves', 'min_child_weight', 'reg_alpha', 'reg_lambda'].filter(
-                  (o) => !(o in form.customParams)
-                )}
-                renderInput={(params) => <TextField {...params} placeholder="Add parameter..." />}
-                onChange={(_, val) => {
-                  if (val && typeof val === 'string' && val.trim()) {
-                    updateField('customParams', { ...form.customParams, [val.trim()]: '' });
-                  }
-                }}
-                value={null}
-                blurOnSelect
-                sx={{ mb: 2 }}
-              />
-            </AccordionDetails>
-          </Accordion>
         </Box>
 
         {/* RIGHT COLUMN: Sticky Summary (desktop only) */}

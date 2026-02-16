@@ -37,7 +37,7 @@ class TrainModelRequest(BaseModel):
     use_flag_features: bool = Field(True, description="Enable flag features for data availability")
 
     # SMOTE
-    use_smote: bool = Field(True, description="Use SMOTE for imbalanced data")
+    use_smote: bool = Field(False, description="Use SMOTE for imbalanced data")
 
     # TimeSeriesSplit
     use_timeseries_split: bool = Field(True, description="Use TimeSeriesSplit for cross-validation")
@@ -82,30 +82,22 @@ class TrainModelRequest(BaseModel):
         return v
 
     @validator('operator')
-    def validate_operator(cls, v, values):
+    def validate_operator(cls, v):
         if v is None:
-            if values.get('use_time_based_prediction', False):
-                return v
-            raise ValueError('operator is required when time-based prediction is disabled')
+            return v
         allowed = ['>', '<', '>=', '<=', '=']
         if v not in allowed:
             raise ValueError(f'operator must be one of {allowed}')
         return v
 
     @validator('target_var')
-    def validate_target_var(cls, v, values):
+    def validate_target_var(cls, v):
         if v is None:
-            if values.get('use_time_based_prediction', False):
-                return 'price_close'
-            raise ValueError('target_var is required when time-based prediction is disabled')
+            return 'price_close'
         return v
 
     @validator('target_value')
-    def validate_target_value(cls, v, values):
-        if v is None:
-            if values.get('use_time_based_prediction', False):
-                return v
-            raise ValueError('target_value is required when time-based prediction is disabled')
+    def validate_target_value(cls, v):
         return v
 
     @validator('future_minutes')

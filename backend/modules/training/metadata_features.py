@@ -25,7 +25,9 @@ METADATA_FEATURE_NAMES = [
     "meta_has_socials",
     "meta_social_count",
     "meta_metadata_mutable",
+    "meta_metadata_mutable_known",
     "meta_mint_authority",
+    "meta_mint_authority_known",
     "meta_risk_score",
     "meta_top10_holders_pct",
     "meta_liquidity_sol",
@@ -111,13 +113,15 @@ async def compute_metadata_features(
                 # meta_social_count: 0-4 raw
                 feats["meta_social_count"] = float(coin["social_count"] or 0)
 
-                # meta_metadata_mutable: null=1 (risky assumption)
+                # meta_metadata_mutable: null → 0.5 (unknown), known → 0/1
                 mm = coin["metadata_is_mutable"]
-                feats["meta_metadata_mutable"] = 1.0 if (mm is None or mm is True) else 0.0
+                feats["meta_metadata_mutable_known"] = 0.0 if mm is None else 1.0
+                feats["meta_metadata_mutable"] = 0.5 if mm is None else (1.0 if mm else 0.0)
 
-                # meta_mint_authority: null=1 (risky assumption)
+                # meta_mint_authority: null → 0.5 (unknown), known → 0/1
                 ma = coin["mint_authority_enabled"]
-                feats["meta_mint_authority"] = 1.0 if (ma is None or ma is True) else 0.0
+                feats["meta_mint_authority_known"] = 0.0 if ma is None else 1.0
+                feats["meta_mint_authority"] = 0.5 if ma is None else (1.0 if ma else 0.0)
 
                 # meta_risk_score: 0-100 -> 0-1
                 rs = coin["risk_score"]
