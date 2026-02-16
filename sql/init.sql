@@ -1678,6 +1678,39 @@ SELECT add_compression_policy('alert_evaluations', INTERVAL '14 days', if_not_ex
 
 
 -- ============================================================================
+-- TABLE: prediction_defaults (key-value store for prediction module defaults)
+-- Applied to newly imported models.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS prediction_defaults (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+COMMENT ON TABLE prediction_defaults IS 'Key-value defaults for newly imported prediction models (alert threshold, n8n, ignore, log retention)';
+
+
+-- ============================================================================
+-- SEED: prediction_defaults (MODULE: SERVER)
+-- ============================================================================
+
+INSERT INTO prediction_defaults (key, value) VALUES
+  ('alert_threshold', '0.7'),
+  ('n8n_enabled', 'true'),
+  ('n8n_webhook_url', '""'),
+  ('n8n_send_mode', '["all"]'),
+  ('ignore_bad_seconds', '0'),
+  ('ignore_positive_seconds', '0'),
+  ('ignore_alert_seconds', '0'),
+  ('max_log_entries_per_coin_negative', '0'),
+  ('max_log_entries_per_coin_positive', '0'),
+  ('max_log_entries_per_coin_alert', '0'),
+  ('send_ignored_to_n8n', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- ============================================================================
 -- DONE
 -- ============================================================================
 -- Combined schema includes:
@@ -1688,7 +1721,7 @@ SELECT add_compression_policy('alert_evaluations', INTERVAL '14 days', if_not_ex
 --             training_settings
 --   SERVER:   prediction_active_models (with all migrations merged),
 --             predictions, model_predictions, alert_evaluations,
---             prediction_webhook_log, coin_scan_cache,
+--             prediction_webhook_log, coin_scan_cache, prediction_defaults,
 --             notify_coin_metrics_insert trigger
 --   BUY:      wallets, positions, trade_logs, transfer_logs,
 --             view_wallet_performance, reset_daily_balances()

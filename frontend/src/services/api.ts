@@ -183,6 +183,10 @@ export const serverApi = {
   updateMaxLogEntries: (id: number, data: Record<string, unknown>) =>
     api.patch(`/server/models/${id}/max-log-entries`, data),
 
+  // Prediction defaults
+  getDefaults: () => api.get('/server/defaults'),
+  updateDefaults: (data: Record<string, unknown>) => api.patch('/server/defaults', data),
+
   // System
   getHealth: () => api.get('/server/health'),
   getStats: () => api.get('/server/stats'),

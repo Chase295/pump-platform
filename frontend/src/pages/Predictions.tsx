@@ -4,6 +4,7 @@ import {
   ViewList as ModelsIcon,
   CloudDownload as ImportIcon,
   Notifications as AlertsIcon,
+  Settings as SettingsIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
 
@@ -16,11 +17,13 @@ import AlertConfig from './predictions/AlertConfig';
 import CoinDetails from './predictions/CoinDetails';
 import ModelLogs from './predictions/ModelLogs';
 import PredictionsInfo from './predictions/PredictionsInfo';
+import PredictionDefaults from './predictions/PredictionDefaults';
 
 const subNavItems = [
   { path: '/predictions', label: 'Models', icon: <ModelsIcon />, end: true },
   { path: '/predictions/import', label: 'Import', icon: <ImportIcon /> },
   { path: '/predictions/alerts', label: 'Alerts', icon: <AlertsIcon /> },
+  { path: '/predictions/defaults', label: 'Defaults', icon: <SettingsIcon /> },
   { path: '/predictions/info', label: 'Info', icon: <InfoIcon /> },
 ];
 
@@ -33,7 +36,8 @@ export default function Predictions() {
     if (path === '/predictions') return 0;
     if (path.startsWith('/predictions/import')) return 1;
     if (path.startsWith('/predictions/alerts')) return 2;
-    if (path.startsWith('/predictions/info')) return 3;
+    if (path.startsWith('/predictions/defaults')) return 3;
+    if (path.startsWith('/predictions/info')) return 4;
     // Detail pages - keep Models tab active
     if (path.startsWith('/predictions/models')) return 0;
     if (path.startsWith('/predictions/logs')) return 0;
@@ -95,6 +99,7 @@ export default function Predictions() {
         <Route path="alerts/config/:id" element={<AlertConfig />} />
         <Route path="logs/:id" element={<ModelLogs />} />
         <Route path="coin/:modelId/:coinId" element={<CoinDetails />} />
+        <Route path="defaults" element={<PredictionDefaults />} />
         <Route path="info" element={<PredictionsInfo />} />
       </Routes>
     </Box>

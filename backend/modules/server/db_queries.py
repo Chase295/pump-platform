@@ -407,6 +407,12 @@ async def import_model(
 
             confusion_matrix_json = json.dumps(confusion_matrix) if confusion_matrix else None
 
+            # Load user-configured prediction defaults
+            from backend.modules.server.prediction_defaults import get_all_prediction_defaults
+            defaults = await get_all_prediction_defaults()
+
+            n8n_send_mode_json = json.dumps(defaults.get('n8n_send_mode', ['all']))
+
             # Create entry in prediction_active_models
             new_id = await conn.fetchval("""
                 INSERT INTO prediction_active_models (
@@ -418,6 +424,10 @@ async def import_model(
                     is_active, downloaded_at, activated_at,
                     training_accuracy, training_f1, training_precision, training_recall,
                     roc_auc, mcc, confusion_matrix, simulated_profit_pct,
+                    alert_threshold, n8n_enabled, n8n_webhook_url, n8n_send_mode,
+                    ignore_bad_seconds, ignore_positive_seconds, ignore_alert_seconds,
+                    max_log_entries_per_coin_negative, max_log_entries_per_coin_positive, max_log_entries_per_coin_alert,
+                    send_ignored_to_n8n,
                     created_at, updated_at
                 ) VALUES (
                     $1, $2, $3,
@@ -428,6 +438,10 @@ async def import_model(
                     true, NOW(), NOW(),
                     $15, $16, $17, $18,
                     $19, $20, $21::jsonb, $22,
+                    $23, $24, $25, $26::jsonb,
+                    $27, $28, $29,
+                    $30, $31, $32,
+                    $33,
                     NOW(), NOW()
                 )
                 RETURNING id
@@ -439,7 +453,18 @@ async def import_model(
                 None,  # local_model_path (not used with direct import)
                 None,  # model_file_url (not used with direct import)
                 training_accuracy, training_f1, training_precision, training_recall,
-                roc_auc, mcc, confusion_matrix_json, simulated_profit_pct
+                roc_auc, mcc, confusion_matrix_json, simulated_profit_pct,
+                defaults.get('alert_threshold', 0.7),
+                defaults.get('n8n_enabled', True),
+                defaults.get('n8n_webhook_url', '') or None,
+                n8n_send_mode_json,
+                defaults.get('ignore_bad_seconds', 0),
+                defaults.get('ignore_positive_seconds', 0),
+                defaults.get('ignore_alert_seconds', 0),
+                defaults.get('max_log_entries_per_coin_negative', 0),
+                defaults.get('max_log_entries_per_coin_positive', 0),
+                defaults.get('max_log_entries_per_coin_alert', 0),
+                defaults.get('send_ignored_to_n8n', False),
             )
 
             logger.info(f"Model {model_id} imported successfully (active_model_id: {new_id})")

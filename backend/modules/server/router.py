@@ -46,6 +46,11 @@ from backend.modules.server.alerts import (
     check_n8n_status,
     get_alert_evaluator,
 )
+from backend.modules.server.prediction_defaults import (
+    get_all_prediction_defaults,
+    update_prediction_defaults,
+    PREDICTION_DEFAULTS_SCHEMA,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1032,6 +1037,32 @@ async def get_alert_statistics_endpoint(
         }
     except Exception as e:
         logger.error(f"Error getting alert statistics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Prediction Defaults Endpoints
+# ============================================================
+
+@router.get("/defaults")
+async def get_defaults_endpoint():
+    """Get prediction defaults applied to newly imported models."""
+    try:
+        defaults = await get_all_prediction_defaults()
+        return defaults
+    except Exception as e:
+        logger.error(f"Error getting prediction defaults: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/defaults")
+async def update_defaults_endpoint(updates: Dict[str, Any]):
+    """Update prediction defaults. Returns the full updated dict."""
+    try:
+        result = await update_prediction_defaults(updates)
+        return result
+    except Exception as e:
+        logger.error(f"Error updating prediction defaults: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -1,10 +1,9 @@
 /**
- * AlertConfig Page
- * Per-model alert configuration: threshold, n8n webhook, send mode, ignore settings, max log entries.
- * Redesigned with modern section boxes, sliders, chips, and a single Save All button.
+ * PredictionDefaults Page
+ * Global default settings applied to every newly imported model.
+ * All values use number/text input fields for exact entry.
  */
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Typography,
@@ -13,15 +12,15 @@ import {
   Button,
   TextField,
   Switch,
-  Slider,
   Chip,
   Collapse,
   CircularProgress,
   Snackbar,
+  InputAdornment,
 } from '@mui/material';
 import {
-  ArrowBack as BackIcon,
   Save as SaveIcon,
+  Settings as SettingsIcon,
   Notifications as AlertIcon,
   Webhook as WebhookIcon,
   Timer as TimerIcon,
@@ -29,37 +28,25 @@ import {
   RemoveCircleOutline as BadIcon,
   TrendingUp as PositiveIcon,
   Warning as AlertCoinIcon,
+  RestartAlt as ResetIcon,
 } from '@mui/icons-material';
 
 import { serverApi } from '../../services/api';
-import type { ServerModel } from '../../types/server';
 
-// ── Helpers ──────────────────────────────────────────────────
-
-const formatSeconds = (s: number) => {
-  if (s === 0) return 'Off';
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.round(s / 60)} min`;
-  return `${(s / 3600).toFixed(1)}h`;
+// ── Schema defaults (mirrors backend PREDICTION_DEFAULTS_SCHEMA) ────
+const SCHEMA_DEFAULTS: Record<string, unknown> = {
+  alert_threshold: 0.7,
+  n8n_enabled: true,
+  n8n_webhook_url: '',
+  n8n_send_mode: ['all'],
+  ignore_bad_seconds: 0,
+  ignore_positive_seconds: 0,
+  ignore_alert_seconds: 0,
+  max_log_entries_per_coin_negative: 0,
+  max_log_entries_per_coin_positive: 0,
+  max_log_entries_per_coin_alert: 0,
+  send_ignored_to_n8n: false,
 };
-
-const formatLogEntries = (n: number) => (n === 0 ? '\u221e' : String(n));
-
-const cooldownMarks = [
-  { value: 0, label: 'Off' },
-  { value: 300, label: '5m' },
-  { value: 600, label: '10m' },
-  { value: 1800, label: '30m' },
-  { value: 3600, label: '1h' },
-];
-
-const logMarks = [
-  { value: 0, label: '\u221e' },
-  { value: 50, label: '50' },
-  { value: 100, label: '100' },
-  { value: 250, label: '250' },
-  { value: 500, label: '500' },
-];
 
 const sendModes = [
   { value: 'all', label: 'All' },
@@ -69,7 +56,6 @@ const sendModes = [
 ];
 
 // ── Icon Box ─────────────────────────────────────────────────
-
 const IconBox: React.FC<{ color: string; size?: number; children: React.ReactNode }> = ({
   color,
   size = 40,
@@ -93,7 +79,6 @@ const IconBox: React.FC<{ color: string; size?: number; children: React.ReactNod
 );
 
 // ── Section Box ──────────────────────────────────────────────
-
 const SectionBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Box
     sx={{
@@ -108,23 +93,20 @@ const SectionBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </Box>
 );
 
-// ── Setting Row (Slider + Badge) ─────────────────────────────
-
-const SettingRow: React.FC<{
+// ── Number Input Row ─────────────────────────────────────────
+const NumberRow: React.FC<{
   icon: React.ReactNode;
   label: string;
   desc: string;
   value: number;
   onChange: (v: number) => void;
-  min: number;
-  max: number;
-  step: number;
-  marks: { value: number; label: string }[];
-  formatValue: (v: number) => string;
-  color: string;
-}> = ({ icon, label, desc, value, onChange, min, max, step, marks, formatValue, color }) => (
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 160 }}>
+  min?: number;
+  max?: number;
+  unit?: string;
+  helperText?: string;
+}> = ({ icon, label, desc, value, onChange, min = 0, max, unit, helperText }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 180 }}>
       {icon}
       <Box>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -135,77 +117,40 @@ const SettingRow: React.FC<{
         </Typography>
       </Box>
     </Box>
-    <Slider
+    <TextField
+      type="number"
+      size="small"
       value={value}
-      onChange={(_e, v) => onChange(v as number)}
-      min={min}
-      max={max}
-      step={step}
-      marks={marks}
-      sx={{
-        flex: 1,
-        color,
-        '& .MuiSlider-markLabel': { fontSize: '0.65rem', color: 'text.secondary' },
+      onChange={(e) => {
+        let v = Number(e.target.value);
+        if (isNaN(v)) v = min;
+        if (v < min) v = min;
+        if (max !== undefined && v > max) v = max;
+        onChange(v);
       }}
+      inputProps={{ min, max, step: 1 }}
+      helperText={helperText}
+      sx={{ width: 160 }}
+      InputProps={unit ? {
+        endAdornment: <InputAdornment position="end">{unit}</InputAdornment>,
+      } : undefined}
     />
-    <Box
-      sx={{
-        px: 1.5,
-        py: 0.5,
-        bgcolor: `${color}18`,
-        border: `1px solid ${color}50`,
-        borderRadius: 1,
-        minWidth: 60,
-        textAlign: 'center',
-      }}
-    >
-      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700, color }}>
-        {formatValue(value)}
-      </Typography>
-    </Box>
   </Box>
 );
 
 // ── Main Component ───────────────────────────────────────────
-
-const AlertConfig: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+const PredictionDefaults: React.FC = () => {
   const queryClient = useQueryClient();
-  const modelId = Number(id);
 
-  // Load model
-  const {
-    data: modelResponse,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ['server', 'model', modelId],
-    queryFn: () => serverApi.getModelDetails(modelId),
-    enabled: !!modelId,
+  // Load current defaults
+  const { data: defaultsResponse, isLoading } = useQuery({
+    queryKey: ['server', 'defaults'],
+    queryFn: () => serverApi.getDefaults(),
   });
 
-  const model: ServerModel | undefined = modelResponse?.data;
+  const defaults = defaultsResponse?.data;
 
-  // Load ignore settings
-  const { data: ignoreResponse } = useQuery({
-    queryKey: ['server', 'model-ignore', modelId],
-    queryFn: () => serverApi.getIgnoreSettings(modelId),
-    enabled: !!modelId,
-  });
-
-  const ignoreSettings = ignoreResponse?.data;
-
-  // Load max log entries
-  const { data: maxLogResponse } = useQuery({
-    queryKey: ['server', 'model-maxlog', modelId],
-    queryFn: () => serverApi.getMaxLogEntries(modelId),
-    enabled: !!modelId,
-  });
-
-  const maxLogSettings = maxLogResponse?.data;
-
-  // Form state — null means "unchanged"
+  // Form state
   const [alertThreshold, setAlertThreshold] = useState<number | null>(null);
   const [n8nWebhookUrl, setN8nWebhookUrl] = useState<string | null>(null);
   const [n8nEnabled, setN8nEnabled] = useState<boolean | null>(null);
@@ -216,6 +161,7 @@ const AlertConfig: React.FC = () => {
   const [maxLogNegative, setMaxLogNegative] = useState<number | null>(null);
   const [maxLogPositive, setMaxLogPositive] = useState<number | null>(null);
   const [maxLogAlert, setMaxLogAlert] = useState<number | null>(null);
+  const [sendIgnoredToN8n, setSendIgnoredToN8n] = useState<boolean | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -223,27 +169,19 @@ const AlertConfig: React.FC = () => {
   });
 
   // Derive current values
-  const currentThreshold = alertThreshold ?? model?.alert_threshold ?? 0.7;
-  const currentWebhookUrl = n8nWebhookUrl ?? model?.n8n_webhook_url ?? '';
-  const currentN8nEnabled = n8nEnabled ?? model?.n8n_enabled ?? false;
+  const currentThreshold = alertThreshold ?? defaults?.alert_threshold ?? 0.7;
+  const currentWebhookUrl = n8nWebhookUrl ?? defaults?.n8n_webhook_url ?? '';
+  const currentN8nEnabled = n8nEnabled ?? defaults?.n8n_enabled ?? true;
   const currentSendMode =
     n8nSendMode ??
-    (Array.isArray(model?.n8n_send_mode)
-      ? model.n8n_send_mode
-      : model?.n8n_send_mode
-        ? [model.n8n_send_mode]
-        : ['all']);
-  const currentIgnoreBad = ignoreBadSeconds ?? ignoreSettings?.ignore_bad_seconds ?? model?.ignore_bad_seconds ?? 300;
-  const currentIgnorePositive =
-    ignorePositiveSeconds ?? ignoreSettings?.ignore_positive_seconds ?? model?.ignore_positive_seconds ?? 300;
-  const currentIgnoreAlert =
-    ignoreAlertSeconds ?? ignoreSettings?.ignore_alert_seconds ?? model?.ignore_alert_seconds ?? 600;
-  const currentMaxLogNegative =
-    maxLogNegative ?? maxLogSettings?.max_log_entries_per_coin_negative ?? model?.max_log_entries_per_coin_negative ?? 0;
-  const currentMaxLogPositive =
-    maxLogPositive ?? maxLogSettings?.max_log_entries_per_coin_positive ?? model?.max_log_entries_per_coin_positive ?? 0;
-  const currentMaxLogAlert =
-    maxLogAlert ?? maxLogSettings?.max_log_entries_per_coin_alert ?? model?.max_log_entries_per_coin_alert ?? 0;
+    (Array.isArray(defaults?.n8n_send_mode) ? defaults.n8n_send_mode : ['all']);
+  const currentIgnoreBad = ignoreBadSeconds ?? defaults?.ignore_bad_seconds ?? 0;
+  const currentIgnorePositive = ignorePositiveSeconds ?? defaults?.ignore_positive_seconds ?? 0;
+  const currentIgnoreAlert = ignoreAlertSeconds ?? defaults?.ignore_alert_seconds ?? 0;
+  const currentMaxLogNegative = maxLogNegative ?? defaults?.max_log_entries_per_coin_negative ?? 0;
+  const currentMaxLogPositive = maxLogPositive ?? defaults?.max_log_entries_per_coin_positive ?? 0;
+  const currentMaxLogAlert = maxLogAlert ?? defaults?.max_log_entries_per_coin_alert ?? 0;
+  const currentSendIgnored = sendIgnoredToN8n ?? defaults?.send_ignored_to_n8n ?? false;
 
   const hasChanges =
     alertThreshold !== null ||
@@ -255,68 +193,65 @@ const AlertConfig: React.FC = () => {
     ignoreAlertSeconds !== null ||
     maxLogNegative !== null ||
     maxLogPositive !== null ||
-    maxLogAlert !== null;
+    maxLogAlert !== null ||
+    sendIgnoredToN8n !== null;
 
-  // Mutations
-  const saveAlertMutation = useMutation({
+  // Save mutation
+  const saveMutation = useMutation({
     mutationFn: () =>
-      serverApi.updateAlertConfig(modelId, {
+      serverApi.updateDefaults({
         alert_threshold: currentThreshold,
-        n8n_webhook_url: currentWebhookUrl || undefined,
         n8n_enabled: currentN8nEnabled,
+        n8n_webhook_url: currentWebhookUrl,
         n8n_send_mode: currentSendMode,
-      }),
-  });
-
-  const saveIgnoreMutation = useMutation({
-    mutationFn: () =>
-      serverApi.updateIgnoreSettings(modelId, {
         ignore_bad_seconds: currentIgnoreBad,
         ignore_positive_seconds: currentIgnorePositive,
         ignore_alert_seconds: currentIgnoreAlert,
-      }),
-  });
-
-  const saveMaxLogMutation = useMutation({
-    mutationFn: () =>
-      serverApi.updateMaxLogEntries(modelId, {
         max_log_entries_per_coin_negative: currentMaxLogNegative,
         max_log_entries_per_coin_positive: currentMaxLogPositive,
         max_log_entries_per_coin_alert: currentMaxLogAlert,
+        send_ignored_to_n8n: currentSendIgnored,
       }),
-  });
-
-  const isSaving = saveAlertMutation.isPending || saveIgnoreMutation.isPending || saveMaxLogMutation.isPending;
-
-  const handleSaveAll = async () => {
-    try {
-      await Promise.all([
-        saveAlertMutation.mutateAsync(),
-        saveIgnoreMutation.mutateAsync(),
-        saveMaxLogMutation.mutateAsync(),
-      ]);
-      queryClient.invalidateQueries({ queryKey: ['server', 'model', modelId] });
-      queryClient.invalidateQueries({ queryKey: ['server', 'model-ignore', modelId] });
-      queryClient.invalidateQueries({ queryKey: ['server', 'model-maxlog', modelId] });
-      // Reset form state
-      setAlertThreshold(null);
-      setN8nWebhookUrl(null);
-      setN8nEnabled(null);
-      setN8nSendMode(null);
-      setIgnoreBadSeconds(null);
-      setIgnorePositiveSeconds(null);
-      setIgnoreAlertSeconds(null);
-      setMaxLogNegative(null);
-      setMaxLogPositive(null);
-      setMaxLogAlert(null);
-      setSnackbar({ open: true, message: 'All settings saved successfully', severity: 'success' });
-    } catch (err: any) {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['server', 'defaults'] });
+      resetFormState();
+      setSnackbar({ open: true, message: 'Settings saved', severity: 'success' });
+    },
+    onError: (err: any) => {
       setSnackbar({
         open: true,
         message: `Error: ${err.response?.data?.detail || err.message}`,
         severity: 'error',
       });
-    }
+    },
+  });
+
+  const resetFormState = () => {
+    setAlertThreshold(null);
+    setN8nWebhookUrl(null);
+    setN8nEnabled(null);
+    setN8nSendMode(null);
+    setIgnoreBadSeconds(null);
+    setIgnorePositiveSeconds(null);
+    setIgnoreAlertSeconds(null);
+    setMaxLogNegative(null);
+    setMaxLogPositive(null);
+    setMaxLogAlert(null);
+    setSendIgnoredToN8n(null);
+  };
+
+  const handleResetToSchemaDefaults = () => {
+    setAlertThreshold(SCHEMA_DEFAULTS.alert_threshold as number);
+    setN8nEnabled(SCHEMA_DEFAULTS.n8n_enabled as boolean);
+    setN8nWebhookUrl(SCHEMA_DEFAULTS.n8n_webhook_url as string);
+    setN8nSendMode(SCHEMA_DEFAULTS.n8n_send_mode as string[]);
+    setIgnoreBadSeconds(SCHEMA_DEFAULTS.ignore_bad_seconds as number);
+    setIgnorePositiveSeconds(SCHEMA_DEFAULTS.ignore_positive_seconds as number);
+    setIgnoreAlertSeconds(SCHEMA_DEFAULTS.ignore_alert_seconds as number);
+    setMaxLogNegative(SCHEMA_DEFAULTS.max_log_entries_per_coin_negative as number);
+    setMaxLogPositive(SCHEMA_DEFAULTS.max_log_entries_per_coin_positive as number);
+    setMaxLogAlert(SCHEMA_DEFAULTS.max_log_entries_per_coin_alert as number);
+    setSendIgnoredToN8n(SCHEMA_DEFAULTS.send_ignored_to_n8n as boolean);
   };
 
   const toggleSendMode = (mode: string) => {
@@ -338,21 +273,6 @@ const AlertConfig: React.FC = () => {
     );
   }
 
-  if (error || !model) {
-    return (
-      <Box>
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Error loading model: {(error as Error)?.message || 'Model not found'}
-        </Alert>
-        <Button startIcon={<BackIcon />} onClick={() => navigate('/predictions')}>
-          Back to Overview
-        </Button>
-      </Box>
-    );
-  }
-
-  const modelName = model.custom_name || model.name;
-
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto' }}>
       {/* Header */}
@@ -367,15 +287,15 @@ const AlertConfig: React.FC = () => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <IconBox color="#ff9800" size={44}>
-            <AlertIcon sx={{ color: '#ff9800', fontSize: 24 }} />
+          <IconBox color="#00d4ff" size={44}>
+            <SettingsIcon sx={{ color: '#00d4ff', fontSize: 24 }} />
           </IconBox>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 700, color: '#00d4ff' }}>
-              Alert Configuration
+              Default Settings
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Model: {modelName} · #{modelId}
+              Applied to newly imported models
             </Typography>
           </Box>
         </Box>
@@ -393,13 +313,18 @@ const AlertConfig: React.FC = () => {
               }}
             />
           )}
-          <Button startIcon={<BackIcon />} onClick={() => navigate('/predictions')} variant="outlined" size="small">
-            Back
+          <Button
+            startIcon={<ResetIcon />}
+            onClick={handleResetToSchemaDefaults}
+            variant="outlined"
+            size="small"
+          >
+            Reset
           </Button>
           <Button
-            startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-            onClick={handleSaveAll}
-            disabled={!hasChanges || isSaving}
+            startIcon={saveMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+            onClick={() => saveMutation.mutate()}
+            disabled={!hasChanges || saveMutation.isPending}
             variant="contained"
             size="small"
             sx={{
@@ -408,7 +333,7 @@ const AlertConfig: React.FC = () => {
               '&.Mui-disabled': { bgcolor: 'rgba(0, 212, 255, 0.2)', color: 'rgba(255,255,255,0.3)' },
             }}
           >
-            {isSaving ? 'Saving...' : 'Save All'}
+            {saveMutation.isPending ? 'Saving...' : 'Save All'}
           </Button>
         </Box>
       </Box>
@@ -424,44 +349,25 @@ const AlertConfig: React.FC = () => {
               Alert Threshold
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Predictions above this probability trigger alerts
+              Predictions above this probability trigger alerts (0.01 – 0.99)
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 1 }}>
-          <Slider
-            value={currentThreshold * 100}
-            onChange={(_e, v) => setAlertThreshold((v as number) / 100)}
-            min={1}
-            max={99}
-            step={1}
-            marks={[
-              { value: 50, label: '50%' },
-              { value: 70, label: '70%' },
-              { value: 90, label: '90%' },
-            ]}
-            sx={{
-              flex: 1,
-              color: '#ff9800',
-              '& .MuiSlider-markLabel': { fontSize: '0.7rem', color: 'text.secondary' },
-            }}
-          />
-          <Box
-            sx={{
-              px: 1.5,
-              py: 0.5,
-              bgcolor: '#ff980018',
-              border: '1px solid #ff980050',
-              borderRadius: 1,
-              minWidth: 60,
-              textAlign: 'center',
-            }}
-          >
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#ff9800' }}>
-              {(currentThreshold * 100).toFixed(0)}%
-            </Typography>
-          </Box>
-        </Box>
+        <TextField
+          type="number"
+          size="small"
+          value={currentThreshold}
+          onChange={(e) => {
+            let v = parseFloat(e.target.value);
+            if (isNaN(v)) v = 0.01;
+            if (v < 0.01) v = 0.01;
+            if (v > 0.99) v = 0.99;
+            setAlertThreshold(Math.round(v * 100) / 100);
+          }}
+          inputProps={{ min: 0.01, max: 0.99, step: 0.01 }}
+          helperText="e.g. 0.7 = 70%"
+          sx={{ width: 160 }}
+        />
       </SectionBox>
 
       {/* Section 2: N8N Webhook */}
@@ -539,48 +445,36 @@ const AlertConfig: React.FC = () => {
               Ignore Cooldowns
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Duration to ignore a coin after a prediction type
+              Duration in seconds to ignore a coin after a prediction type (0 = off, max 86400)
             </Typography>
           </Box>
         </Box>
-        <SettingRow
+        <NumberRow
           icon={<BadIcon sx={{ color: '#ef5350', fontSize: 18 }} />}
           label="Bad Coins"
           desc="Negative predictions"
           value={currentIgnoreBad}
           onChange={setIgnoreBadSeconds}
-          min={0}
-          max={3600}
-          step={60}
-          marks={cooldownMarks}
-          formatValue={formatSeconds}
-          color="#00d4ff"
+          max={86400}
+          unit="s"
         />
-        <SettingRow
+        <NumberRow
           icon={<PositiveIcon sx={{ color: '#66bb6a', fontSize: 18 }} />}
           label="Positive Coins"
           desc="Positive predictions"
           value={currentIgnorePositive}
           onChange={setIgnorePositiveSeconds}
-          min={0}
-          max={3600}
-          step={60}
-          marks={cooldownMarks}
-          formatValue={formatSeconds}
-          color="#00d4ff"
+          max={86400}
+          unit="s"
         />
-        <SettingRow
+        <NumberRow
           icon={<AlertCoinIcon sx={{ color: '#ffa726', fontSize: 18 }} />}
           label="Alert Coins"
           desc="Above threshold"
           value={currentIgnoreAlert}
           onChange={setIgnoreAlertSeconds}
-          min={0}
-          max={3600}
-          step={60}
-          marks={cooldownMarks}
-          formatValue={formatSeconds}
-          color="#00d4ff"
+          max={86400}
+          unit="s"
         />
       </SectionBox>
 
@@ -595,48 +489,33 @@ const AlertConfig: React.FC = () => {
               Log Retention
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Maximum prediction log entries per coin per type (0 = unlimited)
+              Max prediction log entries per coin per type (0 = unlimited, max 1000)
             </Typography>
           </Box>
         </Box>
-        <SettingRow
+        <NumberRow
           icon={<BadIcon sx={{ color: '#ef5350', fontSize: 18 }} />}
           label="Negative Entries"
           desc="Bad predictions"
           value={currentMaxLogNegative}
           onChange={setMaxLogNegative}
-          min={0}
-          max={500}
-          step={10}
-          marks={logMarks}
-          formatValue={formatLogEntries}
-          color="#2196f3"
+          max={1000}
         />
-        <SettingRow
+        <NumberRow
           icon={<PositiveIcon sx={{ color: '#66bb6a', fontSize: 18 }} />}
           label="Positive Entries"
           desc="Good predictions"
           value={currentMaxLogPositive}
           onChange={setMaxLogPositive}
-          min={0}
-          max={500}
-          step={10}
-          marks={logMarks}
-          formatValue={formatLogEntries}
-          color="#2196f3"
+          max={1000}
         />
-        <SettingRow
+        <NumberRow
           icon={<AlertCoinIcon sx={{ color: '#ffa726', fontSize: 18 }} />}
           label="Alert Entries"
           desc="Alert predictions"
           value={currentMaxLogAlert}
           onChange={setMaxLogAlert}
-          min={0}
-          max={500}
-          step={10}
-          marks={logMarks}
-          formatValue={formatLogEntries}
-          color="#2196f3"
+          max={1000}
         />
       </SectionBox>
 
@@ -660,4 +539,4 @@ const AlertConfig: React.FC = () => {
   );
 };
 
-export default AlertConfig;
+export default PredictionDefaults;

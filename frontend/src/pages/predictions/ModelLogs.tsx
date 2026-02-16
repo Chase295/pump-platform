@@ -71,7 +71,7 @@ import {
 } from '@mui/icons-material';
 
 import { serverApi } from '../../services/api';
-import type { ServerModel, AlertStatistics } from '../../types/server';
+import type { ServerModel } from '../../types/server';
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -271,14 +271,6 @@ const ModelLogs: React.FC = () => {
     refetchInterval: 15000,
   });
 
-  const { data: statsResponse } = useQuery({
-    queryKey: ['server', 'alert-statistics', modelId],
-    queryFn: () => serverApi.getAlertStatistics({ model_id: modelId }),
-    enabled: !!modelId,
-    refetchInterval: 30000,
-  });
-
-  const alertStats: AlertStatistics | undefined = statsResponse?.data;
   const allPredictions: ModelPrediction[] = predResponse?.data?.predictions || predResponse?.data || [];
 
   // ---- Filtering ----
@@ -301,6 +293,44 @@ const ModelLogs: React.FC = () => {
   const rows = showAll ? filteredPredictions : filteredPredictions.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const activeFilterCount = [coinIdFilter, tagFilter.length, evalFilter.length, probVal, actualVal, athHighVal, athLowVal].filter(Boolean).length;
+
+  // ---- Compute stats from filtered predictions (reactive to filters) ----
+  const filteredStats = useMemo(() => {
+    const total = filteredPredictions.length;
+    const alerts = filteredPredictions.filter((p) => p.tag === 'alert');
+    const nonAlerts = filteredPredictions.filter((p) => p.tag !== 'alert');
+    const alertsSuccess = alerts.filter((p) => p.evaluation_result === 'success').length;
+    const alertsFailed = alerts.filter((p) => p.evaluation_result === 'failed').length;
+    const alertsPending = alerts.filter((p) => !p.evaluation_result || p.status === 'aktiv').length;
+    const alertsExpired = alerts.filter((p) => p.evaluation_result === 'not_applicable').length;
+    const alertsEval = alertsSuccess + alertsFailed;
+    const successRate = alertsEval > 0 ? (alertsSuccess / alertsEval) * 100 : 0;
+
+    let profitSum = 0;
+    let lossSum = 0;
+    for (const p of alerts) {
+      if (p.actual_price_change_pct != null && (p.evaluation_result === 'success' || p.evaluation_result === 'failed')) {
+        if (p.actual_price_change_pct > 0) profitSum += p.actual_price_change_pct;
+        else lossSum += p.actual_price_change_pct;
+      }
+    }
+    const totalPerf = profitSum + lossSum;
+
+    return {
+      total,
+      alertsCount: alerts.length,
+      nonAlertsCount: nonAlerts.length,
+      alertsSuccess,
+      alertsFailed,
+      alertsPending,
+      alertsExpired,
+      alertsEvaluated: alertsEval,
+      successRate,
+      totalPerf,
+      profitSum,
+      lossSum,
+    };
+  }, [filteredPredictions]);
 
   const clearFilters = useCallback(() => {
     setCoinIdFilter(''); setTagFilter([]); setEvalFilter([]);
@@ -342,12 +372,6 @@ const ModelLogs: React.FC = () => {
   // ---- Loading ----
   if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>;
 
-  // Derived stats
-  const perfPct = alertStats?.total_performance_pct || 0;
-  const profitPct = alertStats?.alerts_profit_pct || 0;
-  const lossPct = alertStats?.alerts_loss_pct || 0;
-  const alertsEvaluated = (alertStats?.alerts_success || 0) + (alertStats?.alerts_failed || 0);
-
   return (
     <Box>
       {/* Breadcrumbs */}
@@ -383,9 +407,9 @@ const ModelLogs: React.FC = () => {
       {error && <Alert severity="error" sx={{ mb: 3 }}>Error: {(error as Error).message}</Alert>}
 
       {/* ================================================================ */}
-      {/* STATISTICS PANEL                                                 */}
+      {/* STATISTICS PANEL (computed from filtered predictions)            */}
       {/* ================================================================ */}
-      {alertStats && (
+      {allPredictions.length > 0 && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
 
           {/* Overview panel */}
@@ -394,27 +418,27 @@ const ModelLogs: React.FC = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
               <StatItem
                 icon={<SpeedIcon fontSize="small" sx={{ color: '#00d4ff' }} />}
-                value={allPredictions.length.toLocaleString()}
+                value={filteredStats.total.toLocaleString()}
                 label="Total Predictions"
                 color="#00d4ff"
               />
               <StatItem
                 icon={<NotificationsIcon fontSize="small" sx={{ color: '#ffb300' }} />}
-                value={alertStats.total_alerts}
+                value={filteredStats.alertsCount.toLocaleString()}
                 label="Alerts"
                 color="#ffb300"
               />
               <StatItem
                 icon={<NonAlertsIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.5)' }} />}
-                value={alertStats.non_alerts_count || 0}
+                value={filteredStats.nonAlertsCount.toLocaleString()}
                 label="Non-Alerts"
                 color="rgba(255,255,255,0.5)"
               />
               <StatItem
-                icon={<ShowChartIcon fontSize="small" sx={{ color: alertsEvaluated > 0 ? '#00d4ff' : 'rgba(255,255,255,0.3)' }} />}
-                value={alertsEvaluated > 0 ? `${((alertStats.alerts_success_rate || 0)).toFixed(0)}%` : '-'}
+                icon={<ShowChartIcon fontSize="small" sx={{ color: filteredStats.alertsEvaluated > 0 ? '#00d4ff' : 'rgba(255,255,255,0.3)' }} />}
+                value={filteredStats.alertsEvaluated > 0 ? `${filteredStats.successRate.toFixed(0)}%` : '-'}
                 label="Alert Success Rate"
-                color={alertsEvaluated > 0 ? ((alertStats.alerts_success_rate || 0) >= 50 ? '#4caf50' : '#f44336') : 'rgba(255,255,255,0.5)'}
+                color={filteredStats.alertsEvaluated > 0 ? (filteredStats.successRate >= 50 ? '#4caf50' : '#f44336') : 'rgba(255,255,255,0.5)'}
               />
             </Box>
           </Box>
@@ -425,25 +449,25 @@ const ModelLogs: React.FC = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
               <StatItem
                 icon={<CheckCircleOutlineIcon fontSize="small" sx={{ color: '#4caf50' }} />}
-                value={alertStats.alerts_success || 0}
+                value={filteredStats.alertsSuccess}
                 label="Success"
                 color="#4caf50"
               />
               <StatItem
                 icon={<HighlightOffIcon fontSize="small" sx={{ color: '#f44336' }} />}
-                value={alertStats.alerts_failed || 0}
+                value={filteredStats.alertsFailed}
                 label="Failed"
                 color="#f44336"
               />
               <StatItem
                 icon={<HourglassTopIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.5)' }} />}
-                value={alertStats.alerts_pending || 0}
+                value={filteredStats.alertsPending}
                 label="Pending"
                 color="rgba(255,255,255,0.5)"
               />
               <StatItem
                 icon={<ExpiredIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.35)' }} />}
-                value={alertStats.expired || 0}
+                value={filteredStats.alertsExpired}
                 label="Expired"
                 color="rgba(255,255,255,0.5)"
               />
@@ -451,30 +475,30 @@ const ModelLogs: React.FC = () => {
           </Box>
 
           {/* Performance panel */}
-          <Box sx={panelSx(perfPct >= 0 ? '#4caf50' : '#f44336', perfPct >= 0 ? '#4caf50' : '#f44336')}>
-            <Typography variant="caption" sx={sectionLabel(perfPct >= 0 ? '#4caf50' : '#f44336')}>Performance</Typography>
+          <Box sx={panelSx(filteredStats.totalPerf >= 0 ? '#4caf50' : '#f44336', filteredStats.totalPerf >= 0 ? '#4caf50' : '#f44336')}>
+            <Typography variant="caption" sx={sectionLabel(filteredStats.totalPerf >= 0 ? '#4caf50' : '#f44336')}>Performance</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
               <StatItem
-                icon={<ShowChartIcon fontSize="small" sx={{ color: perfPct >= 0 ? '#4caf50' : '#f44336' }} />}
-                value={`${perfPct >= 0 ? '+' : ''}${perfPct.toFixed(1)}%`}
+                icon={<ShowChartIcon fontSize="small" sx={{ color: filteredStats.totalPerf >= 0 ? '#4caf50' : '#f44336' }} />}
+                value={`${filteredStats.totalPerf >= 0 ? '+' : ''}${filteredStats.totalPerf.toFixed(1)}%`}
                 label="Total"
-                color={perfPct >= 0 ? '#4caf50' : '#f44336'}
+                color={filteredStats.totalPerf >= 0 ? '#4caf50' : '#f44336'}
               />
               <StatItem
                 icon={<ProfitIcon fontSize="small" sx={{ color: '#4caf50' }} />}
-                value={`+${profitPct.toFixed(1)}%`}
+                value={`+${filteredStats.profitSum.toFixed(1)}%`}
                 label="Profit Sum"
                 color="#4caf50"
               />
               <StatItem
                 icon={<TrendingDownIcon fontSize="small" sx={{ color: '#f44336' }} />}
-                value={`${lossPct.toFixed(1)}%`}
+                value={`${filteredStats.lossSum.toFixed(1)}%`}
                 label="Loss Sum"
                 color="#f44336"
               />
               <StatItem
                 icon={<NotificationsIcon fontSize="small" sx={{ color: 'rgba(255,255,255,0.5)' }} />}
-                value={alertsEvaluated}
+                value={filteredStats.alertsEvaluated}
                 label="Evaluated"
                 color="rgba(255,255,255,0.5)"
               />
