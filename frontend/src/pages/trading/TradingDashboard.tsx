@@ -44,10 +44,10 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
+import { useExchangeRate, fmtEur, fmtSol, truncateMint, CARD_SX, TOOLTIP_STYLE } from './tradingUtils';
 import type {
   Wallet,
   WalletPerformance,
-  ExchangeRate,
   PnlHistoryResponse,
   TradeActivityResponse,
   TradeAnalytics,
@@ -108,11 +108,7 @@ export default function TradingDashboard() {
   // -----------------------------------------------------------------------
 
   // Exchange rate (refresh every 60s)
-  const { data: exchangeRate } = useQuery<ExchangeRate>({
-    queryKey: ['buy', 'exchangeRate'],
-    queryFn: async () => (await buyApi.getExchangeRate()).data,
-    refetchInterval: 60_000,
-  });
+  const { data: exchangeRate } = useExchangeRate();
 
   // Wallets (refresh every 10s)
   const { data: wallets = [] } = useQuery<Wallet[]>({
@@ -171,11 +167,6 @@ export default function TradingDashboard() {
   // -----------------------------------------------------------------------
   const solEur = exchangeRate?.sol_price_eur ?? 0;
   const solToEur = (sol: number) => sol * solEur;
-  const fmtEur = (n: number) =>
-    n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-  const fmtSol = (n: number) => `${n.toFixed(4)} SOL`;
-  const truncateMint = (mint: string) =>
-    mint ? `${mint.slice(0, 4)}...${mint.slice(-4)}` : '';
   const formatBucket = (bucket: unknown) => {
     try {
       const d = new Date(String(bucket));
@@ -326,14 +317,7 @@ export default function TradingDashboard() {
       {/* Row 2: P&L Chart (md:8) + Trade Activity Chart (md:4) */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, md: 8 }}>
-          <Card
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              p: 2,
-            }}
-          >
+          <Card sx={{ ...CARD_SX, p: 2 }}>
             <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
               P&L Zeitverlauf
             </Typography>
@@ -353,11 +337,7 @@ export default function TradingDashboard() {
                   tickFormatter={(v: number) => fmtEur(solToEur(v))}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15,15,35,0.95)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                  }}
+                  contentStyle={TOOLTIP_STYLE}
                   labelFormatter={formatBucket}
                   formatter={(value: number | undefined) => [fmtEur(solToEur(value ?? 0)), 'P&L']}
                 />
@@ -373,14 +353,7 @@ export default function TradingDashboard() {
           </Card>
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <Card
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              p: 2,
-            }}
-          >
+          <Card sx={{ ...CARD_SX, p: 2 }}>
             <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
               Trade Aktivitaet
             </Typography>
@@ -395,11 +368,7 @@ export default function TradingDashboard() {
                 />
                 <YAxis stroke="#666" fontSize={11} allowDecimals={false} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15,15,35,0.95)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                  }}
+                  contentStyle={TOOLTIP_STYLE}
                   labelFormatter={formatBucket}
                 />
                 <Bar dataKey="buy_count" name="BUY" stackId="a" fill="#4caf50" radius={[2, 2, 0, 0]} />
@@ -420,14 +389,7 @@ export default function TradingDashboard() {
       {/* Row 3: Win/Loss Analysis (md:6) + Fee Breakdown (md:6) */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              p: 2,
-            }}
-          >
+          <Card sx={{ ...CARD_SX, p: 2 }}>
             <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
               Win/Loss Analyse
             </Typography>
@@ -450,13 +412,7 @@ export default function TradingDashboard() {
                       <Cell fill="#4caf50" />
                       <Cell fill="#f44336" />
                     </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(15,15,35,0.95)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 8,
-                      }}
-                    />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} />
                   </PieChart>
                 </ResponsiveContainer>
                 <Typography variant="h4" align="center" sx={{ fontWeight: 700, mt: -1 }}>
@@ -501,14 +457,7 @@ export default function TradingDashboard() {
           </Card>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              p: 2,
-            }}
-          >
+          <Card sx={{ ...CARD_SX, p: 2 }}>
             <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
               Gebuehren-Breakdown
             </Typography>
@@ -678,14 +627,7 @@ export default function TradingDashboard() {
       {/* Row 5: Wallet Comparison BarChart (md:6) + Live Trade Feed (md:6) */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              p: 2,
-            }}
-          >
+          <Card sx={{ ...CARD_SX, p: 2 }}>
             <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
               Wallet Vergleich
             </Typography>
@@ -699,11 +641,7 @@ export default function TradingDashboard() {
                   tickFormatter={(v: number) => fmtEur(solToEur(v))}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(15,15,35,0.95)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                  }}
+                  contentStyle={TOOLTIP_STYLE}
                   formatter={(value: number | undefined) => [fmtEur(solToEur(value ?? 0))]}
                 />
                 <Bar dataKey="net_profit_sol" name="Net P&L" fill="#00d4ff" radius={[4, 4, 0, 0]} />
@@ -714,14 +652,7 @@ export default function TradingDashboard() {
           </Card>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              backdropFilter: 'blur(10px)',
-              p: 2,
-            }}
-          >
+          <Card sx={{ ...CARD_SX, p: 2 }}>
             <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
               Letzte Trades
             </Typography>
