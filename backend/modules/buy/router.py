@@ -27,7 +27,7 @@ Route mapping:
 """
 
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -46,6 +46,12 @@ from backend.modules.buy.schemas import (
     TradeLogResponse,
     DashboardStats,
     WalletPerformanceResponse,
+    ExchangeRateResponse,
+    PnlHistoryResponse,
+    PnlBucket,
+    TradeActivityResponse,
+    TradeActivityBucket,
+    TradeAnalyticsResponse,
 )
 from backend.modules.buy.trading import TradingService
 from backend.modules.buy.transfer import TransferService
@@ -426,6 +432,223 @@ async def get_wallet_performance():
         )
         for p in performance
     ]
+
+
+@router.get("/exchange-rate", response_model=ExchangeRateResponse)
+async def get_exchange_rate():
+    """Get current SOL/EUR exchange rate from exchange_rates table."""
+    row = await fetchrow(
+        """
+        SELECT sol_price_usd, usd_to_eur_rate, created_at
+        FROM exchange_rates
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+    )
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No exchange rate data available")
+
+    sol_usd = float(row['sol_price_usd'] or 0)
+    usd_eur = float(row['usd_to_eur_rate'] or 0)
+
+    return ExchangeRateResponse(
+        sol_price_usd=sol_usd,
+        usd_to_eur_rate=usd_eur,
+        sol_price_eur=round(sol_usd * usd_eur, 6) if usd_eur else 0,
+        timestamp=row['created_at']
+    )
+
+
+@router.get("/dashboard/pnl-history", response_model=PnlHistoryResponse)
+async def get_pnl_history(
+    wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
+    period: str = Query("24h", description="24h, 7d, 30d, or all"),
+):
+    """Get cumulative P&L history bucketed over time."""
+    bucket_map = {"24h": ("1 hour", "1h"), "7d": ("4 hours", "4h"), "30d": ("1 day", "1d"), "all": ("1 day", "1d")}
+    bucket_interval, bucket_label = bucket_map.get(period, ("1 hour", "1h"))
+
+    period_map = {"24h": "24 hours", "7d": "7 days", "30d": "30 days"}
+    time_filter = f"AND t.created_at > NOW() - INTERVAL '{period_map[period]}'" if period in period_map else ""
+
+    wallet_filter = ""
+    params: list = []
+    if wallet_type:
+        wallet_filter = f"AND w.type = ${len(params) + 1}"
+        params.append(wallet_type)
+
+    rows = await fetch(f"""
+        WITH trade_data AS (
+            SELECT
+                time_bucket('{bucket_interval}', t.created_at) AS bucket,
+                COALESCE(SUM(CASE WHEN t.action = 'SELL' THEN t.amount_sol ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) AS pnl_sol,
+                COALESCE(SUM(COALESCE(t.jito_tip_lamports, 0) / 1000000000.0), 0) +
+                COALESCE(SUM(COALESCE(t.network_fee_sol, 0)), 0) AS fees_sol
+            FROM trade_logs t
+            JOIN wallets w ON t.wallet_id = w.id
+            WHERE t.status = 'SUCCESS'
+            {time_filter}
+            {wallet_filter}
+            GROUP BY bucket
+            ORDER BY bucket
+        )
+        SELECT
+            bucket,
+            SUM(pnl_sol) OVER (ORDER BY bucket) AS cumulative_pnl_sol,
+            fees_sol
+        FROM trade_data
+    """, *params)
+
+    return PnlHistoryResponse(
+        data=[
+            PnlBucket(
+                bucket=r['bucket'],
+                cumulative_pnl_sol=float(r['cumulative_pnl_sol'] or 0),
+                fees_sol=float(r['fees_sol'] or 0),
+            )
+            for r in rows
+        ],
+        period=period,
+        bucket_size=bucket_label,
+    )
+
+
+@router.get("/dashboard/trade-activity", response_model=TradeActivityResponse)
+async def get_trade_activity(
+    wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
+    period: str = Query("24h", description="24h, 7d, 30d, or all"),
+):
+    """Get trade counts (BUY/SELL) bucketed over time."""
+    bucket_map = {"24h": ("1 hour", "1h"), "7d": ("4 hours", "4h"), "30d": ("1 day", "1d"), "all": ("1 day", "1d")}
+    bucket_interval, bucket_label = bucket_map.get(period, ("1 hour", "1h"))
+
+    period_map = {"24h": "24 hours", "7d": "7 days", "30d": "30 days"}
+    time_filter = f"AND t.created_at > NOW() - INTERVAL '{period_map[period]}'" if period in period_map else ""
+
+    wallet_filter = ""
+    params: list = []
+    if wallet_type:
+        wallet_filter = f"AND w.type = ${len(params) + 1}"
+        params.append(wallet_type)
+
+    rows = await fetch(f"""
+        SELECT
+            time_bucket('{bucket_interval}', t.created_at) AS bucket,
+            COUNT(*) FILTER (WHERE t.action = 'BUY') AS buy_count,
+            COUNT(*) FILTER (WHERE t.action = 'SELL') AS sell_count
+        FROM trade_logs t
+        JOIN wallets w ON t.wallet_id = w.id
+        WHERE t.status = 'SUCCESS'
+        {time_filter}
+        {wallet_filter}
+        GROUP BY bucket
+        ORDER BY bucket
+    """, *params)
+
+    return TradeActivityResponse(
+        data=[
+            TradeActivityBucket(
+                bucket=r['bucket'],
+                buy_count=r['buy_count'] or 0,
+                sell_count=r['sell_count'] or 0,
+            )
+            for r in rows
+        ],
+        period=period,
+        bucket_size=bucket_label,
+    )
+
+
+@router.get("/dashboard/trade-analytics", response_model=TradeAnalyticsResponse)
+async def get_trade_analytics(
+    wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
+    period: str = Query("24h", description="24h, 7d, 30d, or all"),
+):
+    """Get win/loss analytics and fee breakdown."""
+    period_map = {"24h": "24 hours", "7d": "7 days", "30d": "30 days"}
+    time_filter = f"AND p.closed_at > NOW() - INTERVAL '{period_map[period]}'" if period in period_map else ""
+    fee_time_filter = f"AND t.created_at > NOW() - INTERVAL '{period_map[period]}'" if period in period_map else ""
+
+    wallet_filter = ""
+    fee_wallet_filter = ""
+    params: list = []
+    if wallet_type:
+        wallet_filter = f"AND w.type = ${len(params) + 1}"
+        fee_wallet_filter = f"AND w2.type = ${len(params) + 1}"
+        params.append(wallet_type)
+
+    # Win/loss per closed position
+    positions_row = await fetchrow(f"""
+        WITH position_pnl AS (
+            SELECT
+                p.id,
+                p.mint,
+                COALESCE(SUM(CASE WHEN t.action = 'SELL' THEN t.amount_sol ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) AS pnl_sol
+            FROM positions p
+            JOIN wallets w ON p.wallet_id = w.id
+            LEFT JOIN trade_logs t ON t.position_id = p.id AND t.status = 'SUCCESS'
+            WHERE p.status = 'CLOSED'
+            {time_filter}
+            {wallet_filter}
+            GROUP BY p.id, p.mint
+        )
+        SELECT
+            COUNT(*) FILTER (WHERE pnl_sol > 0) AS winning_trades,
+            COUNT(*) FILTER (WHERE pnl_sol <= 0) AS losing_trades,
+            COALESCE(AVG(pnl_sol) FILTER (WHERE pnl_sol > 0), 0) AS avg_win_sol,
+            COALESCE(AVG(pnl_sol) FILTER (WHERE pnl_sol <= 0), 0) AS avg_loss_sol,
+            COALESCE(SUM(pnl_sol) FILTER (WHERE pnl_sol > 0), 0) AS gross_wins,
+            ABS(COALESCE(SUM(pnl_sol) FILTER (WHERE pnl_sol <= 0), 0)) AS gross_losses,
+            COALESCE(SUM(pnl_sol), 0) AS gross_pnl_sol,
+            (SELECT pnl_sol FROM position_pnl ORDER BY pnl_sol DESC LIMIT 1) AS best_trade_sol,
+            (SELECT mint FROM position_pnl ORDER BY pnl_sol DESC LIMIT 1) AS best_trade_mint,
+            (SELECT pnl_sol FROM position_pnl ORDER BY pnl_sol ASC LIMIT 1) AS worst_trade_sol,
+            (SELECT mint FROM position_pnl ORDER BY pnl_sol ASC LIMIT 1) AS worst_trade_mint
+        FROM position_pnl
+    """, *params)
+
+    # Fee breakdown (independent of positions - uses all trades in period)
+    fees_row = await fetchrow(f"""
+        SELECT
+            COALESCE(SUM(COALESCE(t.network_fee_sol, 0)), 0) AS total_network_fees_sol,
+            COALESCE(SUM(COALESCE(t.jito_tip_lamports, 0) / 1000000000.0), 0) AS total_jito_tips_sol
+        FROM trade_logs t
+        JOIN wallets w2 ON t.wallet_id = w2.id
+        WHERE t.status = 'SUCCESS'
+        {fee_time_filter}
+        {fee_wallet_filter}
+    """, *params)
+
+    winning = positions_row['winning_trades'] or 0 if positions_row else 0
+    losing = positions_row['losing_trades'] or 0 if positions_row else 0
+    total = winning + losing
+    gross_wins = float(positions_row['gross_wins'] or 0) if positions_row else 0
+    gross_losses = float(positions_row['gross_losses'] or 0) if positions_row else 0
+    network_fees = float(fees_row['total_network_fees_sol'] or 0) if fees_row else 0
+    jito_tips = float(fees_row['total_jito_tips_sol'] or 0) if fees_row else 0
+    total_fees = network_fees + jito_tips
+    gross_pnl = float(positions_row['gross_pnl_sol'] or 0) if positions_row else 0
+
+    return TradeAnalyticsResponse(
+        winning_trades=winning,
+        losing_trades=losing,
+        win_rate=round((winning / total * 100) if total > 0 else 0, 1),
+        avg_win_sol=float(positions_row['avg_win_sol'] or 0) if positions_row else 0,
+        avg_loss_sol=float(positions_row['avg_loss_sol'] or 0) if positions_row else 0,
+        profit_factor=round(gross_wins / gross_losses, 2) if gross_losses > 0 else 0,
+        total_network_fees_sol=network_fees,
+        total_jito_tips_sol=jito_tips,
+        total_fees_sol=total_fees,
+        gross_pnl_sol=gross_pnl,
+        net_pnl_sol=gross_pnl - total_fees,
+        best_trade_sol=float(positions_row['best_trade_sol'] or 0) if positions_row else 0,
+        worst_trade_sol=float(positions_row['worst_trade_sol'] or 0) if positions_row else 0,
+        best_trade_mint=positions_row['best_trade_mint'] if positions_row else None,
+        worst_trade_mint=positions_row['worst_trade_mint'] if positions_row else None,
+    )
 
 
 # =================================================================

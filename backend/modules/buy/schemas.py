@@ -262,3 +262,62 @@ class WalletPerformanceResponse(BaseModel):
     net_profit_sol: float
     trade_count: int
     profit_24h: float
+
+
+# =================================================================
+# DASHBOARD ANALYTICS SCHEMAS
+# =================================================================
+
+class ExchangeRateResponse(BaseModel):
+    """Current exchange rates."""
+    sol_price_usd: float
+    usd_to_eur_rate: float
+    sol_price_eur: float
+    timestamp: datetime
+
+
+class PnlBucket(BaseModel):
+    """Single time bucket for P&L history."""
+    bucket: datetime
+    cumulative_pnl_sol: float
+    fees_sol: float
+
+
+class PnlHistoryResponse(BaseModel):
+    """P&L history over time."""
+    data: list[PnlBucket]
+    period: str
+    bucket_size: str
+
+
+class TradeActivityBucket(BaseModel):
+    """Single time bucket for trade activity."""
+    bucket: datetime
+    buy_count: int
+    sell_count: int
+
+
+class TradeActivityResponse(BaseModel):
+    """Trade activity over time."""
+    data: list[TradeActivityBucket]
+    period: str
+    bucket_size: str
+
+
+class TradeAnalyticsResponse(BaseModel):
+    """Win/loss analytics and fee breakdown."""
+    winning_trades: int
+    losing_trades: int
+    win_rate: float
+    avg_win_sol: float
+    avg_loss_sol: float
+    profit_factor: float
+    total_network_fees_sol: float
+    total_jito_tips_sol: float
+    total_fees_sol: float
+    gross_pnl_sol: float
+    net_pnl_sol: float
+    best_trade_sol: float
+    worst_trade_sol: float
+    best_trade_mint: Optional[str] = None
+    worst_trade_mint: Optional[str] = None
