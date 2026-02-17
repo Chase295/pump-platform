@@ -320,9 +320,13 @@ const TradingInfo: React.FC = () => {
           <EndpointRow method="GET" path="/api/buy/transfers" desc="Transfer-Log" />
 
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Dashboard</Typography>
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 'bold' }}>Dashboard & Analytics</Typography>
           <EndpointRow method="GET" path="/api/buy/dashboard/stats" desc="Dashboard-Statistiken" />
           <EndpointRow method="GET" path="/api/buy/dashboard/performance" desc="Wallet-Performance" />
+          <EndpointRow method="GET" path="/api/buy/dashboard/pnl-history" desc="PnL-Verlauf (Tages-Daten)" />
+          <EndpointRow method="GET" path="/api/buy/dashboard/trade-activity" desc="Trade-Aktivitaet (Trades pro Tag)" />
+          <EndpointRow method="GET" path="/api/buy/dashboard/trade-analytics" desc="Trade-Analytics (Win-Rate, Avg PnL)" />
+          <EndpointRow method="GET" path="/api/buy/exchange-rate" desc="SOL/EUR Wechselkurs" />
           <EndpointRow method="GET" path="/api/buy/health" desc="Health Check" />
         </Chapter>
 
@@ -364,6 +368,11 @@ const TradingInfo: React.FC = () => {
                   <TableCell>SOL-Transfer-Historie</TableCell>
                   <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>from_wallet, to_address, amount_sol</TableCell>
                 </TableRow>
+                <TableRow>
+                  <TableCell><code>exchange_rates</code></TableCell>
+                  <TableCell>SOL/USD Wechselkurse (CoinGecko)</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>sol_price_usd, sol_price_eur, fetched_at</TableCell>
+                </TableRow>
               </TableBody>
             </Table>
           </SmallTable>
@@ -401,6 +410,10 @@ const TradingInfo: React.FC = () => {
               { name: 'get_transfer_logs', desc: 'Transfer-Historie', cat: 'Daten' },
               { name: 'get_dashboard_stats', desc: 'Dashboard-Statistiken', cat: 'Dashboard' },
               { name: 'get_wallet_performance', desc: 'Wallet-Performance', cat: 'Dashboard' },
+              { name: 'get_pnl_history', desc: 'PnL-Verlauf (Tages-Daten)', cat: 'Dashboard' },
+              { name: 'get_trade_activity', desc: 'Trade-Aktivitaet pro Tag', cat: 'Dashboard' },
+              { name: 'get_trade_analytics', desc: 'Win-Rate, Avg PnL, Best/Worst', cat: 'Dashboard' },
+              { name: 'get_exchange_rate', desc: 'SOL/EUR Wechselkurs', cat: 'Dashboard' },
               { name: 'health_check', desc: 'Service-Status', cat: 'System' },
             ].map((tool) => (
               <Grid key={tool.name} size={{ xs: 12, sm: 6 }}>

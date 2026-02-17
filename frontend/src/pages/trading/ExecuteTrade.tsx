@@ -4,7 +4,6 @@ import {
   Grid,
   Card,
   CardContent,
-  CardHeader,
   Typography,
   Button,
   TextField,
@@ -17,6 +16,9 @@ import {
   Alert,
   Chip,
   Divider,
+  Collapse,
+  IconButton,
+  LinearProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -24,15 +26,21 @@ import {
   DialogActions,
 } from '@mui/material';
 import {
-  AccountBalanceWallet as WalletIcon,
-  TrendingUp as TrendingUpIcon,
-  SwapHoriz as SwapIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
 import { useExchangeRate, fmtEur, fmtSol, truncateMint, CARD_SX } from './tradingUtils';
 import type { Wallet, Position, TradeResponse } from '../../types/buy';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const getBalance = (w: Wallet) =>
+  w.type === 'TEST' ? w.virtual_sol_balance : w.real_sol_balance;
 
 export default function ExecuteTrade() {
   const ctx = useTradingContext();
@@ -42,8 +50,11 @@ export default function ExecuteTrade() {
 
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [lastResult, setLastResult] = useState<TradeResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // ---- Data fetching via useQuery ----
+  // ---- Data fetching ----
   const { data: wallets = [], refetch: refetchData } = useQuery<Wallet[]>({
     queryKey: ['buy', 'wallets', ctx.walletType],
     queryFn: async () => (await buyApi.getWallets(ctx.walletType)).data,
@@ -56,7 +67,7 @@ export default function ExecuteTrade() {
     refetchInterval: 10_000,
   });
 
-  // Buy form
+  // Forms
   const [buyForm, setBuyForm] = useState({
     wallet_alias: '',
     mint: '',
@@ -66,7 +77,6 @@ export default function ExecuteTrade() {
     jito_tip_lamports: 50000,
   });
 
-  // Sell form
   const [sellForm, setSellForm] = useState({
     wallet_alias: '',
     mint: '',
@@ -74,37 +84,30 @@ export default function ExecuteTrade() {
     slippage_bps: 100,
   });
 
-  // Sell-all state
-  const [sellAllWallet, setSellAllWallet] = useState('');
-
-  // Confirmation dialog state (for REAL mode)
+  // Confirmation dialog (REAL mode)
   const [confirmDialog, setConfirmDialog] = useState<{ action: string; onConfirm: () => void } | null>(null);
   const [confirmText, setConfirmText] = useState('');
 
   const tradingWallets = wallets.filter((w) => w.trading_enabled);
   const openPositions = positions.filter((p) => p.status === 'OPEN');
 
-  // Compute quick-info values
   const selectedBuyWallet = tradingWallets.find((w) => w.alias === buyForm.wallet_alias);
-  const selectedBuyBalance = selectedBuyWallet
-    ? selectedBuyWallet.type === 'TEST'
-      ? selectedBuyWallet.virtual_sol_balance
-      : selectedBuyWallet.real_sol_balance
-    : 0;
-  const totalBalance = tradingWallets.reduce(
-    (sum, w) => sum + (w.type === 'TEST' ? w.virtual_sol_balance : w.real_sol_balance),
-    0,
-  );
+  const selectedBuyBalance = selectedBuyWallet ? getBalance(selectedBuyWallet) : 0;
+
+  const selectedSellWallet = tradingWallets.find((w) => w.alias === sellForm.wallet_alias);
+  const sellWalletPositions = openPositions.filter((p) => {
+    return selectedSellWallet && p.wallet_id === selectedSellWallet.id;
+  });
 
   // ---------------------------------------------------------------------------
-  // Buy handler
+  // Handlers
   // ---------------------------------------------------------------------------
   const handleBuy = async () => {
     try {
+      setLoading(true);
       setAlert({ type: 'info', message: 'Executing buy order...' });
       const response = await buyApi.executeBuy(buyForm);
       setLastResult(response.data);
-
       if (response.data.status === 'success') {
         setAlert({
           type: 'success',
@@ -116,18 +119,17 @@ export default function ExecuteTrade() {
       }
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Buy failed' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // Sell handler
-  // ---------------------------------------------------------------------------
   const handleSell = async () => {
     try {
+      setLoading(true);
       setAlert({ type: 'info', message: 'Executing sell order...' });
       const response = await buyApi.executeSell(sellForm);
       setLastResult(response.data);
-
       if (response.data.status === 'success') {
         const d = response.data.data;
         setAlert({
@@ -140,100 +142,67 @@ export default function ExecuteTrade() {
       }
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Sell failed' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // Sell All handler
-  // ---------------------------------------------------------------------------
   const handleSellAll = async () => {
-    if (!sellAllWallet) return;
+    if (!sellForm.wallet_alias) return;
     try {
-      setAlert({ type: 'info', message: `Selling all positions for ${sellAllWallet}...` });
-      const response = await buyApi.sellAll({ wallet_alias: sellAllWallet });
+      setLoading(true);
+      setAlert({ type: 'info', message: `Selling all positions for ${sellForm.wallet_alias}...` });
+      const response = await buyApi.sellAll({ wallet_alias: sellForm.wallet_alias });
       setLastResult(response.data);
       setAlert({ type: 'success', message: 'Sell-all completed!' });
       refetchData();
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Sell-all failed' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Confirmation wrappers for REAL mode
-  const handleBuyClick = () => {
+  const withConfirm = (action: string, fn: () => void) => {
     if (ctx.walletType === 'REAL') {
-      setConfirmDialog({ action: 'BUY', onConfirm: handleBuy });
+      setConfirmDialog({ action, onConfirm: fn });
     } else {
-      handleBuy();
-    }
-  };
-
-  const handleSellClick = () => {
-    if (ctx.walletType === 'REAL') {
-      setConfirmDialog({ action: 'SELL', onConfirm: handleSell });
-    } else {
-      handleSell();
-    }
-  };
-
-  const handleSellAllClick = () => {
-    if (ctx.walletType === 'REAL') {
-      setConfirmDialog({ action: 'SELL ALL', onConfirm: handleSellAll });
-    } else {
-      handleSellAll();
+      fn();
     }
   };
 
   // ---------------------------------------------------------------------------
-  // Render helpers
+  // Shared styles
   // ---------------------------------------------------------------------------
-  const StatCard = ({
-    title,
-    value,
-    sub,
-    icon,
-  }: {
-    title: string;
-    value: string;
-    sub?: string;
-    icon: React.ReactNode;
-  }) => (
-    <Card sx={CARD_SX}>
-      <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box
-            sx={{
-              p: 1,
-              borderRadius: 2,
-              bgcolor: `rgba(${ctx.accentColor}, 0.15)`,
-              color: `rgb(${ctx.accentColor})`,
-              display: 'flex',
-            }}
-          >
-            {icon}
-          </Box>
-          <Box>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              {title}
-            </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-              {value}
-            </Typography>
-            {sub && (
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                {sub}
-              </Typography>
-            )}
-          </Box>
-        </Box>
-      </CardContent>
-    </Card>
-  );
+  const accentRgb = ctx.accentColor;
+  const buyColor = '#4caf50';
+  const sellColor = '#f44336';
+  const activeColor = activeTab === 'buy' ? buyColor : sellColor;
 
+  const inputSx = {
+    '& .MuiOutlinedInput-root': {
+      bgcolor: 'rgba(255,255,255,0.03)',
+      '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+      '&:hover fieldset': { borderColor: `rgba(${accentRgb}, 0.3)` },
+      '&.Mui-focused fieldset': { borderColor: activeColor },
+    },
+  };
+
+  // Quick amount buttons for buy
+  const setAmountPercent = (pct: number) => {
+    if (selectedBuyBalance > 0) {
+      const amount = Math.floor(selectedBuyBalance * pct * 10000) / 10000;
+      setBuyForm({ ...buyForm, amount_sol: amount });
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <Box>
       {alert && (
-        <Alert severity={alert.type} sx={{ mb: 3 }} onClose={() => setAlert(null)}>
+        <Alert severity={alert.type} sx={{ mb: 2 }} onClose={() => setAlert(null)}>
           {alert.message}
         </Alert>
       )}
@@ -241,474 +210,638 @@ export default function ExecuteTrade() {
       {ctx.walletType === 'REAL' && (
         <Alert
           severity="warning"
-          sx={{ mb: 3, bgcolor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)' }}
+          sx={{ mb: 2, bgcolor: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)' }}
         >
           Real trading is not yet implemented. Buy/Sell orders will return NOT_IMPLEMENTED status.
         </Alert>
       )}
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Quick-info StatCards                                               */}
-      {/* ----------------------------------------------------------------- */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <StatCard
-            title="Available Balance"
-            value={fmtEur(solToEur(totalBalance))}
-            sub={fmtSol(totalBalance)}
-            icon={<WalletIcon fontSize="small" />}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <StatCard
-            title="Open Positions"
-            value={String(openPositions.length)}
-            sub={`across ${tradingWallets.length} wallets`}
-            icon={<TrendingUpIcon fontSize="small" />}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <StatCard
-            title="Trading Wallets"
-            value={`${tradingWallets.length} / ${wallets.length}`}
-            sub="enabled for trading"
-            icon={<SwapIcon fontSize="small" />}
-          />
-        </Grid>
-      </Grid>
-
       <Grid container spacing={3}>
-        {/* ----------------------------------------------------------------- */}
-        {/* Buy Card                                                          */}
-        {/* ----------------------------------------------------------------- */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card sx={{ bgcolor: 'rgba(76, 175, 80, 0.06)', border: '1px solid rgba(76, 175, 80, 0.2)', backdropFilter: 'blur(10px)' }}>
-            <CardHeader
-              title="Buy"
-              titleTypographyProps={{ color: '#4caf50', fontWeight: 700 }}
-              subheader={
-                selectedBuyWallet
-                  ? `Balance: ${fmtEur(solToEur(selectedBuyBalance))} (${fmtSol(selectedBuyBalance)})`
-                  : 'Select a wallet'
-              }
-              subheaderTypographyProps={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}
-            />
-            <CardContent>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Wallet</InputLabel>
-                  <Select
-                    value={buyForm.wallet_alias}
-                    label="Wallet"
-                    onChange={(e) => setBuyForm({ ...buyForm, wallet_alias: e.target.value })}
+        {/* ================================================================= */}
+        {/* LEFT: Trading Panel                                                */}
+        {/* ================================================================= */}
+        <Grid size={{ xs: 12, md: 7 }}>
+          <Card
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: 3,
+              overflow: 'hidden',
+            }}
+          >
+            {loading && <LinearProgress sx={{ height: 2, bgcolor: 'transparent', '& .MuiLinearProgress-bar': { bgcolor: activeColor } }} />}
+
+            {/* ---- Tab Toggle ---- */}
+            <Box sx={{ display: 'flex', p: 0 }}>
+              {(['buy', 'sell'] as const).map((tab) => {
+                const isActive = activeTab === tab;
+                const color = tab === 'buy' ? buyColor : sellColor;
+                return (
+                  <Box
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    sx={{
+                      flex: 1,
+                      py: 2,
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      fontSize: '1rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: 1,
+                      color: isActive ? color : 'rgba(255,255,255,0.35)',
+                      bgcolor: isActive ? `${color}10` : 'transparent',
+                      borderBottom: isActive ? `3px solid ${color}` : '3px solid transparent',
+                      transition: 'all 0.2s',
+                      '&:hover': { bgcolor: `${color}08`, color: isActive ? color : 'rgba(255,255,255,0.6)' },
+                    }}
                   >
-                    {tradingWallets.map((w) => {
-                      const bal = w.type === 'TEST' ? w.virtual_sol_balance : w.real_sol_balance;
-                      return (
-                        <MenuItem key={w.id} value={w.alias}>
-                          {w.alias} — {fmtEur(solToEur(bal))} ({fmtSol(bal)})
-                        </MenuItem>
-                      );
-                    })}
-                  </Select>
-                </FormControl>
+                    {tab}
+                  </Box>
+                );
+              })}
+            </Box>
 
-                <TextField
-                  label="Token Mint Address"
-                  value={buyForm.mint}
-                  onChange={(e) => setBuyForm({ ...buyForm, mint: e.target.value })}
-                  fullWidth
-                  placeholder="e.g., 7BadU..."
-                />
+            <CardContent sx={{ p: 3 }}>
+              {/* ============================================================ */}
+              {/* BUY TAB                                                       */}
+              {/* ============================================================ */}
+              {activeTab === 'buy' && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                  {/* Wallet Selector */}
+                  <FormControl fullWidth sx={inputSx}>
+                    <InputLabel>Wallet</InputLabel>
+                    <Select
+                      value={buyForm.wallet_alias}
+                      label="Wallet"
+                      onChange={(e) => setBuyForm({ ...buyForm, wallet_alias: e.target.value })}
+                    >
+                      {tradingWallets.map((w) => {
+                        const bal = getBalance(w);
+                        return (
+                          <MenuItem key={w.id} value={w.alias}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                              <span>{w.alias}</span>
+                              <Typography component="span" sx={{ color: 'rgba(255,255,255,0.5)', ml: 2 }}>
+                                {fmtEur(solToEur(bal))}
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
 
-                <TextField
-                  label="Amount (SOL)"
-                  type="number"
-                  value={buyForm.amount_sol}
-                  onChange={(e) => setBuyForm({ ...buyForm, amount_sol: parseFloat(e.target.value) })}
-                  fullWidth
-                  inputProps={{ step: 0.01, min: 0.001 }}
-                  helperText={
-                    solEur > 0
-                      ? `~ ${fmtEur(solToEur(buyForm.amount_sol))}`
-                      : undefined
-                  }
-                />
+                  {/* Balance Bar */}
+                  {selectedBuyWallet && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        px: 2,
+                        py: 1.5,
+                        borderRadius: 2,
+                        bgcolor: `rgba(${accentRgb}, 0.06)`,
+                        border: `1px solid rgba(${accentRgb}, 0.12)`,
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                        Available
+                      </Typography>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="body1" sx={{ fontWeight: 700, color: `rgb(${accentRgb})` }}>
+                          {fmtEur(solToEur(selectedBuyBalance))}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                          {fmtSol(selectedBuyBalance)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
 
-                <TextField
-                  label="Slippage (bps)"
-                  type="number"
-                  value={buyForm.slippage_bps}
-                  onChange={(e) => setBuyForm({ ...buyForm, slippage_bps: parseInt(e.target.value) })}
-                  fullWidth
-                  helperText="100 = 1%, 500 = 5%"
-                />
-
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={buyForm.use_jito}
-                      onChange={(e) => setBuyForm({ ...buyForm, use_jito: e.target.checked })}
-                      sx={{ color: `rgba(${ctx.accentColor}, 0.6)`, '&.Mui-checked': { color: `rgb(${ctx.accentColor})` } }}
-                    />
-                  }
-                  label="Use Jito Bundles"
-                />
-
-                {buyForm.use_jito && (
+                  {/* Token Mint */}
                   <TextField
-                    label="Jito Tip (lamports)"
-                    type="number"
-                    value={buyForm.jito_tip_lamports}
-                    onChange={(e) =>
-                      setBuyForm({ ...buyForm, jito_tip_lamports: parseInt(e.target.value) })
-                    }
+                    label="Token Mint Address"
+                    value={buyForm.mint}
+                    onChange={(e) => setBuyForm({ ...buyForm, mint: e.target.value })}
                     fullWidth
-                    helperText="Default: 50,000 lamports"
+                    placeholder="Paste token mint address..."
+                    sx={inputSx}
                   />
-                )}
 
-                <Button
-                  variant="contained"
-                  onClick={handleBuyClick}
-                  disabled={!buyForm.wallet_alias || !buyForm.mint || buyForm.amount_sol <= 0}
-                  fullWidth
-                  size="large"
-                  sx={{
-                    bgcolor: '#4caf50',
-                    '&:hover': { bgcolor: '#388e3c' },
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                  }}
-                >
-                  Execute Buy
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+                  {/* Amount Input */}
+                  <Box>
+                    <TextField
+                      label="Amount (SOL)"
+                      type="number"
+                      value={buyForm.amount_sol}
+                      onChange={(e) => setBuyForm({ ...buyForm, amount_sol: parseFloat(e.target.value) || 0 })}
+                      fullWidth
+                      inputProps={{ step: 0.01, min: 0.001 }}
+                      sx={inputSx}
+                    />
+                    {/* EUR conversion */}
+                    {solEur > 0 && (
+                      <Typography
+                        variant="body2"
+                        sx={{ mt: 0.5, ml: 1, color: 'rgba(255,255,255,0.4)' }}
+                      >
+                        ≈ {fmtEur(solToEur(buyForm.amount_sol))}
+                      </Typography>
+                    )}
+                    {/* Quick amount buttons */}
+                    {selectedBuyWallet && (
+                      <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                        {[
+                          { label: '25%', pct: 0.25 },
+                          { label: '50%', pct: 0.5 },
+                          { label: '75%', pct: 0.75 },
+                          { label: 'Max', pct: 1 },
+                        ].map(({ label, pct }) => (
+                          <Button
+                            key={label}
+                            size="small"
+                            onClick={() => setAmountPercent(pct)}
+                            sx={{
+                              flex: 1,
+                              py: 0.5,
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: buyColor,
+                              bgcolor: `${buyColor}12`,
+                              border: `1px solid ${buyColor}30`,
+                              borderRadius: 1.5,
+                              '&:hover': { bgcolor: `${buyColor}25` },
+                            }}
+                          >
+                            {label}
+                          </Button>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Sell Card                                                          */}
-        {/* ----------------------------------------------------------------- */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card sx={{ bgcolor: 'rgba(244, 67, 54, 0.06)', border: '1px solid rgba(244, 67, 54, 0.2)', backdropFilter: 'blur(10px)' }}>
-            <CardHeader
-              title="Sell"
-              titleTypographyProps={{ color: '#f44336', fontWeight: 700 }}
-              subheader={
-                sellForm.wallet_alias
-                  ? `${openPositions.filter((p) => {
-                      const w = wallets.find((ww) => ww.alias === sellForm.wallet_alias);
-                      return w && p.wallet_id === w.id;
-                    }).length} open positions`
-                  : 'Select a wallet'
-              }
-              subheaderTypographyProps={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}
-            />
-            <CardContent>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Wallet</InputLabel>
-                  <Select
-                    value={sellForm.wallet_alias}
-                    label="Wallet"
-                    onChange={(e) => setSellForm({ ...sellForm, wallet_alias: e.target.value })}
+                  {/* Advanced Settings Toggle */}
+                  <Box
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      py: 0.5,
+                      color: 'rgba(255,255,255,0.4)',
+                      '&:hover': { color: 'rgba(255,255,255,0.6)' },
+                    }}
                   >
-                    {tradingWallets.map((w) => (
-                      <MenuItem key={w.id} value={w.alias}>
-                        {w.alias}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      Advanced Settings
+                    </Typography>
+                    <IconButton size="small" sx={{ color: 'inherit' }}>
+                      {showAdvanced ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                    </IconButton>
+                  </Box>
 
-                <FormControl fullWidth>
-                  <InputLabel>Position</InputLabel>
-                  <Select
-                    value={sellForm.mint}
-                    label="Position"
-                    onChange={(e) => setSellForm({ ...sellForm, mint: e.target.value })}
+                  <Collapse in={showAdvanced}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <TextField
+                        label="Slippage (bps)"
+                        type="number"
+                        value={buyForm.slippage_bps}
+                        onChange={(e) => setBuyForm({ ...buyForm, slippage_bps: parseInt(e.target.value) })}
+                        fullWidth
+                        helperText="100 = 1%, 500 = 5%"
+                        sx={inputSx}
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={buyForm.use_jito}
+                            onChange={(e) => setBuyForm({ ...buyForm, use_jito: e.target.checked })}
+                            sx={{
+                              color: 'rgba(255,255,255,0.3)',
+                              '&.Mui-checked': { color: `rgb(${accentRgb})` },
+                            }}
+                          />
+                        }
+                        label={
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                            Use Jito Bundles
+                          </Typography>
+                        }
+                      />
+                      {buyForm.use_jito && (
+                        <TextField
+                          label="Jito Tip (lamports)"
+                          type="number"
+                          value={buyForm.jito_tip_lamports}
+                          onChange={(e) =>
+                            setBuyForm({ ...buyForm, jito_tip_lamports: parseInt(e.target.value) })
+                          }
+                          fullWidth
+                          helperText="Default: 50,000 lamports"
+                          sx={inputSx}
+                        />
+                      )}
+                    </Box>
+                  </Collapse>
+
+                  {/* Execute Button */}
+                  <Button
+                    variant="contained"
+                    onClick={() => withConfirm('BUY', handleBuy)}
+                    disabled={!buyForm.wallet_alias || !buyForm.mint || buyForm.amount_sol <= 0 || loading}
+                    fullWidth
+                    size="large"
+                    sx={{
+                      mt: 1,
+                      py: 1.8,
+                      bgcolor: buyColor,
+                      '&:hover': { bgcolor: '#388e3c' },
+                      fontWeight: 800,
+                      fontSize: '1.1rem',
+                      letterSpacing: 0.5,
+                      borderRadius: 2,
+                      boxShadow: `0 4px 20px ${buyColor}40`,
+                    }}
                   >
-                    {openPositions
-                      .filter((p) => {
-                        const wallet = wallets.find((w) => w.alias === sellForm.wallet_alias);
-                        return wallet && p.wallet_id === wallet.id;
-                      })
-                      .map((p) => (
+                    {loading ? 'Processing...' : 'Buy'}
+                  </Button>
+                </Box>
+              )}
+
+              {/* ============================================================ */}
+              {/* SELL TAB                                                      */}
+              {/* ============================================================ */}
+              {activeTab === 'sell' && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                  {/* Wallet Selector */}
+                  <FormControl fullWidth sx={inputSx}>
+                    <InputLabel>Wallet</InputLabel>
+                    <Select
+                      value={sellForm.wallet_alias}
+                      label="Wallet"
+                      onChange={(e) => setSellForm({ ...sellForm, wallet_alias: e.target.value, mint: '' })}
+                    >
+                      {tradingWallets.map((w) => {
+                        const posCount = openPositions.filter((p) => p.wallet_id === w.id).length;
+                        return (
+                          <MenuItem key={w.id} value={w.alias}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                              <span>{w.alias}</span>
+                              <Typography component="span" sx={{ color: 'rgba(255,255,255,0.5)', ml: 2 }}>
+                                {posCount} position{posCount !== 1 ? 's' : ''}
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
+
+                  {/* Position Selector */}
+                  <FormControl fullWidth sx={inputSx}>
+                    <InputLabel>Position</InputLabel>
+                    <Select
+                      value={sellForm.mint}
+                      label="Position"
+                      onChange={(e) => setSellForm({ ...sellForm, mint: e.target.value })}
+                    >
+                      {sellWalletPositions.map((p) => (
                         <MenuItem key={p.id} value={p.mint}>
-                          {truncateMint(p.mint)} — {p.tokens_held.toFixed(2)} tokens ({fmtEur(solToEur(p.initial_sol_spent))})
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                            <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                              {truncateMint(p.mint)}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 2 }}>
+                              <Typography component="span" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                                {p.tokens_held.toFixed(0)} tokens
+                              </Typography>
+                              <Typography component="span" sx={{ fontWeight: 600 }}>
+                                {fmtEur(solToEur(p.initial_sol_spent))}
+                              </Typography>
+                            </Box>
+                          </Box>
                         </MenuItem>
                       ))}
-                  </Select>
-                </FormControl>
+                    </Select>
+                  </FormControl>
 
-                <TextField
-                  label="Sell Percentage"
-                  type="number"
-                  value={sellForm.amount_pct}
-                  onChange={(e) => setSellForm({ ...sellForm, amount_pct: parseFloat(e.target.value) })}
-                  fullWidth
-                  inputProps={{ step: 10, min: 1, max: 100 }}
-                  helperText="100 = sell all"
-                />
-
-                <TextField
-                  label="Slippage (bps)"
-                  type="number"
-                  value={sellForm.slippage_bps}
-                  onChange={(e) => setSellForm({ ...sellForm, slippage_bps: parseInt(e.target.value) })}
-                  fullWidth
-                />
-
-                <Button
-                  variant="contained"
-                  onClick={handleSellClick}
-                  disabled={!sellForm.wallet_alias || !sellForm.mint}
-                  fullWidth
-                  size="large"
-                  sx={{
-                    bgcolor: '#f44336',
-                    '&:hover': { bgcolor: '#c62828' },
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                  }}
-                >
-                  Execute Sell
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* ----------------------------------------------------------------- */}
-        {/* Sell All Card                                                      */}
-        {/* ----------------------------------------------------------------- */}
-        <Grid size={12}>
-          <Card sx={{ bgcolor: 'rgba(255, 152, 0, 0.06)', border: '1px solid rgba(255, 152, 0, 0.2)', backdropFilter: 'blur(10px)' }}>
-            <CardHeader title="Sell All Positions" titleTypographyProps={{ color: '#ff9800', fontWeight: 700 }} />
-            <CardContent>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                <FormControl sx={{ minWidth: 240 }}>
-                  <InputLabel>Wallet</InputLabel>
-                  <Select
-                    value={sellAllWallet}
-                    label="Wallet"
-                    onChange={(e) => setSellAllWallet(e.target.value)}
-                  >
-                    {tradingWallets.map((w) => {
-                      const posCount = openPositions.filter((p) => p.wallet_id === w.id).length;
-                      return (
-                        <MenuItem key={w.id} value={w.alias}>
-                          {w.alias} — {posCount} position{posCount !== 1 ? 's' : ''}
-                        </MenuItem>
-                      );
-                    })}
-                  </Select>
-                </FormControl>
-                <Button
-                  variant="contained"
-                  onClick={handleSellAllClick}
-                  disabled={!sellAllWallet}
-                  size="large"
-                  sx={{
-                    bgcolor: '#ff9800',
-                    '&:hover': { bgcolor: '#e65100' },
-                    fontWeight: 700,
-                  }}
-                >
-                  Sell All for Wallet
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Open Positions                                                      */}
-      {/* ----------------------------------------------------------------- */}
-      <Typography variant="h6" sx={{ mt: 4, mb: 2, fontWeight: 700 }}>
-        Open Positions
-      </Typography>
-      <Grid container spacing={2}>
-        {openPositions.map((position) => {
-          const wallet = wallets.find((w) => w.id === position.wallet_id);
-          return (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={position.id}>
-              <Card sx={CARD_SX}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                      {wallet?.alias || 'Unknown'}
+                  {/* Sell Percentage Buttons */}
+                  <Box>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', mb: 1, fontSize: '0.8rem' }}>
+                      Sell Amount
                     </Typography>
-                    <Chip
-                      label="OPEN"
-                      size="small"
-                      sx={{ bgcolor: 'rgba(255, 152, 0, 0.2)', color: '#ff9800', fontWeight: 600 }}
-                    />
-                  </Box>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontFamily: 'monospace', mb: 2, color: `rgb(${ctx.accentColor})` }}
-                  >
-                    {truncateMint(position.mint)}
-                  </Typography>
-                  <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Box>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Tokens
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {position.tokens_held.toFixed(2)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Entry
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {position.entry_price.toFixed(9)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ textAlign: 'right' }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Cost
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {fmtEur(solToEur(position.initial_sol_spent))}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                        {fmtSol(position.initial_sol_spent)}
-                      </Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      {[25, 50, 75, 100].map((pct) => (
+                        <Button
+                          key={pct}
+                          onClick={() => setSellForm({ ...sellForm, amount_pct: pct })}
+                          sx={{
+                            flex: 1,
+                            py: 1.2,
+                            fontSize: '0.9rem',
+                            fontWeight: 700,
+                            color: sellForm.amount_pct === pct ? '#fff' : sellColor,
+                            bgcolor: sellForm.amount_pct === pct ? sellColor : `${sellColor}12`,
+                            border: `1px solid ${sellForm.amount_pct === pct ? sellColor : `${sellColor}30`}`,
+                            borderRadius: 2,
+                            '&:hover': {
+                              bgcolor: sellForm.amount_pct === pct ? sellColor : `${sellColor}25`,
+                            },
+                          }}
+                        >
+                          {pct}%
+                        </Button>
+                      ))}
                     </Box>
                   </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          );
-        })}
-        {openPositions.length === 0 && (
-          <Grid size={12}>
-            <Typography sx={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center', py: 4 }}>
-              No open positions
-            </Typography>
-          </Grid>
-        )}
-      </Grid>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Last Execution Result (formatted card)                              */}
-      {/* ----------------------------------------------------------------- */}
-      {lastResult && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
-            Last Execution Result
-          </Typography>
-          <Card sx={CARD_SX}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <Chip
-                  label={lastResult.status.toUpperCase()}
-                  size="small"
-                  sx={{
-                    bgcolor: lastResult.status === 'success' ? 'rgba(76,175,80,0.2)' : 'rgba(244,67,54,0.2)',
-                    color: lastResult.status === 'success' ? '#4caf50' : '#f44336',
-                    fontWeight: 700,
-                  }}
-                />
-                {lastResult.message && (
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                    {lastResult.message}
-                  </Typography>
-                )}
-              </Box>
-              {lastResult.data && (
-                <Grid container spacing={2}>
-                  {lastResult.data.tokens_received != null && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Tokens Received
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                        {lastResult.data.tokens_received.toFixed(2)}
-                      </Typography>
-                    </Grid>
-                  )}
-                  {lastResult.data.sol_received_net != null && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        SOL Received
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                        {fmtEur(solToEur(lastResult.data.sol_received_net))}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                        {fmtSol(lastResult.data.sol_received_net)}
-                      </Typography>
-                    </Grid>
-                  )}
-                  {lastResult.data.pnl_sol != null && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        P&L
-                      </Typography>
-                      <Typography
-                        variant="body1"
+                  {/* Advanced Settings Toggle */}
+                  <Box
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      py: 0.5,
+                      color: 'rgba(255,255,255,0.4)',
+                      '&:hover': { color: 'rgba(255,255,255,0.6)' },
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      Advanced Settings
+                    </Typography>
+                    <IconButton size="small" sx={{ color: 'inherit' }}>
+                      {showAdvanced ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                    </IconButton>
+                  </Box>
+
+                  <Collapse in={showAdvanced}>
+                    <TextField
+                      label="Slippage (bps)"
+                      type="number"
+                      value={sellForm.slippage_bps}
+                      onChange={(e) => setSellForm({ ...sellForm, slippage_bps: parseInt(e.target.value) })}
+                      fullWidth
+                      helperText="100 = 1%, 500 = 5%"
+                      sx={inputSx}
+                    />
+                  </Collapse>
+
+                  {/* Execute Sell Button */}
+                  <Button
+                    variant="contained"
+                    onClick={() => withConfirm('SELL', handleSell)}
+                    disabled={!sellForm.wallet_alias || !sellForm.mint || loading}
+                    fullWidth
+                    size="large"
+                    sx={{
+                      mt: 1,
+                      py: 1.8,
+                      bgcolor: sellColor,
+                      '&:hover': { bgcolor: '#c62828' },
+                      fontWeight: 800,
+                      fontSize: '1.1rem',
+                      letterSpacing: 0.5,
+                      borderRadius: 2,
+                      boxShadow: `0 4px 20px ${sellColor}40`,
+                    }}
+                  >
+                    {loading ? 'Processing...' : `Sell ${sellForm.amount_pct}%`}
+                  </Button>
+
+                  {/* Sell All Divider */}
+                  {sellForm.wallet_alias && sellWalletPositions.length > 1 && (
+                    <>
+                      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', my: 0.5 }} />
+                      <Button
+                        variant="outlined"
+                        onClick={() => withConfirm('SELL ALL', handleSellAll)}
+                        disabled={loading}
+                        fullWidth
                         sx={{
+                          py: 1.2,
+                          color: '#ff9800',
+                          borderColor: 'rgba(255, 152, 0, 0.3)',
                           fontWeight: 700,
-                          color: lastResult.data.pnl_sol >= 0 ? '#4caf50' : '#f44336',
+                          borderRadius: 2,
+                          '&:hover': { bgcolor: 'rgba(255, 152, 0, 0.08)', borderColor: '#ff9800' },
                         }}
                       >
-                        {lastResult.data.pnl_sol >= 0 ? '+' : ''}
-                        {fmtEur(solToEur(lastResult.data.pnl_sol))}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                        {lastResult.data.pnl_sol >= 0 ? '+' : ''}
-                        {fmtSol(lastResult.data.pnl_sol)}
-                      </Typography>
-                    </Grid>
+                        Sell All {sellWalletPositions.length} Positions
+                      </Button>
+                    </>
                   )}
-                  {lastResult.data.amount_sent != null && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Amount Sent
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                        {fmtEur(solToEur(lastResult.data.amount_sent))}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                        {fmtSol(lastResult.data.amount_sent)}
-                      </Typography>
-                    </Grid>
-                  )}
-                  {lastResult.data.entry_price != null && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Entry Price
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                        {lastResult.data.entry_price.toFixed(9)}
-                      </Typography>
-                    </Grid>
-                  )}
-                  {lastResult.data.exit_price != null && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                        Exit Price
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                        {lastResult.data.exit_price.toFixed(9)}
-                      </Typography>
-                    </Grid>
-                  )}
-                </Grid>
+                </Box>
               )}
             </CardContent>
           </Card>
-        </Box>
-      )}
+
+          {/* ---- Last Result ---- */}
+          {lastResult && (
+            <Card sx={{ ...CARD_SX, mt: 2, borderRadius: 3 }}>
+              <CardContent sx={{ p: 2.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+                  <Chip
+                    label={lastResult.status.toUpperCase()}
+                    size="small"
+                    sx={{
+                      bgcolor: lastResult.status === 'success' ? 'rgba(76,175,80,0.2)' : 'rgba(244,67,54,0.2)',
+                      color: lastResult.status === 'success' ? buyColor : sellColor,
+                      fontWeight: 700,
+                    }}
+                  />
+                  {lastResult.message && (
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>
+                      {lastResult.message}
+                    </Typography>
+                  )}
+                </Box>
+                {lastResult.data && (
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                    {lastResult.data.tokens_received != null && (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>Tokens</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{lastResult.data.tokens_received.toFixed(2)}</Typography>
+                      </Box>
+                    )}
+                    {lastResult.data.sol_received_net != null && (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>Received</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{fmtEur(solToEur(lastResult.data.sol_received_net))}</Typography>
+                      </Box>
+                    )}
+                    {lastResult.data.pnl_sol != null && (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>P&L</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: lastResult.data.pnl_sol >= 0 ? buyColor : sellColor }}>
+                          {lastResult.data.pnl_sol >= 0 ? '+' : ''}{fmtEur(solToEur(lastResult.data.pnl_sol))}
+                        </Typography>
+                      </Box>
+                    )}
+                    {lastResult.data.entry_price != null && (
+                      <Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>Entry</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{lastResult.data.entry_price.toFixed(9)}</Typography>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </Grid>
+
+        {/* ================================================================= */}
+        {/* RIGHT: Positions + Wallet Overview                                 */}
+        {/* ================================================================= */}
+        <Grid size={{ xs: 12, md: 5 }}>
+          {/* Wallet Balances */}
+          <Card sx={{ ...CARD_SX, borderRadius: 3, mb: 2 }}>
+            <CardContent sx={{ p: 2.5 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'rgba(255,255,255,0.7)' }}>
+                Wallets
+              </Typography>
+              {tradingWallets.length === 0 ? (
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center', py: 2 }}>
+                  No trading wallets
+                </Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {tradingWallets.map((w) => {
+                    const bal = getBalance(w);
+                    const posCount = openPositions.filter((p) => p.wallet_id === w.id).length;
+                    return (
+                      <Box
+                        key={w.id}
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          px: 2,
+                          py: 1.2,
+                          borderRadius: 2,
+                          bgcolor: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                          '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{w.alias}</Typography>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                            {posCount} position{posCount !== 1 ? 's' : ''}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: `rgb(${accentRgb})` }}>
+                            {fmtEur(solToEur(bal))}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)' }}>
+                            {fmtSol(bal)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Open Positions */}
+          <Card sx={{ ...CARD_SX, borderRadius: 3 }}>
+            <CardContent sx={{ p: 2.5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>
+                  Open Positions
+                </Typography>
+                <Chip
+                  label={openPositions.length}
+                  size="small"
+                  sx={{ bgcolor: `rgba(${accentRgb}, 0.15)`, color: `rgb(${accentRgb})`, fontWeight: 700, minWidth: 28 }}
+                />
+              </Box>
+
+              {openPositions.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.3)' }}>
+                    No open positions
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {openPositions.map((pos) => {
+                    const wallet = wallets.find((w) => w.id === pos.wallet_id);
+                    return (
+                      <Box
+                        key={pos.id}
+                        sx={{
+                          p: 2,
+                          borderRadius: 2,
+                          bgcolor: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                          '&:hover': { border: `1px solid rgba(${accentRgb}, 0.2)` },
+                          transition: 'border 0.2s',
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                              {wallet?.alias}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                navigator.clipboard.writeText(pos.mint);
+                                if (activeTab === 'buy') {
+                                  setBuyForm({ ...buyForm, mint: pos.mint });
+                                }
+                              }}
+                              sx={{ p: 0.3, color: 'rgba(255,255,255,0.3)', '&:hover': { color: `rgb(${accentRgb})` } }}
+                            >
+                              <CopyIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: `rgb(${accentRgb})` }}
+                          >
+                            {truncateMint(pos.mint)}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Box>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>TOKENS</Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                              {pos.tokens_held.toFixed(0)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>ENTRY</Typography>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                              {pos.entry_price.toFixed(9)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>COST</Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                              {fmtEur(solToEur(pos.initial_sol_spent))}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
       {/* Confirmation Dialog for REAL trades */}
       <Dialog open={!!confirmDialog} onClose={() => { setConfirmDialog(null); setConfirmText(''); }}>
