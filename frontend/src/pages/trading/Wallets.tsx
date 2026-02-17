@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -36,20 +36,60 @@ import {
   Refresh as RefreshIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  AccountBalanceWallet as WalletIcon,
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
+import { useExchangeRate, fmtEur, fmtSol, STATUS_COLORS, TYPE_COLORS, CARD_SX } from './tradingUtils';
 import type { Wallet, WalletStatus } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
-// Status badge colours
+// Stat Card
 // ---------------------------------------------------------------------------
-const statusColor: Record<string, { bg: string; fg: string }> = {
-  ACTIVE: { bg: 'rgba(76, 175, 80, 0.2)', fg: '#4caf50' },
-  PAUSED: { bg: 'rgba(255, 152, 0, 0.2)', fg: '#ff9800' },
-  DRAINED: { bg: 'rgba(244, 67, 54, 0.2)', fg: '#f44336' },
-  FROZEN: { bg: 'rgba(33, 150, 243, 0.2)', fg: '#2196f3' },
-};
+function StatCard({
+  title,
+  mainValue,
+  subValue,
+  icon,
+  color,
+}: {
+  title: string;
+  mainValue: string;
+  subValue: string;
+  icon: React.ReactNode;
+  color: string;
+}) {
+  return (
+    <Card
+      sx={{
+        bgcolor: `rgba(${color}, 0.06)`,
+        border: `1px solid rgba(${color}, 0.25)`,
+        backdropFilter: 'blur(10px)',
+        height: '100%',
+      }}
+    >
+      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+          <Typography
+            variant="caption"
+            sx={{ color: '#b8c5d6', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: 1 }}
+          >
+            {title}
+          </Typography>
+          {icon}
+        </Box>
+        <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: 'monospace', lineHeight: 1.2 }}>
+          {mainValue}
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#8892a4', fontFamily: 'monospace' }}>
+          {subValue}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -59,7 +99,15 @@ export default function Wallets() {
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
   const ctx = useTradingContext();
 
-  const [wallets, setWallets] = useState<Wallet[]>([]);
+  // Data fetching via react-query
+  const { data: wallets = [], refetch: refetchWallets } = useQuery<Wallet[]>({
+    queryKey: ['buy', 'wallets', ctx.walletType],
+    queryFn: async () => (await buyApi.getWallets(ctx.walletType)).data,
+    refetchInterval: 10_000,
+  });
+
+  const { data: exchangeRate } = useExchangeRate();
+
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Create dialog state
@@ -93,18 +141,18 @@ export default function Wallets() {
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  const fetchWallets = async () => {
-    try {
-      const res = await buyApi.getWallets(ctx.walletType);
-      setWallets(res.data);
-    } catch {
-      console.error('Failed to fetch wallets');
-    }
-  };
+  // Helpers
+  // ---------------------------------------------------------------------------
+  const solEur = exchangeRate?.sol_price_eur ?? 0;
+  const solToEur = (sol: number) => sol * solEur;
 
-  useEffect(() => {
-    fetchWallets();
-  }, []);
+  // Computed values for stat cards
+  const totalBalance = wallets.reduce(
+    (s, w) => s + (w.type === 'TEST' ? w.virtual_sol_balance : w.real_sol_balance),
+    0,
+  );
+  const activeCount = wallets.filter((w) => w.status === 'ACTIVE').length;
+  const avgBalance = wallets.length > 0 ? totalBalance / wallets.length : 0;
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -123,7 +171,7 @@ export default function Wallets() {
         max_consecutive_losses: 3,
         max_daily_loss_pct: 15,
       });
-      fetchWallets();
+      refetchWallets();
       setAlert({ type: 'success', message: 'Wallet created successfully!' });
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to create wallet' });
@@ -133,7 +181,7 @@ export default function Wallets() {
   const handleToggleTrading = async (alias: string, current: boolean) => {
     try {
       await buyApi.toggleTrading(alias, !current);
-      fetchWallets();
+      refetchWallets();
     } catch {
       setAlert({ type: 'error', message: 'Failed to toggle trading' });
     }
@@ -142,7 +190,7 @@ export default function Wallets() {
   const handleToggleTransfer = async (alias: string, current: boolean) => {
     try {
       await buyApi.toggleTransfer(alias, !current);
-      fetchWallets();
+      refetchWallets();
     } catch {
       setAlert({ type: 'error', message: 'Failed to toggle transfer' });
     }
@@ -153,7 +201,7 @@ export default function Wallets() {
     try {
       await buyApi.addBalance(addBalanceDialog, parseFloat(addAmount));
       setAddBalanceDialog(null);
-      fetchWallets();
+      refetchWallets();
       setAlert({ type: 'success', message: 'Balance added successfully!' });
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to add balance' });
@@ -165,7 +213,7 @@ export default function Wallets() {
     try {
       await buyApi.deleteWallet(deleteDialog);
       setDeleteDialog(null);
-      fetchWallets();
+      refetchWallets();
       setAlert({ type: 'success', message: `Wallet '${deleteDialog}' deleted successfully!` });
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to delete wallet' });
@@ -188,7 +236,7 @@ export default function Wallets() {
     try {
       await buyApi.updateWallet(editDialog, editWallet);
       setEditDialog(null);
-      fetchWallets();
+      refetchWallets();
       setAlert({ type: 'success', message: 'Wallet updated successfully!' });
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to update wallet' });
@@ -198,123 +246,127 @@ export default function Wallets() {
   // ---------------------------------------------------------------------------
   // Mobile card renderer
   // ---------------------------------------------------------------------------
-  const renderMobileCard = (wallet: Wallet) => (
-    <Card key={wallet.id} sx={{ bgcolor: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(10px)', mb: 2 }}>
-      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-        {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-              {wallet.alias}
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#b8c5d6', fontFamily: 'monospace' }}>
-              {wallet.address.slice(0, 8)}...
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <Chip
-              label={wallet.type}
-              size="small"
-              sx={{
-                bgcolor: wallet.type === 'TEST' ? 'rgba(0, 212, 255, 0.2)' : 'rgba(76, 175, 80, 0.2)',
-                color: wallet.type === 'TEST' ? '#00d4ff' : '#4caf50',
-              }}
-            />
-            <Chip
-              label={wallet.status}
-              size="small"
-              sx={{
-                bgcolor: statusColor[wallet.status]?.bg ?? 'rgba(255,255,255,0.1)',
-                color: statusColor[wallet.status]?.fg ?? '#fff',
-              }}
-            />
-          </Box>
-        </Box>
-
-        {/* Body */}
-        <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-          <Grid size={6}>
-            <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
-              Balance
-            </Typography>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-              {(wallet.type === 'TEST' ? wallet.virtual_sol_balance : wallet.real_sol_balance).toFixed(4)} SOL
-            </Typography>
-          </Grid>
-          <Grid size={6}>
-            <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
-              Losses
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{
-                color:
-                  wallet.consecutive_losses >= wallet.max_consecutive_losses ? '#f44336' : '#ffffff',
-              }}
-            >
-              {wallet.consecutive_losses} / {wallet.max_consecutive_losses}
-            </Typography>
-          </Grid>
-          <Grid size={12}>
-            <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
-              Pain Mode
-            </Typography>
-            <Typography variant="body2">
-              {wallet.virtual_loss_percent}%
-            </Typography>
-          </Grid>
-        </Grid>
-
-        {/* Switches + Actions */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography variant="caption" sx={{ color: '#b8c5d6', mr: 0.5 }}>
-                Trade
+  const renderMobileCard = (wallet: Wallet) => {
+    const balance = wallet.type === 'TEST' ? wallet.virtual_sol_balance : wallet.real_sol_balance;
+    return (
+      <Card key={wallet.id} sx={{ ...CARD_SX, mb: 2 }}>
+        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                {wallet.alias}
               </Typography>
-              <Switch
-                checked={wallet.trading_enabled}
-                onChange={() => handleToggleTrading(wallet.alias, wallet.trading_enabled)}
-                color="primary"
-                size="small"
-              />
+              <Typography variant="caption" sx={{ color: '#b8c5d6', fontFamily: 'monospace' }}>
+                {wallet.address.slice(0, 8)}...
+              </Typography>
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography variant="caption" sx={{ color: '#b8c5d6', mr: 0.5 }}>
-                Transfer
-              </Typography>
-              <Switch
-                checked={wallet.transfer_enabled}
-                onChange={() => handleToggleTransfer(wallet.alias, wallet.transfer_enabled)}
-                color="primary"
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Chip
+                label={wallet.type}
                 size="small"
+                sx={{
+                  bgcolor: TYPE_COLORS[wallet.type]?.bg ?? 'rgba(255,255,255,0.1)',
+                  color: TYPE_COLORS[wallet.type]?.color ?? '#fff',
+                }}
+              />
+              <Chip
+                label={wallet.status}
+                size="small"
+                sx={{
+                  bgcolor: STATUS_COLORS[wallet.status]?.bg ?? 'rgba(255,255,255,0.1)',
+                  color: STATUS_COLORS[wallet.status]?.color ?? '#fff',
+                }}
               />
             </Box>
           </Box>
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <IconButton size="small" onClick={() => handleOpenEdit(wallet)} title="Edit wallet">
-              <EditIcon fontSize="small" />
-            </IconButton>
-            {wallet.type === 'TEST' && (
-              <>
-                <Button size="small" variant="outlined" onClick={() => setAddBalanceDialog(wallet.alias)}>
-                  + SOL
-                </Button>
-                <IconButton
+
+          {/* Body */}
+          <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+            <Grid size={6}>
+              <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
+                Balance
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                {fmtEur(solToEur(balance))}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#8892a4', fontFamily: 'monospace' }}>
+                {fmtSol(balance)}
+              </Typography>
+            </Grid>
+            <Grid size={6}>
+              <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
+                Losses
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  color:
+                    wallet.consecutive_losses >= wallet.max_consecutive_losses ? '#f44336' : '#ffffff',
+                }}
+              >
+                {wallet.consecutive_losses} / {wallet.max_consecutive_losses}
+              </Typography>
+            </Grid>
+            <Grid size={12}>
+              <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
+                Pain Mode
+              </Typography>
+              <Typography variant="body2">{wallet.virtual_loss_percent}%</Typography>
+            </Grid>
+          </Grid>
+
+          {/* Switches + Actions */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="caption" sx={{ color: '#b8c5d6', mr: 0.5 }}>
+                  Trade
+                </Typography>
+                <Switch
+                  checked={wallet.trading_enabled}
+                  onChange={() => handleToggleTrading(wallet.alias, wallet.trading_enabled)}
+                  color="primary"
                   size="small"
-                  onClick={() => setDeleteDialog(wallet.alias)}
-                  title="Delete wallet"
-                  sx={{ color: '#f44336' }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </>
-            )}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="caption" sx={{ color: '#b8c5d6', mr: 0.5 }}>
+                  Transfer
+                </Typography>
+                <Switch
+                  checked={wallet.transfer_enabled}
+                  onChange={() => handleToggleTransfer(wallet.alias, wallet.transfer_enabled)}
+                  color="primary"
+                  size="small"
+                />
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <IconButton size="small" onClick={() => handleOpenEdit(wallet)} title="Edit wallet">
+                <EditIcon fontSize="small" />
+              </IconButton>
+              {wallet.type === 'TEST' && (
+                <>
+                  <Button size="small" variant="outlined" onClick={() => setAddBalanceDialog(wallet.alias)}>
+                    + SOL
+                  </Button>
+                  <IconButton
+                    size="small"
+                    onClick={() => setDeleteDialog(wallet.alias)}
+                    title="Delete wallet"
+                    sx={{ color: '#f44336' }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </>
+              )}
+            </Box>
           </Box>
-        </Box>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+  };
 
   // ---------------------------------------------------------------------------
   // Render
@@ -336,7 +388,7 @@ export default function Wallets() {
           <Button
             variant="outlined"
             startIcon={<RefreshIcon />}
-            onClick={fetchWallets}
+            onClick={() => refetchWallets()}
             sx={{ flex: { xs: 1, sm: 'none' } }}
           >
             Refresh
@@ -358,20 +410,48 @@ export default function Wallets() {
         </Alert>
       )}
 
+      {/* Stat Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <StatCard
+            title="Total Balance"
+            mainValue={fmtEur(solToEur(totalBalance))}
+            subValue={fmtSol(totalBalance)}
+            icon={<WalletIcon sx={{ color: `rgb(${ctx.accentColor})`, fontSize: 20 }} />}
+            color="0, 212, 255"
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4 }}>
+          <StatCard
+            title="Active Wallets"
+            mainValue={`${activeCount}/${wallets.length}`}
+            subValue="Wallets"
+            icon={<TrendingUpIcon sx={{ color: '#4caf50', fontSize: 20 }} />}
+            color="76, 175, 80"
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4 }}>
+          <StatCard
+            title="Avg Balance"
+            mainValue={fmtEur(solToEur(avgBalance))}
+            subValue={fmtSol(avgBalance)}
+            icon={<WalletIcon sx={{ color: '#ff9800', fontSize: 20 }} />}
+            color="255, 152, 0"
+          />
+        </Grid>
+      </Grid>
+
       {/* Desktop table / mobile cards */}
       {isSmall ? (
         wallets.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
+          <Box sx={{ p: 4, textAlign: 'center', ...CARD_SX, borderRadius: 1 }}>
             <Typography sx={{ color: '#b8c5d6' }}>No wallets found</Typography>
           </Box>
         ) : (
           wallets.map(renderMobileCard)
         )
       ) : (
-        <TableContainer
-          component={Paper}
-          sx={{ bgcolor: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(10px)' }}
-        >
+        <TableContainer component={Paper} sx={{ ...CARD_SX }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -388,6 +468,7 @@ export default function Wallets() {
             </TableHead>
             <TableBody>
               {wallets.map((wallet) => {
+                const balance = wallet.type === 'TEST' ? wallet.virtual_sol_balance : wallet.real_sol_balance;
                 const lossRatio =
                   wallet.max_consecutive_losses > 0
                     ? (wallet.consecutive_losses / wallet.max_consecutive_losses) * 100
@@ -407,8 +488,8 @@ export default function Wallets() {
                         label={wallet.type}
                         size="small"
                         sx={{
-                          bgcolor: wallet.type === 'TEST' ? 'rgba(0, 212, 255, 0.2)' : 'rgba(76, 175, 80, 0.2)',
-                          color: wallet.type === 'TEST' ? '#00d4ff' : '#4caf50',
+                          bgcolor: TYPE_COLORS[wallet.type]?.bg ?? 'rgba(255,255,255,0.1)',
+                          color: TYPE_COLORS[wallet.type]?.color ?? '#fff',
                         }}
                       />
                     </TableCell>
@@ -417,17 +498,17 @@ export default function Wallets() {
                         label={wallet.status}
                         size="small"
                         sx={{
-                          bgcolor: statusColor[wallet.status]?.bg ?? 'rgba(255,255,255,0.1)',
-                          color: statusColor[wallet.status]?.fg ?? '#fff',
+                          bgcolor: STATUS_COLORS[wallet.status]?.bg ?? 'rgba(255,255,255,0.1)',
+                          color: STATUS_COLORS[wallet.status]?.color ?? '#fff',
                         }}
                       />
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {(wallet.type === 'TEST' ? wallet.virtual_sol_balance : wallet.real_sol_balance).toFixed(
-                          4,
-                        )}{' '}
-                        SOL
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                        {fmtEur(solToEur(balance))}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: '#8892a4', fontFamily: 'monospace' }}>
+                        {fmtSol(balance)}
                       </Typography>
                     </TableCell>
                     <TableCell align="center">
