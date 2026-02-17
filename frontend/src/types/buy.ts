@@ -169,3 +169,55 @@ export interface TradeResponse {
     amount_sent?: number;
   };
 }
+
+// ============================================================
+// Dashboard Analytics
+// ============================================================
+export interface ExchangeRate {
+  sol_price_usd: number;
+  usd_to_eur_rate: number;
+  sol_price_eur: number;
+  timestamp: string;
+}
+
+export interface PnlBucket {
+  bucket: string;
+  cumulative_pnl_sol: number;
+  fees_sol: number;
+}
+
+export interface PnlHistoryResponse {
+  data: PnlBucket[];
+  period: string;
+  bucket_size: string;
+}
+
+export interface TradeActivityBucket {
+  bucket: string;
+  buy_count: number;
+  sell_count: number;
+}
+
+export interface TradeActivityResponse {
+  data: TradeActivityBucket[];
+  period: string;
+  bucket_size: string;
+}
+
+export interface TradeAnalytics {
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  avg_win_sol: number;
+  avg_loss_sol: number;
+  profit_factor: number;
+  total_network_fees_sol: number;
+  total_jito_tips_sol: number;
+  total_fees_sol: number;
+  gross_pnl_sol: number;
+  net_pnl_sol: number;
+  best_trade_sol: number;
+  worst_trade_sol: number;
+  best_trade_mint: string | null;
+  worst_trade_mint: string | null;
+}

@@ -239,6 +239,15 @@ export const buyApi = {
     api.get('/buy/trades', { params: { wallet_alias: walletAlias, action, limit } }),
   getTransferLogs: (walletAlias?: string, limit = 100) =>
     api.get('/buy/transfers', { params: { wallet_alias: walletAlias, limit } }),
+
+  // Dashboard analytics
+  getExchangeRate: () => api.get('/buy/exchange-rate'),
+  getPnlHistory: (walletType?: string, period = '24h') =>
+    api.get('/buy/dashboard/pnl-history', { params: { wallet_type: walletType, period } }),
+  getTradeActivity: (walletType?: string, period = '24h') =>
+    api.get('/buy/dashboard/trade-activity', { params: { wallet_type: walletType, period } }),
+  getTradeAnalytics: (walletType?: string, period = '24h') =>
+    api.get('/buy/dashboard/trade-analytics', { params: { wallet_type: walletType, period } }),
 };
 
 // ------------------------------------------------------------------
