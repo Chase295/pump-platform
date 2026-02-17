@@ -278,7 +278,7 @@ async def search_by_mint(
     }
 
 
-@router.get("/search/by-label/{label}")
+@router.get("/search/by-label/{label}", operation_id="embeddings_search_by_label")
 async def search_by_label_endpoint(
     label: str,
     k: int = Query(50, ge=1, le=500),

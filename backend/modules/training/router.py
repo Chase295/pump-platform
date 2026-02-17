@@ -68,7 +68,7 @@ router = APIRouter(prefix="/api/training", tags=["Training"])
 # Models Endpoints
 # ============================================================
 
-@router.post("/models/create/advanced", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/models/create/advanced", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED, operation_id="training_create_model_advanced")
 async def create_model_job_advanced(
     name: str,
     model_type: str,
@@ -742,7 +742,7 @@ async def list_comparisons_endpoint(limit: int = 100, offset: int = 0):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/comparisons/{comparison_id}", response_model=ComparisonResponse)
+@router.get("/comparisons/{comparison_id}", response_model=ComparisonResponse, operation_id="training_get_comparison")
 async def get_comparison_endpoint(comparison_id: int):
     """Get a single comparison."""
     comp = await get_comparison(comparison_id)
@@ -751,7 +751,7 @@ async def get_comparison_endpoint(comparison_id: int):
     return ComparisonResponse(**dict(comp))
 
 
-@router.delete("/comparisons/{comparison_id}")
+@router.delete("/comparisons/{comparison_id}", operation_id="training_delete_comparison")
 async def delete_comparison_endpoint(comparison_id: int):
     """Delete a comparison."""
     comp = await get_comparison(comparison_id)
@@ -784,7 +784,7 @@ async def list_test_results_endpoint(limit: int = 100, offset: int = 0):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/test-results/{test_id}", response_model=TestResultResponse)
+@router.get("/test-results/{test_id}", response_model=TestResultResponse, operation_id="training_get_test_result")
 async def get_test_result_endpoint(test_id: int):
     """Get a single test result."""
     tr = await get_test_result(test_id)
@@ -793,7 +793,7 @@ async def get_test_result_endpoint(test_id: int):
     return TestResultResponse(**dict(tr))
 
 
-@router.delete("/test-results/{test_id}")
+@router.delete("/test-results/{test_id}", operation_id="training_delete_test_result")
 async def delete_test_result_endpoint(test_id: int):
     """Delete a test result."""
     tr = await get_test_result(test_id)

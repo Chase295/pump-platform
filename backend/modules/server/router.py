@@ -262,7 +262,7 @@ async def get_available_models_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/available/{model_id}", response_model=AvailableModel)
+@router.get("/models/available/{model_id}", response_model=AvailableModel, operation_id="server_get_available_model")
 async def get_available_model_details_endpoint(model_id: int):
     """Get details of an available model from training module."""
     try:
@@ -449,7 +449,7 @@ async def get_active_models_endpoint(include_inactive: str = "false"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/{active_model_id}", response_model=ModelInfo)
+@router.get("/models/{active_model_id}", response_model=ModelInfo, operation_id="server_get_model")
 async def get_active_model_endpoint(active_model_id: int):
     """Get details of an active model"""
     try:
@@ -510,7 +510,7 @@ async def get_active_model_endpoint(active_model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/models/{active_model_id}/activate", status_code=status.HTTP_200_OK)
+@router.post("/models/{active_model_id}/activate", status_code=status.HTTP_200_OK, operation_id="server_activate_model")
 async def activate_model_endpoint(active_model_id: int):
     """Activate model (set is_active = true)"""
     try:
@@ -525,7 +525,7 @@ async def activate_model_endpoint(active_model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/models/{active_model_id}/deactivate", status_code=status.HTTP_200_OK)
+@router.post("/models/{active_model_id}/deactivate", status_code=status.HTTP_200_OK, operation_id="server_deactivate_model")
 async def deactivate_model_endpoint(active_model_id: int):
     """Deactivate model (set is_active = false)"""
     try:
@@ -540,7 +540,7 @@ async def deactivate_model_endpoint(active_model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/models/{active_model_id}/rename", status_code=status.HTTP_200_OK)
+@router.patch("/models/{active_model_id}/rename", status_code=status.HTTP_200_OK, operation_id="server_rename_model")
 async def rename_model_endpoint(active_model_id: int, request: RenameModelRequest):
     """Rename model (set custom_name)"""
     try:
@@ -571,7 +571,7 @@ async def delete_model_endpoint(active_model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/models/{active_model_id}/alert-config", status_code=status.HTTP_200_OK)
+@router.patch("/models/{active_model_id}/alert-config", status_code=status.HTTP_200_OK, operation_id="server_update_alert_config")
 async def update_alert_config_endpoint(active_model_id: int, request: UpdateAlertConfigRequest):
     """Update complete alert configuration for an active model"""
     try:
@@ -611,7 +611,7 @@ async def update_alert_config_endpoint(active_model_id: int, request: UpdateAler
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/models/{active_model_id}/ignore-settings", status_code=status.HTTP_200_OK)
+@router.patch("/models/{active_model_id}/ignore-settings", status_code=status.HTTP_200_OK, operation_id="server_update_ignore_settings")
 async def update_ignore_settings_endpoint(active_model_id: int, request: UpdateIgnoreSettingsRequest):
     """Update coin-ignore settings for a model"""
     try:
@@ -638,7 +638,7 @@ async def update_ignore_settings_endpoint(active_model_id: int, request: UpdateI
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/{active_model_id}/ignore-settings", response_model=IgnoreSettingsResponse)
+@router.get("/models/{active_model_id}/ignore-settings", response_model=IgnoreSettingsResponse, operation_id="server_get_ignore_settings")
 async def get_ignore_settings_endpoint(active_model_id: int):
     """Get coin-ignore settings for a model"""
     try:
@@ -658,7 +658,7 @@ async def get_ignore_settings_endpoint(active_model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/models/{active_model_id}/max-log-entries", status_code=status.HTTP_200_OK)
+@router.patch("/models/{active_model_id}/max-log-entries", status_code=status.HTTP_200_OK, operation_id="server_update_max_log_entries")
 async def update_max_log_entries_endpoint(active_model_id: int, request: UpdateMaxLogEntriesRequest):
     """Update max-log-entries settings for a model"""
     try:
@@ -685,7 +685,7 @@ async def update_max_log_entries_endpoint(active_model_id: int, request: UpdateM
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/{active_model_id}/max-log-entries", response_model=MaxLogEntriesResponse)
+@router.get("/models/{active_model_id}/max-log-entries", response_model=MaxLogEntriesResponse, operation_id="server_get_max_log_entries")
 async def get_max_log_entries_endpoint(active_model_id: int):
     """Get max-log-entries settings for a model"""
     try:
@@ -705,7 +705,7 @@ async def get_max_log_entries_endpoint(active_model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/{active_model_id}/n8n-status")
+@router.get("/models/{active_model_id}/n8n-status", operation_id="server_get_n8n_status")
 async def get_n8n_status_endpoint(active_model_id: int):
     """Check n8n webhook status for a model"""
     try:
@@ -813,7 +813,7 @@ async def get_predictions_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/predictions/latest/{coin_id}")
+@router.get("/predictions/latest/{coin_id}", operation_id="server_get_latest_prediction")
 async def get_latest_prediction_endpoint(
     coin_id: str,
     model_id: Optional[int] = Query(None)
@@ -832,7 +832,7 @@ async def get_latest_prediction_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/models/{active_model_id}/predictions", status_code=status.HTTP_200_OK)
+@router.delete("/models/{active_model_id}/predictions", status_code=status.HTTP_200_OK, operation_id="server_delete_predictions")
 async def delete_model_predictions_endpoint(active_model_id: int):
     """Delete all predictions for a model"""
     try:
@@ -847,7 +847,7 @@ async def delete_model_predictions_endpoint(active_model_id: int):
 # Coin Details Endpoint
 # ============================================================
 
-@router.get("/models/{active_model_id}/coin/{coin_id}")
+@router.get("/models/{active_model_id}/coin/{coin_id}", operation_id="server_get_coin_details")
 async def get_coin_details_endpoint(active_model_id: int, coin_id: str):
     """Get coin details including price history, predictions, and evaluations for a specific model+coin"""
     try:
