@@ -246,6 +246,131 @@ async def add_virtual_balance(alias: str, amount: float = Query(..., gt=0)):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/wallets/{alias}/analytics")
+async def get_wallet_analytics(alias: str):
+    """Get comprehensive analytics for a single wallet."""
+    wallet = await wallet_ops.get_wallet(alias)
+    if not wallet:
+        raise HTTPException(status_code=404, detail=f"Wallet '{alias}' not found")
+    wallet_id = wallet['id']
+
+    stats = await fetchrow("""
+        SELECT
+            COUNT(*) FILTER (WHERE action = 'BUY' AND status = 'SUCCESS') AS total_buys,
+            COUNT(*) FILTER (WHERE action = 'SELL' AND status = 'SUCCESS') AS total_sells,
+            COALESCE(SUM(CASE WHEN action = 'BUY' AND status = 'SUCCESS' THEN amount_sol ELSE 0 END), 0) AS total_buy_volume,
+            COALESCE(SUM(CASE WHEN action = 'SELL' AND status = 'SUCCESS' THEN amount_sol ELSE 0 END), 0) AS total_sell_volume,
+            COALESCE(SUM(COALESCE(network_fee_sol, 0)), 0) AS total_fees
+        FROM trade_logs WHERE wallet_id = $1
+    """, wallet_id)
+
+    pnl = await fetchrow("""
+        WITH pos_pnl AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN t.action = 'SELL' THEN t.amount_sol ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) AS pnl
+            FROM positions p
+            LEFT JOIN trade_logs t ON t.position_id = p.id AND t.status = 'SUCCESS'
+            WHERE p.wallet_id = $1 AND p.status = 'CLOSED'
+            GROUP BY p.id
+        )
+        SELECT
+            COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+            COUNT(*) FILTER (WHERE pnl <= 0) AS losses,
+            COALESCE(SUM(pnl), 0) AS total_pnl
+        FROM pos_pnl
+    """, wallet_id)
+
+    wins = pnl['wins'] or 0 if pnl else 0
+    losses = pnl['losses'] or 0 if pnl else 0
+    total = wins + losses
+
+    return {
+        "total_buys": stats['total_buys'] or 0,
+        "total_sells": stats['total_sells'] or 0,
+        "total_trades": (stats['total_buys'] or 0) + (stats['total_sells'] or 0),
+        "total_volume_sol": float(stats['total_buy_volume'] or 0) + float(stats['total_sell_volume'] or 0),
+        "total_fees_sol": float(stats['total_fees'] or 0),
+        "wins": wins,
+        "losses": losses,
+        "win_rate": round((wins / total * 100) if total > 0 else 0, 1),
+        "total_pnl_sol": float(pnl['total_pnl'] or 0) if pnl else 0,
+    }
+
+
+@router.get("/wallets/{alias}/pnl-history")
+async def get_wallet_pnl_history(
+    alias: str,
+    period: str = Query("7d", description="24h, 7d, 30d, or all"),
+):
+    """Get P&L history for a specific wallet."""
+    wallet = await wallet_ops.get_wallet(alias)
+    if not wallet:
+        raise HTTPException(status_code=404, detail=f"Wallet '{alias}' not found")
+
+    bucket_map = {"24h": ("1 hour", "1h"), "7d": ("4 hours", "4h"), "30d": ("1 day", "1d"), "all": ("1 day", "1d")}
+    bucket_interval, bucket_label = bucket_map.get(period, ("1 hour", "1h"))
+    period_map = {"24h": "24 hours", "7d": "7 days", "30d": "30 days"}
+    time_filter = f"AND t.created_at > NOW() - INTERVAL '{period_map[period]}'" if period in period_map else ""
+
+    rows = await fetch(f"""
+        WITH trade_data AS (
+            SELECT
+                time_bucket('{bucket_interval}', t.created_at) AS bucket,
+                COALESCE(SUM(CASE WHEN t.action = 'SELL' THEN t.amount_sol ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) AS pnl_sol,
+                COALESCE(SUM(COALESCE(t.network_fee_sol, 0)), 0) AS fees_sol
+            FROM trade_logs t
+            WHERE t.wallet_id = $1 AND t.status = 'SUCCESS' {time_filter}
+            GROUP BY bucket ORDER BY bucket
+        )
+        SELECT bucket, SUM(pnl_sol) OVER (ORDER BY bucket) AS cumulative_pnl_sol, fees_sol
+        FROM trade_data
+    """, wallet['id'])
+
+    return {
+        "data": [{"bucket": r['bucket'], "cumulative_pnl_sol": float(r['cumulative_pnl_sol'] or 0), "fees_sol": float(r['fees_sol'] or 0)} for r in rows],
+        "period": period,
+        "bucket_size": bucket_label,
+    }
+
+
+@router.get("/wallets/{alias}/positions-valued")
+async def get_wallet_positions_valued(alias: str):
+    """Get open positions with current Jupiter valuations."""
+    from backend.modules.buy.jupiter_client import JupiterClient
+
+    wallet = await wallet_ops.get_wallet(alias)
+    if not wallet:
+        raise HTTPException(status_code=404, detail=f"Wallet '{alias}' not found")
+
+    positions = await position_ops.get_open_positions(alias)
+    result = []
+
+    for pos in positions:
+        current_value_sol = None
+        unrealized_pnl_sol = None
+        try:
+            quote = await JupiterClient.get_sell_quote(
+                token_mint=pos['mint'],
+                token_amount=pos['tokens_held'],
+                slippage_bps=100,
+            )
+            if quote and quote.get('out_amount'):
+                current_value_sol = float(quote['out_amount']) / 1e9
+                unrealized_pnl_sol = current_value_sol - float(pos['initial_sol_spent'])
+        except Exception:
+            pass
+
+        result.append({
+            **_position_to_response(pos).model_dump(),
+            "current_value_sol": current_value_sol,
+            "unrealized_pnl_sol": unrealized_pnl_sol,
+        })
+
+    return result
+
+
 @router.patch("/wallets/{alias}", response_model=WalletResponse)
 async def update_wallet(alias: str, request: WalletUpdate):
     """Update wallet settings."""

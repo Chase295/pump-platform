@@ -47,6 +47,7 @@ import Neo4jGraph from './pages/Neo4jGraph';
 import IpfsExplorer from './pages/IpfsExplorer';
 import Embeddings from './pages/Embeddings';
 import Login from './pages/Login';
+import OAuthAuthorize from './pages/OAuthAuthorize';
 
 // Auth
 import useAuthStore from './stores/useAuthStore';
@@ -381,8 +382,9 @@ const LoadingScreen: React.FC = () => (
   </Box>
 );
 
-// Main App Component
-function App() {
+// Inner component that has access to Router context
+const AppContent: React.FC = () => {
+  const location = useLocation();
   const { token, authRequired, checkAuthStatus, logout } = useAuthStore();
 
   useEffect(() => {
@@ -398,45 +400,47 @@ function App() {
     return () => window.removeEventListener('auth-logout', handleLogout);
   }, [logout]);
 
+  // OAuth consent page - always accessible regardless of auth state
+  if (location.pathname === '/oauth-consent') {
+    return <OAuthAuthorize />;
+  }
+
   // Still checking auth status
   if (authRequired === null) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <LoadingScreen />
-      </ThemeProvider>
-    );
+    return <LoadingScreen />;
   }
 
   // Auth required but no token -> show login
   if (authRequired && !token) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Login />
-      </ThemeProvider>
-    );
+    return <Login />;
   }
 
   // Authenticated or no auth required -> normal app
   return (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/discovery/*" element={<Discovery />} />
+        <Route path="/embeddings/*" element={<Embeddings />} />
+        <Route path="/training/*" element={<Training />} />
+        <Route path="/predictions/*" element={<Predictions />} />
+        <Route path="/test-trading/*" element={<TestTrading />} />
+        <Route path="/real-trading/*" element={<RealTrading />} />
+        <Route path="/workflows" element={<N8nWorkflows />} />
+        <Route path="/graph" element={<Neo4jGraph />} />
+        <Route path="/ipfs" element={<IpfsExplorer />} />
+      </Routes>
+    </Layout>
+  );
+};
+
+// Main App Component
+function App() {
+  return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/discovery/*" element={<Discovery />} />
-            <Route path="/embeddings/*" element={<Embeddings />} />
-            <Route path="/training/*" element={<Training />} />
-            <Route path="/predictions/*" element={<Predictions />} />
-            <Route path="/test-trading/*" element={<TestTrading />} />
-            <Route path="/real-trading/*" element={<RealTrading />} />
-            <Route path="/workflows" element={<N8nWorkflows />} />
-            <Route path="/graph" element={<Neo4jGraph />} />
-            <Route path="/ipfs" element={<IpfsExplorer />} />
-          </Routes>
-        </Layout>
+        <AppContent />
       </Router>
     </ThemeProvider>
   );

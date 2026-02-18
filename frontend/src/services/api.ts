@@ -234,6 +234,12 @@ export const buyApi = {
   getPosition: (walletAlias: string, mint: string) =>
     api.get(`/buy/positions/${walletAlias}/${mint}`),
 
+  // Wallet detail
+  getWalletAnalytics: (alias: string) => api.get(`/buy/wallets/${alias}/analytics`),
+  getWalletPnlHistory: (alias: string, period = '7d') =>
+    api.get(`/buy/wallets/${alias}/pnl-history`, { params: { period } }),
+  getWalletPositionsValued: (alias: string) => api.get(`/buy/wallets/${alias}/positions-valued`),
+
   // Logs
   getTradeLogs: (walletAlias?: string, action?: string, limit = 100) =>
     api.get('/buy/trades', { params: { wallet_alias: walletAlias, action, limit } }),
@@ -248,6 +254,21 @@ export const buyApi = {
     api.get('/buy/dashboard/trade-activity', { params: { wallet_type: walletType, period } }),
   getTradeAnalytics: (walletType?: string, period = '24h') =>
     api.get('/buy/dashboard/trade-analytics', { params: { wallet_type: walletType, period } }),
+
+  // Workflows
+  getWorkflows: (walletAlias?: string, type?: string) =>
+    api.get('/buy/workflows', { params: { wallet_alias: walletAlias, type } }),
+  createWorkflow: (data: Record<string, unknown>) => api.post('/buy/workflows', data),
+  getWorkflow: (id: string) => api.get(`/buy/workflows/${id}`),
+  updateWorkflow: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/buy/workflows/${id}`, data),
+  deleteWorkflow: (id: string) => api.delete(`/buy/workflows/${id}`),
+  toggleWorkflow: (id: string, active: boolean) =>
+    api.patch(`/buy/workflows/${id}/toggle`, null, { params: { active } }),
+  getWorkflowExecutions: (id: string, limit = 50) =>
+    api.get(`/buy/workflows/${id}/executions`, { params: { limit } }),
+  getRecentExecutions: (limit = 20, result?: string) =>
+    api.get('/buy/workflows/executions/recent', { params: { limit, result } }),
 };
 
 // ------------------------------------------------------------------
@@ -304,6 +325,22 @@ export const embeddingsApi = {
   // Neo4j
   triggerNeo4jSync: () => api.post('/embeddings/neo4j/sync'),
   getNeo4jStatus: () => api.get('/embeddings/neo4j/status'),
+};
+
+// ------------------------------------------------------------------
+// OAuth API (uses raw axios, NOT the api instance with Bearer token)
+// ------------------------------------------------------------------
+export const oauthApi = {
+  approve: (data: {
+    username: string;
+    password: string;
+    client_id: string;
+    redirect_uri: string;
+    state: string;
+    scope: string;
+    code_challenge: string;
+    code_challenge_method: string;
+  }) => axios.post<{ redirect_url: string }>('/api/auth/oauth/approve', data),
 };
 
 export default api;

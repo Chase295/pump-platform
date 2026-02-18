@@ -7,6 +7,7 @@ import {
   Send as TransferIcon,
   Inventory as PositionsIcon,
   History as LogsIcon,
+  AutoFixHigh as WorkflowIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { TradingContext } from './TradingContext';
@@ -14,11 +15,13 @@ import type { WalletType } from '../../types/buy';
 
 import TradingDashboard from './TradingDashboard';
 import Wallets from './Wallets';
+import WalletDetail from './WalletDetail';
 import ExecuteTrade from './ExecuteTrade';
 import Transfers from './Transfers';
 import Positions from './Positions';
 import TradeLogs from './TradeLogs';
 import TradingInfo from './TradingInfo';
+import Workflows from './Workflows';
 
 interface TradingShellProps {
   walletType: WalletType;
@@ -37,6 +40,7 @@ export default function TradingShell({ walletType, basePath, accentColor, label 
     { path: `${basePath}/transfers`, label: 'Transfers', icon: <TransferIcon /> },
     { path: `${basePath}/positions`, label: 'Positions', icon: <PositionsIcon /> },
     { path: `${basePath}/logs`, label: 'Logs', icon: <LogsIcon /> },
+    { path: `${basePath}/workflows`, label: 'Workflows', icon: <WorkflowIcon /> },
     { path: `${basePath}/info`, label: 'Info', icon: <InfoIcon /> },
   ];
 
@@ -48,7 +52,8 @@ export default function TradingShell({ walletType, basePath, accentColor, label 
     if (path.startsWith(`${basePath}/transfers`)) return 3;
     if (path.startsWith(`${basePath}/positions`)) return 4;
     if (path.startsWith(`${basePath}/logs`)) return 5;
-    if (path.startsWith(`${basePath}/info`)) return 6;
+    if (path.startsWith(`${basePath}/workflows`)) return 6;
+    if (path.startsWith(`${basePath}/info`)) return 7;
     return 0;
   };
 
@@ -97,11 +102,13 @@ export default function TradingShell({ walletType, basePath, accentColor, label 
 
         <Routes>
           <Route index element={<TradingDashboard />} />
+          <Route path="wallets/:alias" element={<WalletDetail />} />
           <Route path="wallets" element={<Wallets />} />
           <Route path="execute" element={<ExecuteTrade />} />
           <Route path="transfers" element={<Transfers />} />
           <Route path="positions" element={<Positions />} />
           <Route path="logs" element={<TradeLogs />} />
+          <Route path="workflows" element={<Workflows />} />
           <Route path="info" element={<TradingInfo />} />
         </Routes>
       </Box>

@@ -52,7 +52,7 @@ tzdata==2023.3
 python-json-logger==2.0.7
 
 # MCP Server
-fastapi-mcp>=0.3.0
+fastapi-mcp>=0.4.0
 mcp>=1.8.0
 sse-starlette>=1.6.5
 

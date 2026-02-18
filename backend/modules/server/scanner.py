@@ -17,6 +17,7 @@ from backend.config import settings
 from backend.database import get_pool
 from backend.modules.server.predictor import predict_coin_all_models
 from backend.modules.server.alerts import send_n8n_webhook
+from backend.modules.buy.workflow_engine import get_buy_workflow_engine
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +408,19 @@ class PredictionScanner:
 
         # Send n8n webhook
         await self._send_n8n(coin_id, timestamp, result, model_config, tag)
+
+        # Trigger BUY workflow engine
+        engine = get_buy_workflow_engine()
+        if engine:
+            asyncio.create_task(engine.on_prediction(
+                coin_id=coin_id,
+                model_id=result.get('model_id'),
+                active_model_id=active_model_id,
+                probability=probability,
+                prediction=prediction,
+                tag=tag,
+                timestamp=timestamp,
+            ))
 
     async def _update_scan_cache(
         self, pool, coin_id: str, active_model_id: int,

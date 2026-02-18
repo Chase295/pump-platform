@@ -4,7 +4,7 @@ Pydantic schemas for Buy module API request/response validation.
 Migrated from pump-buy/backend/app/models/schemas.py
 """
 
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -321,3 +321,64 @@ class TradeAnalyticsResponse(BaseModel):
     worst_trade_sol: float
     best_trade_mint: Optional[str] = None
     worst_trade_mint: Optional[str] = None
+
+
+# =================================================================
+# WORKFLOW SCHEMAS
+# =================================================================
+
+class WorkflowType(str, Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+
+class BuyAmountMode(str, Enum):
+    FIXED = "fixed"
+    PERCENT = "percent"
+
+class WorkflowCreate(BaseModel):
+    wallet_alias: str = Field(..., description="Wallet alias")
+    name: str = Field(..., min_length=1, max_length=100)
+    type: WorkflowType
+    chain: dict = Field(..., description="Chain definition JSON")
+    buy_amount_mode: Optional[BuyAmountMode] = None
+    buy_amount_value: Optional[float] = Field(None, gt=0)
+    sell_amount_pct: Optional[float] = Field(100.0, ge=1, le=100)
+    cooldown_seconds: int = Field(60, ge=0)
+    max_open_positions: int = Field(5, ge=1, le=100)
+
+class WorkflowUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    chain: Optional[dict] = None
+    buy_amount_mode: Optional[BuyAmountMode] = None
+    buy_amount_value: Optional[float] = Field(None, gt=0)
+    sell_amount_pct: Optional[float] = Field(None, ge=1, le=100)
+    cooldown_seconds: Optional[int] = Field(None, ge=0)
+    max_open_positions: Optional[int] = Field(None, ge=1, le=100)
+
+class WorkflowResponse(BaseModel):
+    id: str
+    wallet_id: str
+    wallet_alias: Optional[str] = None
+    name: str
+    type: str
+    is_active: bool
+    chain: dict
+    buy_amount_mode: Optional[str] = None
+    buy_amount_value: Optional[float] = None
+    sell_amount_pct: Optional[float] = None
+    cooldown_seconds: int
+    max_open_positions: int
+    created_at: datetime
+    updated_at: datetime
+
+class WorkflowExecutionResponse(BaseModel):
+    id: str
+    workflow_id: str
+    workflow_name: Optional[str] = None
+    mint: str
+    trigger_data: dict
+    steps_log: list
+    result: str
+    error_message: Optional[str] = None
+    trade_log_id: Optional[str] = None
+    created_at: datetime

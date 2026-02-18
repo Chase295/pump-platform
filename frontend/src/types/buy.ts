@@ -221,3 +221,101 @@ export interface TradeAnalytics {
   best_trade_mint: string | null;
   worst_trade_mint: string | null;
 }
+
+// ============================================================
+// Wallet Detail Analytics
+// ============================================================
+export interface WalletAnalytics {
+  total_buys: number;
+  total_sells: number;
+  total_trades: number;
+  total_volume_sol: number;
+  total_fees_sol: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl_sol: number;
+}
+
+export interface ValuedPosition extends Position {
+  current_value_sol: number | null;
+  unrealized_pnl_sol: number | null;
+}
+
+// ============================================================
+// Trading Workflows
+// ============================================================
+export type WorkflowType = 'BUY' | 'SELL';
+export type BuyAmountMode = 'fixed' | 'percent';
+export type WorkflowExecutionResult = 'EXECUTED' | 'REJECTED' | 'ERROR';
+
+export interface BuyChainTrigger {
+  type: 'prediction_alert';
+  model_id: number;
+  min_probability: number;
+}
+
+export interface BuyChainCondition {
+  type: 'on_demand_prediction';
+  model_id: number;
+  operator: 'gte' | 'lte' | 'gt' | 'lt';
+  threshold: number;
+}
+
+export interface BuyChain {
+  trigger: BuyChainTrigger;
+  conditions: BuyChainCondition[];
+}
+
+export interface SellRule {
+  type: 'stop_loss' | 'trailing_stop' | 'take_profit' | 'timeout';
+  percent?: number;
+  from?: 'entry' | 'peak';
+  minutes?: number;
+}
+
+export interface SellChain {
+  rules: SellRule[];
+}
+
+export interface TradingWorkflow {
+  id: string;
+  wallet_id: string;
+  wallet_alias?: string;
+  name: string;
+  type: WorkflowType;
+  is_active: boolean;
+  chain: BuyChain | SellChain;
+  buy_amount_mode?: BuyAmountMode;
+  buy_amount_value?: number;
+  sell_amount_pct?: number;
+  cooldown_seconds: number;
+  max_open_positions: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowExecution {
+  id: string;
+  workflow_id: string;
+  workflow_name?: string;
+  mint: string;
+  trigger_data: Record<string, unknown>;
+  steps_log: Array<Record<string, unknown>>;
+  result: WorkflowExecutionResult;
+  error_message?: string;
+  trade_log_id?: string;
+  created_at: string;
+}
+
+export interface WorkflowCreateRequest {
+  wallet_alias: string;
+  name: string;
+  type: WorkflowType;
+  chain: BuyChain | SellChain;
+  buy_amount_mode?: BuyAmountMode;
+  buy_amount_value?: number;
+  sell_amount_pct?: number;
+  cooldown_seconds?: number;
+  max_open_positions?: number;
+}

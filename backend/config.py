@@ -119,6 +119,14 @@ class Settings(BaseSettings):
     AUTH_USER: str = ""
     AUTH_PASSWORD: str = ""
 
+    # OAuth (MCP authentication for Claude.ai)
+    OAUTH_CLIENT_ID: str = ""
+    OAUTH_CLIENT_SECRET: str = ""
+    OAUTH_BASE_URL: str = ""  # e.g. "https://pump-platform.chase295.de"
+    OAUTH_ACCESS_TOKEN_EXPIRY: int = 3600      # 1 hour
+    OAUTH_REFRESH_TOKEN_EXPIRY: int = 604800   # 7 days
+    OAUTH_AUTH_CODE_EXPIRY: int = 300           # 5 minutes
+
     # ------------------------------------------------------------------
     # General
     # ------------------------------------------------------------------

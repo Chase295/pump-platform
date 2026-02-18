@@ -23,9 +23,15 @@ from backend.modules.find.router import router as find_router
 from backend.modules.training.router import router as training_router
 from backend.modules.server.router import router as server_router
 from backend.modules.buy.router import router as buy_router
+from backend.modules.buy.workflow_router import router as workflow_router
 from backend.modules.graph.router import router as graph_router
 from backend.modules.embeddings.router import router as embeddings_router
 from backend.modules.auth.router import router as auth_router, _auth_enabled, _generate_token
+from backend.modules.auth.oauth import (
+    router as oauth_router,
+    validate_oauth_token,
+    verify_oauth_dependency,
+)
 
 # Import module lifecycle components
 from backend.modules.find.streamer import CoinStreamer
@@ -42,13 +48,21 @@ from backend.modules.graph.neo4j_client import (
 from backend.modules.graph.sync import start_graph_sync, stop_graph_sync
 from backend.modules.embeddings.service import start_embedding_service, stop_embedding_service
 
+# Import buy module lifecycle
+from backend.modules.buy.workflow_engine import start_buy_workflow_engine
+from backend.modules.buy.position_monitor import start_position_monitor, stop_position_monitor
+
 # Import Prometheus metrics
 from backend.shared.prometheus import get_metrics, platform_uptime_seconds
 
 logger = logging.getLogger(__name__)
 
 # Paths that never require authentication
-_PUBLIC_PATHS = frozenset({"/", "/health", "/metrics", "/api/auth/login", "/api/auth/status"})
+_PUBLIC_PATHS = frozenset({
+    "/", "/health", "/metrics",
+    "/api/auth/login", "/api/auth/status",
+    "/api/auth/oauth/approve",  # Called by React consent page
+})
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -74,10 +88,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=401, content={"detail": "Missing or invalid token"})
 
         token = auth_header.removeprefix("Bearer ").strip()
-        if token != _generate_token():
-            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
 
-        return await call_next(request)
+        # Check existing platform token
+        if token == _generate_token():
+            return await call_next(request)
+
+        # Check OAuth access token
+        if validate_oauth_token(token):
+            return await call_next(request)
+
+        return JSONResponse(status_code=401, content={"detail": "Invalid token"})
 
 # Module-level references for lifecycle management
 _streamer: CoinStreamer | None = None
@@ -139,6 +159,14 @@ async def lifespan(app: FastAPI):
     await start_prediction_scanner()
     logger.info("Prediction scanner started")
 
+    # 5c. Start buy workflow engine
+    await start_buy_workflow_engine()
+    logger.info("Buy workflow engine started")
+
+    # 5d. Start sell position monitor (polls open positions with active SELL workflows)
+    await start_position_monitor(interval_seconds=15)
+    logger.info("Sell position monitor started")
+
     # 6. Initialize Neo4j graph database (background retry - Neo4j may start slower)
     async def _init_neo4j_with_retry(max_retries: int = 12, delay: int = 10):
         for attempt in range(1, max_retries + 1):
@@ -186,6 +214,7 @@ async def lifespan(app: FastAPI):
         await _auto_retrain.stop()
     await stop_alert_evaluator()
     await stop_prediction_scanner()
+    await stop_position_monitor()
     await stop_embedding_service()
     await stop_graph_sync()
     await close_neo4j()
@@ -216,21 +245,45 @@ app.add_middleware(
 
 # Mount module routers
 app.include_router(auth_router)      # /api/auth/...
+app.include_router(oauth_router)     # /oauth/..., /.well-known/..., /api/auth/oauth/...
 app.include_router(find_router)      # /api/find/...
 app.include_router(training_router)  # /api/training/...
 app.include_router(server_router)    # /api/server/...
 app.include_router(buy_router)       # /api/buy/...
+app.include_router(workflow_router)  # /api/buy/workflows/...
 app.include_router(graph_router)     # /api/graph/...
 app.include_router(embeddings_router) # /api/embeddings/...
 
 # MCP integration - exposes all API endpoints as MCP tools
+from fastapi import Depends
 from fastapi_mcp import FastApiMCP
 
-mcp = FastApiMCP(
-    app,
-    name="pump-platform",
-    description="Unified Crypto Trading Platform - Discovery, Training, Predictions, Trading",
-)
+if settings.OAUTH_CLIENT_ID and settings.OAUTH_CLIENT_SECRET and settings.OAUTH_BASE_URL:
+    from fastapi_mcp import AuthConfig
+    _base = settings.OAUTH_BASE_URL.rstrip("/")
+    mcp = FastApiMCP(
+        app,
+        name="pump-platform",
+        description="Unified Crypto Trading Platform - Discovery, Training, Predictions, Trading",
+        auth_config=AuthConfig(
+            issuer=_base,
+            authorize_url=f"{_base}/oauth/authorize",
+            oauth_metadata_url=f"{_base}/.well-known/oauth-authorization-server",
+            audience="pump-platform",
+            client_id=settings.OAUTH_CLIENT_ID,
+            client_secret=settings.OAUTH_CLIENT_SECRET,
+            dependencies=[Depends(verify_oauth_dependency)],
+            setup_proxies=True,
+        ),
+    )
+else:
+    # No OAuth configured - MCP without auth (local development)
+    mcp = FastApiMCP(
+        app,
+        name="pump-platform",
+        description="Unified Crypto Trading Platform - Discovery, Training, Predictions, Trading",
+    )
+
 mcp.mount()
 
 

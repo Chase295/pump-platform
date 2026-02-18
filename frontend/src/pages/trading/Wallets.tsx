@@ -11,39 +11,25 @@ import {
   DialogContentText,
   Card,
   CardContent,
-  Chip,
-  Switch,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
   Alert,
-  IconButton,
   Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  LinearProgress,
-  useMediaQuery,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   AccountBalanceWallet as WalletIcon,
   TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
-import { useExchangeRate, fmtEur, fmtSol, STATUS_COLORS, TYPE_COLORS, CARD_SX } from './tradingUtils';
+import { useExchangeRate, fmtEur, fmtSol, CARD_SX } from './tradingUtils';
 import type { Wallet, WalletStatus } from '../../types/buy';
+import WalletCard from './WalletCard';
 
 // ---------------------------------------------------------------------------
 // Stat Card
@@ -95,8 +81,6 @@ function StatCard({
 // Main Component
 // ---------------------------------------------------------------------------
 export default function Wallets() {
-  const theme = useTheme();
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
   const ctx = useTradingContext();
 
   // Data fetching via react-query
@@ -244,131 +228,6 @@ export default function Wallets() {
   };
 
   // ---------------------------------------------------------------------------
-  // Mobile card renderer
-  // ---------------------------------------------------------------------------
-  const renderMobileCard = (wallet: Wallet) => {
-    const balance = wallet.type === 'TEST' ? wallet.virtual_sol_balance : wallet.real_sol_balance;
-    return (
-      <Card key={wallet.id} sx={{ ...CARD_SX, mb: 2 }}>
-        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-          {/* Header */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                {wallet.alias}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#b8c5d6', fontFamily: 'monospace' }}>
-                {wallet.address.slice(0, 8)}...
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <Chip
-                label={wallet.type}
-                size="small"
-                sx={{
-                  bgcolor: TYPE_COLORS[wallet.type]?.bg ?? 'rgba(255,255,255,0.1)',
-                  color: TYPE_COLORS[wallet.type]?.color ?? '#fff',
-                }}
-              />
-              <Chip
-                label={wallet.status}
-                size="small"
-                sx={{
-                  bgcolor: STATUS_COLORS[wallet.status]?.bg ?? 'rgba(255,255,255,0.1)',
-                  color: STATUS_COLORS[wallet.status]?.color ?? '#fff',
-                }}
-              />
-            </Box>
-          </Box>
-
-          {/* Body */}
-          <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-            <Grid size={6}>
-              <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
-                Balance
-              </Typography>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                {fmtEur(solToEur(balance))}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#8892a4', fontFamily: 'monospace' }}>
-                {fmtSol(balance)}
-              </Typography>
-            </Grid>
-            <Grid size={6}>
-              <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
-                Losses
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  color:
-                    wallet.consecutive_losses >= wallet.max_consecutive_losses ? '#f44336' : '#ffffff',
-                }}
-              >
-                {wallet.consecutive_losses} / {wallet.max_consecutive_losses}
-              </Typography>
-            </Grid>
-            <Grid size={12}>
-              <Typography variant="caption" sx={{ color: '#b8c5d6' }}>
-                Pain Mode
-              </Typography>
-              <Typography variant="body2">{wallet.virtual_loss_percent}%</Typography>
-            </Grid>
-          </Grid>
-
-          {/* Switches + Actions */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Typography variant="caption" sx={{ color: '#b8c5d6', mr: 0.5 }}>
-                  Trade
-                </Typography>
-                <Switch
-                  checked={wallet.trading_enabled}
-                  onChange={() => handleToggleTrading(wallet.alias, wallet.trading_enabled)}
-                  color="primary"
-                  size="small"
-                />
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Typography variant="caption" sx={{ color: '#b8c5d6', mr: 0.5 }}>
-                  Transfer
-                </Typography>
-                <Switch
-                  checked={wallet.transfer_enabled}
-                  onChange={() => handleToggleTransfer(wallet.alias, wallet.transfer_enabled)}
-                  color="primary"
-                  size="small"
-                />
-              </Box>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <IconButton size="small" onClick={() => handleOpenEdit(wallet)} title="Edit wallet">
-                <EditIcon fontSize="small" />
-              </IconButton>
-              {wallet.type === 'TEST' && (
-                <>
-                  <Button size="small" variant="outlined" onClick={() => setAddBalanceDialog(wallet.alias)}>
-                    + SOL
-                  </Button>
-                  <IconButton
-                    size="small"
-                    onClick={() => setDeleteDialog(wallet.alias)}
-                    title="Delete wallet"
-                    sx={{ color: '#f44336' }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </>
-              )}
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
@@ -441,170 +300,33 @@ export default function Wallets() {
         </Grid>
       </Grid>
 
-      {/* Desktop table / mobile cards */}
-      {isSmall ? (
-        wallets.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', ...CARD_SX, borderRadius: 1 }}>
-            <Typography sx={{ color: '#b8c5d6' }}>No wallets found</Typography>
-          </Box>
-        ) : (
-          wallets.map(renderMobileCard)
-        )
-      ) : (
-        <TableContainer component={Paper} sx={{ ...CARD_SX }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Alias</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Balance</TableCell>
-                <TableCell align="center">Trading</TableCell>
-                <TableCell align="center">Transfer</TableCell>
-                <TableCell align="center">Losses</TableCell>
-                <TableCell align="center">Pain %</TableCell>
-                <TableCell align="center">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {wallets.map((wallet) => {
-                const balance = wallet.type === 'TEST' ? wallet.virtual_sol_balance : wallet.real_sol_balance;
-                const lossRatio =
-                  wallet.max_consecutive_losses > 0
-                    ? (wallet.consecutive_losses / wallet.max_consecutive_losses) * 100
-                    : 0;
-                return (
-                  <TableRow key={wallet.id}>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {wallet.alias}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: '#b8c5d6', fontFamily: 'monospace' }}>
-                        {wallet.address.slice(0, 8)}...
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={wallet.type}
-                        size="small"
-                        sx={{
-                          bgcolor: TYPE_COLORS[wallet.type]?.bg ?? 'rgba(255,255,255,0.1)',
-                          color: TYPE_COLORS[wallet.type]?.color ?? '#fff',
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={wallet.status}
-                        size="small"
-                        sx={{
-                          bgcolor: STATUS_COLORS[wallet.status]?.bg ?? 'rgba(255,255,255,0.1)',
-                          color: STATUS_COLORS[wallet.status]?.color ?? '#fff',
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                        {fmtEur(solToEur(balance))}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: '#8892a4', fontFamily: 'monospace' }}>
-                        {fmtSol(balance)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Switch
-                        checked={wallet.trading_enabled}
-                        onChange={() => handleToggleTrading(wallet.alias, wallet.trading_enabled)}
-                        color="primary"
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      <Switch
-                        checked={wallet.transfer_enabled}
-                        onChange={() => handleToggleTransfer(wallet.alias, wallet.transfer_enabled)}
-                        color="primary"
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color:
-                              wallet.consecutive_losses >= wallet.max_consecutive_losses
-                                ? '#f44336'
-                                : '#ffffff',
-                          }}
-                        >
-                          {wallet.consecutive_losses} / {wallet.max_consecutive_losses}
-                        </Typography>
-                        <LinearProgress
-                          variant="determinate"
-                          value={Math.min(lossRatio, 100)}
-                          sx={{
-                            width: 60,
-                            height: 4,
-                            borderRadius: 2,
-                            bgcolor: 'rgba(255,255,255,0.1)',
-                            '& .MuiLinearProgress-bar': {
-                              bgcolor: lossRatio >= 100 ? '#f44336' : lossRatio >= 66 ? '#ff9800' : '#4caf50',
-                            },
-                          }}
-                        />
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {wallet.virtual_loss_percent}%
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                        <IconButton size="small" onClick={() => handleOpenEdit(wallet)} title="Edit wallet">
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        {wallet.type === 'TEST' && (
-                          <>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => setAddBalanceDialog(wallet.alias)}
-                            >
-                              + SOL
-                            </Button>
-                            <IconButton
-                              size="small"
-                              onClick={() => setDeleteDialog(wallet.alias)}
-                              title="Delete wallet"
-                              sx={{ color: '#f44336' }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </>
-                        )}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {wallets.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} sx={{ textAlign: 'center', color: '#b8c5d6', py: 4 }}>
-                    No wallets found
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+      <Grid container spacing={2.5}>
+        {wallets.map((wallet) => (
+          <Grid key={wallet.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+            <WalletCard
+              wallet={wallet}
+              solEur={solEur}
+              onToggleTrading={handleToggleTrading}
+              onToggleTransfer={handleToggleTransfer}
+              onEdit={handleOpenEdit}
+              onDelete={(alias) => setDeleteDialog(alias)}
+              onAddBalance={(alias) => setAddBalanceDialog(alias)}
+            />
+          </Grid>
+        ))}
+        {wallets.length === 0 && (
+          <Grid size={12}>
+            <Box sx={{ p: 4, textAlign: 'center', ...CARD_SX, borderRadius: 1 }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.4)' }}>No wallets found</Typography>
+            </Box>
+          </Grid>
+        )}
+      </Grid>
 
       {/* ------------------------------------------------------------------- */}
       {/* Create Wallet Dialog                                                 */}
       {/* ------------------------------------------------------------------- */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isSmall}>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Create New Wallet</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -690,7 +412,6 @@ export default function Wallets() {
         onClose={() => setEditDialog(null)}
         maxWidth="sm"
         fullWidth
-        fullScreen={isSmall}
       >
         <DialogTitle>Edit Wallet: {editDialog}</DialogTitle>
         <DialogContent>
@@ -758,7 +479,7 @@ export default function Wallets() {
       {/* ------------------------------------------------------------------- */}
       {/* Add Balance Dialog                                                   */}
       {/* ------------------------------------------------------------------- */}
-      <Dialog open={!!addBalanceDialog} onClose={() => setAddBalanceDialog(null)} fullScreen={isSmall}>
+      <Dialog open={!!addBalanceDialog} onClose={() => setAddBalanceDialog(null)}>
         <DialogTitle>Add Virtual Balance</DialogTitle>
         <DialogContent>
           <TextField
