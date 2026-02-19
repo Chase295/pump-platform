@@ -564,10 +564,11 @@ async def process_tune_job(job: Dict[str, Any]) -> None:
 
     await update_job_status(job_id, status="RUNNING", progress=0.3, progress_msg=f"Tuning ({n_iterations} iterations)...")
 
-    # Run tuning in executor
+    # Run tuning in process pool (avoids GIL blocking the event loop)
+    from backend.modules.training.trainer import _process_pool
     loop = asyncio.get_running_loop()
     tune_result = await loop.run_in_executor(
-        None, tune_hyperparameters_sync,
+        _process_pool, tune_hyperparameters_sync,
         model_type, X, y, strategy, n_iterations, param_space, params,
     )
 

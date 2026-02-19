@@ -7,7 +7,7 @@ const TOKEN_KEY = 'pump-auth-token';
 // ------------------------------------------------------------------
 const api = axios.create({
   baseURL: '/api',
-  timeout: 15_000,
+  timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 });
 

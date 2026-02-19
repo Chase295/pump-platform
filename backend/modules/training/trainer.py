@@ -11,6 +11,7 @@ FastAPI event loop is never blocked.
 """
 
 import asyncio
+import concurrent.futures
 import io
 import logging
 import os
@@ -42,6 +43,11 @@ from backend.modules.training.features import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Process pool for CPU-bound training (separate process = no GIL contention)
+# ---------------------------------------------------------------------------
+_process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=2)
 
 # ---------------------------------------------------------------------------
 # ML imports (soft dependencies)
@@ -801,10 +807,10 @@ async def train_model(
         from backend.modules.training.db_queries import get_phase_intervals
         phase_intervals = await get_phase_intervals()
 
-    # Run CPU-bound training in executor
+    # Run CPU-bound training in process pool (avoids GIL blocking the event loop)
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
-        None,
+        _process_pool,
         train_model_sync,
         data,
         model_type,
@@ -1087,7 +1093,7 @@ async def test_model(
 
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
-        None, _test_model_sync,
+        _process_pool, _test_model_sync,
         model_obj, test_data, features, model, phase_intervals,
         test_start, test_end, use_engineered, eng_windows, is_time_based, params,
     )
