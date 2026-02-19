@@ -34,6 +34,7 @@ import {
   fmtEur,
   fmtSol,
   truncateAddress,
+  parseApiError,
   CARD_SX,
 } from './tradingUtils';
 import type { Wallet, TransferLog } from '../../types/buy';
@@ -102,7 +103,7 @@ export default function Transfers() {
         setAlert({ type: 'error', message: response.data.message || 'Transfer failed' });
       }
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Transfer failed' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Transfer failed') });
     } finally {
       setLoading(false);
     }

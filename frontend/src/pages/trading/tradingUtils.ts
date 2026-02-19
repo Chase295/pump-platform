@@ -14,6 +14,19 @@ export function useExchangeRate() {
 }
 
 // ---------------------------------------------------------------------------
+// Error parsing (handles Pydantic ValidationError arrays from FastAPI 422)
+// ---------------------------------------------------------------------------
+export function parseApiError(error: any, fallback: string): string {
+  const detail = error?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((e: any) => e.msg ?? JSON.stringify(e)).join('; ');
+  }
+  return fallback;
+}
+
+// ---------------------------------------------------------------------------
 // Formatters
 // ---------------------------------------------------------------------------
 export const fmtEur = (n: number) =>

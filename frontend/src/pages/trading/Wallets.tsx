@@ -27,7 +27,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
-import { useExchangeRate, fmtEur, fmtSol, CARD_SX } from './tradingUtils';
+import { useExchangeRate, fmtEur, fmtSol, parseApiError, CARD_SX } from './tradingUtils';
 import type { Wallet, WalletStatus } from '../../types/buy';
 import WalletCard from './WalletCard';
 
@@ -143,7 +143,8 @@ export default function Wallets() {
   // ---------------------------------------------------------------------------
   const handleCreateWallet = async () => {
     try {
-      await buyApi.createWallet(newWallet);
+      const payload = { ...newWallet, address: newWallet.address || undefined };
+      await buyApi.createWallet(payload);
       setDialogOpen(false);
       setNewWallet({
         alias: '',
@@ -158,7 +159,7 @@ export default function Wallets() {
       refetchWallets();
       setAlert({ type: 'success', message: 'Wallet created successfully!' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to create wallet' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Failed to create wallet') });
     }
   };
 
@@ -188,7 +189,7 @@ export default function Wallets() {
       refetchWallets();
       setAlert({ type: 'success', message: 'Balance added successfully!' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to add balance' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Failed to add balance') });
     }
   };
 
@@ -200,7 +201,7 @@ export default function Wallets() {
       refetchWallets();
       setAlert({ type: 'success', message: `Wallet '${deleteDialog}' deleted successfully!` });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to delete wallet' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Failed to delete wallet') });
     }
   };
 
@@ -223,7 +224,7 @@ export default function Wallets() {
       refetchWallets();
       setAlert({ type: 'success', message: 'Wallet updated successfully!' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to update wallet' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Failed to update wallet') });
     }
   };
 
@@ -337,13 +338,23 @@ export default function Wallets() {
               fullWidth
               helperText="Unique identifier (e.g., worker_bot_01)"
             />
-            <TextField
-              label="Address"
-              value={newWallet.address}
-              onChange={(e) => setNewWallet({ ...newWallet, address: e.target.value })}
-              fullWidth
-              helperText="Solana public key"
-            />
+            {ctx.walletType === 'REAL' ? (
+              <TextField
+                label="Address"
+                value={newWallet.address}
+                onChange={(e) => setNewWallet({ ...newWallet, address: e.target.value })}
+                fullWidth
+                helperText="Solana public key (required for REAL wallets)"
+              />
+            ) : (
+              <TextField
+                label="Address (optional)"
+                value={newWallet.address}
+                onChange={(e) => setNewWallet({ ...newWallet, address: e.target.value })}
+                fullWidth
+                helperText="Leave empty to auto-generate a test address"
+              />
+            )}
             <TextField
               label="Tag"
               value={newWallet.tag}

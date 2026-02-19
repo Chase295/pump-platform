@@ -48,6 +48,7 @@ import {
   fmtEur,
   fmtSol,
   truncateMint,
+  parseApiError,
   STATUS_COLORS,
   TYPE_COLORS,
   ACTION_COLORS,
@@ -246,7 +247,7 @@ export default function WalletDetail() {
       refetchAll();
       setAlert({ type: 'success', message: 'Wallet updated successfully!' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to update wallet' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Failed to update wallet') });
     }
   };
 

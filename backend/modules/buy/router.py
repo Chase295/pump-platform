@@ -188,10 +188,17 @@ async def get_wallet(alias: str):
 @router.post("/wallets", response_model=WalletResponse, operation_id="buy_create_wallet")
 async def create_wallet(request: WalletCreate):
     """Create a new wallet."""
+    import uuid
+    address = request.address
+    if not address:
+        if request.type.value == "REAL":
+            raise HTTPException(status_code=400, detail="Address is required for REAL wallets")
+        # Auto-generate a unique test address (44 chars, matching Solana key length)
+        address = f"TEST{uuid.uuid4().hex[:40]}"
     try:
         wallet = await wallet_ops.create_wallet(
             alias=request.alias,
-            address=request.address,
+            address=address,
             wallet_type=request.type.value,
             tag=request.tag,
             virtual_sol_balance=request.virtual_sol_balance,

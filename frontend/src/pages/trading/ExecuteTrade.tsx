@@ -33,7 +33,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { buyApi } from '../../services/api';
 import { useTradingContext } from './TradingContext';
-import { useExchangeRate, fmtEur, fmtSol, truncateMint, CARD_SX } from './tradingUtils';
+import { useExchangeRate, fmtEur, fmtSol, truncateMint, parseApiError, CARD_SX } from './tradingUtils';
 import type { Wallet, Position, TradeResponse } from '../../types/buy';
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ export default function ExecuteTrade() {
         setAlert({ type: 'error', message: response.data.message || 'Buy failed' });
       }
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Buy failed' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Buy failed') });
     } finally {
       setLoading(false);
     }
@@ -141,7 +141,7 @@ export default function ExecuteTrade() {
         setAlert({ type: 'error', message: response.data.message || 'Sell failed' });
       }
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Sell failed' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Sell failed') });
     } finally {
       setLoading(false);
     }
@@ -157,7 +157,7 @@ export default function ExecuteTrade() {
       setAlert({ type: 'success', message: 'Sell-all completed!' });
       refetchData();
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Sell-all failed' });
+      setAlert({ type: 'error', message: parseApiError(error, 'Sell-all failed') });
     } finally {
       setLoading(false);
     }

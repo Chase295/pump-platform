@@ -117,7 +117,7 @@ class TransferRequest(BaseModel):
 class WalletCreate(BaseModel):
     """Request schema for creating a wallet."""
     alias: str = Field(..., min_length=1, max_length=50, description="Unique wallet alias")
-    address: str = Field(..., min_length=32, max_length=44, description="Solana public key")
+    address: Optional[str] = Field(default=None, min_length=32, max_length=44, description="Solana public key (auto-generated for TEST wallets if omitted)")
     type: WalletType = Field(default=WalletType.TEST, description="Wallet type")
     tag: Optional[str] = Field(default=None, description="Strategy tag")
     virtual_sol_balance: float = Field(default=10.0, ge=0, description="Initial virtual balance (TEST)")
