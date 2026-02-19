@@ -1291,6 +1291,156 @@ TP = True Positive  → korrekt: Pump vorhergesagt und Pump passiert`}
             <br />
             <strong>Fuer Rug Shield:</strong> Recall ist wichtiger — lieber zu viele Warnungen als einen Rug verpassen.
           </Alert>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Threshold Sweep */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#00d4ff' }}>Threshold Sweep</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Der Threshold Sweep zeigt wie sich Precision, Recall, F1, TP/FP und Simulated Profit bei verschiedenen
+            Schwellwerten (0.05 bis 0.9) verhalten. Das Modell gibt fuer jede Prediction eine Probability (0.0–1.0) aus —
+            der Threshold bestimmt, ab welcher Probability eine Prediction als "positiv" gewertet wird.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Threshold</strong></TableCell>
+                  <TableCell><strong>Bedeutung</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><code>0.05 – 0.2</code></TableCell>
+                  <TableCell>Sehr aggressiv: Viele Signale, aber auch viele False Positives. Nuetzlich wenn Probabilities generell sehr niedrig sind.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>0.3 – 0.4</code></TableCell>
+                  <TableCell>Moderat: Gute Balance wenn das Modell mittlere Confidence zeigt.</TableCell>
+                </TableRow>
+                <TableRow sx={{ bgcolor: 'rgba(0, 212, 255, 0.06)' }}>
+                  <TableCell><code>0.5</code> (default)</TableCell>
+                  <TableCell>Standard-Schwellwert: Nur Predictions mit &gt;50% Confidence werden positiv gewertet.</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><code>0.6 – 0.9</code></TableCell>
+                  <TableCell>Konservativ: Wenige aber sehr sichere Signale. Ideal fuer Auto-Trading.</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <strong>best F1:</strong> Die Zeile mit dem hoechsten F1-Score (bei TP &gt; 0) wird gruen markiert.
+            Wenn TP = 0 bei allen Thresholds, produziert das Modell keine brauchbaren Signale.
+          </Alert>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Probability Distribution */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#ff9800' }}>Probability-Verteilung</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Zeigt wie die Modell-Probabilities im Backtest verteilt sind. Diese Statistik wird nur bei neuen Tests berechnet.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Wert</strong></TableCell>
+                  <TableCell><strong>Beschreibung</strong></TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><strong>Interpretation</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell>Min / Max</TableCell>
+                  <TableCell>Niedrigste und hoechste Probability im Test</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Max &lt; 0.3 = Modell hat keine brauchbaren Signale</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Mean / Median</TableCell>
+                  <TableCell>Durchschnitt und Mittelwert der Verteilung</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Mean ~ 0.5 = Modell ist unsicher, Mean ~ 0.05 = Modell sagt fast immer "nein"</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>P90 / P95 / P99</TableCell>
+                  <TableCell>Perzentile: X% der Predictions liegen darunter</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>P95 zeigt den praktischen Max-Wert (ohne Ausreisser)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Above-Counts</TableCell>
+                  <TableCell>Wie viele Predictions ueber 5%, 10%, 20%, 30%, 50% liegen</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Hilft den optimalen Threshold zu finden</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Wenn Max Probability &lt; 0.3 → das Modell produziert im Backtest keine einzige Probability ueber 0.3.
+            Der Threshold Sweep zeigt dann TP=0 bei allen Thresholds ab 0.3. Pruefe die Feature Health um
+            fehlende Datenquellen zu identifizieren.
+          </Alert>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Feature Health */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#4caf50' }}>Feature Health</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Zeigt wie viele Features im Backtest komplett Null waren (= keine Daten). Ein hoher Anteil deutet auf
+            fehlende Datenquellen hin die waehrend des Trainings vorhanden waren.
+          </Typography>
+          <SmallTable>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Anteil Null-Features</strong></TableCell>
+                  <TableCell><strong>Status</strong></TableCell>
+                  <TableCell><strong>Moegliche Ursache</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><Chip label="0 – 10%" size="small" sx={{ bgcolor: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' }} /></TableCell>
+                  <TableCell>Gesund</TableCell>
+                  <TableCell>Alle Datenquellen liefern Daten</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><Chip label="10 – 30%" size="small" sx={{ bgcolor: 'rgba(255, 152, 0, 0.2)', color: '#ff9800' }} /></TableCell>
+                  <TableCell>Warnung</TableCell>
+                  <TableCell>Einzelne Feature-Gruppen fehlen (z.B. Graph oder Embeddings)</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><Chip label="> 30%" size="small" sx={{ bgcolor: 'rgba(244, 67, 54, 0.2)', color: '#f44336' }} /></TableCell>
+                  <TableCell>Kritisch</TableCell>
+                  <TableCell>Mehrere Extra-Sources fehlen — Probabilities werden kollabieren</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </SmallTable>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <strong>Typische Null-Feature-Gruppen:</strong>
+          </Typography>
+          <Box component="ul" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
+            <li><Typography variant="body2"><code>creator_*</code>, <code>wallet_cluster_*</code>, <code>similar_token_*</code> → Neo4j Graph-Features (Graph Sync aktiv?)</Typography></li>
+            <li><Typography variant="body2"><code>similarity_to_*</code>, <code>nearest_pattern_*</code> → pgvector Embedding-Features (Embeddings + Labels vorhanden?)</Typography></li>
+            <li><Typography variant="body2"><code>tx_*</code> → Transaction-Features (coin_transactions fuer den Testzeitraum vorhanden?)</Typography></li>
+            <li><Typography variant="body2"><code>meta_*</code> → Metadata-Features (discovered_coins + exchange_rates vorhanden?)</Typography></li>
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Simulated Profit */}
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', color: '#2196f3' }}>Simulated Profit</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Vereinfachte Profit-Simulation basierend auf den Predictions. Kein echtes Backtesting mit Orderbook,
+            sondern eine schnelle Heuristik.
+          </Typography>
+          <CodeBlock>
+{`Formel: ((TP × 1%) + (FP × -0.5%)) / Total Samples × 100
+
+  TP = True Positive  → angenommener Gewinn: +1% pro Signal
+  FP = False Positive → angenommener Verlust: -0.5% pro Fehlalarm
+  TN/FN werden ignoriert (kein Trade = kein Profit/Verlust)`}
+          </CodeBlock>
         </Chapter>
 
         {/* ── 12. Settings ──────────────────────────────────────── */}
