@@ -81,7 +81,7 @@ DEFAULT_FEATURES = [
 # THRESHOLD SWEEP
 # ============================================================================
 
-_SWEEP_THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+_SWEEP_THRESHOLDS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 
 def _compute_threshold_sweep(
@@ -909,6 +909,44 @@ def _test_model_sync(
     y_proba = model_obj.predict_proba(X_test)[:, 1] if hasattr(model_obj, "predict_proba") else None
     threshold_sweep = _compute_threshold_sweep(y_test, y_proba) if y_proba is not None else None
 
+    # Probability distribution stats
+    proba_stats = None
+    if y_proba is not None and len(y_proba) > 0:
+        proba_stats = {
+            "min": round(float(np.min(y_proba)), 6),
+            "max": round(float(np.max(y_proba)), 6),
+            "mean": round(float(np.mean(y_proba)), 6),
+            "median": round(float(np.median(y_proba)), 6),
+            "p25": round(float(np.percentile(y_proba, 25)), 6),
+            "p75": round(float(np.percentile(y_proba, 75)), 6),
+            "p90": round(float(np.percentile(y_proba, 90)), 6),
+            "p95": round(float(np.percentile(y_proba, 95)), 6),
+            "p99": round(float(np.percentile(y_proba, 99)), 6),
+            "above_05": int((y_proba >= 0.05).sum()),
+            "above_10": int((y_proba >= 0.10).sum()),
+            "above_20": int((y_proba >= 0.20).sum()),
+            "above_30": int((y_proba >= 0.30).sum()),
+            "above_50": int((y_proba >= 0.50).sum()),
+        }
+
+    # Feature diagnostics: detect collapsed features (all zero / all NaN)
+    feature_diagnostics = None
+    try:
+        total_features = len(avail)
+        zero_features = []
+        for i, fname in enumerate(avail):
+            col = X_test[:, i]
+            if np.all(col == 0) or np.all(np.isnan(col)):
+                zero_features.append(fname)
+        feature_diagnostics = {
+            "total_features": total_features,
+            "zero_features_count": len(zero_features),
+            "zero_features_pct": round(len(zero_features) / total_features * 100, 1) if total_features > 0 else 0,
+            "zero_features": zero_features[:30],  # cap at 30 for readability
+        }
+    except Exception:
+        pass
+
     # Metrics
     acc = accuracy_score(y_test, y_pred)
     f1_val = f1_score(y_test, y_pred)
@@ -971,6 +1009,8 @@ def _test_model_sync(
         "is_overfitted": bool(is_overfitted) if is_overfitted is not None else None,
         "test_duration_days": float(test_duration_days),
         "threshold_sweep": threshold_sweep,
+        "proba_stats": proba_stats,
+        "feature_diagnostics": feature_diagnostics,
     }
 
 

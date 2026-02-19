@@ -27,6 +27,7 @@ import {
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
+import ThresholdSweepTable from '../../components/training/ThresholdSweepTable';
 import type { TestResultResponse } from '../../types/training';
 
 interface TabPanelProps {
@@ -426,6 +427,127 @@ const TestResultDetails: React.FC = () => {
             </TableContainer>
           </CardContent>
         </Card>
+
+        {/* Threshold Sweep */}
+        {testResult.threshold_sweep && testResult.threshold_sweep.length > 0 && (
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', mt: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Threshold Sweep</Typography>
+              <ThresholdSweepTable data={testResult.threshold_sweep} />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Probability Distribution */}
+        {testResult.proba_stats && (
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', mt: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: '#ff9800' }}>Probability-Verteilung</Typography>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                Zeigt wie die Modell-Probabilities verteilt sind. Wenn max &lt; 0.3, produziert das Modell keine brauchbaren Signale.
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 6, md: 2 }}>
+                  <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                    <Typography variant="h5" sx={{ fontFamily: 'monospace', color: '#ff9800' }}>{testResult.proba_stats.min.toFixed(4)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Min</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, md: 2 }}>
+                  <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                    <Typography variant="h5" sx={{ fontFamily: 'monospace', color: '#ff9800' }}>{testResult.proba_stats.median.toFixed(4)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Median</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, md: 2 }}>
+                  <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                    <Typography variant="h5" sx={{ fontFamily: 'monospace', color: '#ff9800' }}>{testResult.proba_stats.mean.toFixed(4)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Mean</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, md: 2 }}>
+                  <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                    <Typography variant="h5" sx={{ fontFamily: 'monospace', color: '#ff9800' }}>{testResult.proba_stats.p95.toFixed(4)}</Typography>
+                    <Typography variant="caption" color="text.secondary">P95</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, md: 2 }}>
+                  <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                    <Typography variant="h5" sx={{ fontFamily: 'monospace', color: testResult.proba_stats.max >= 0.3 ? '#4caf50' : '#f44336' }}>{testResult.proba_stats.max.toFixed(4)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Max</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, md: 2 }}>
+                  <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                    <Typography variant="h5" sx={{ fontFamily: 'monospace', color: '#00d4ff' }}>{testResult.proba_stats.above_50}</Typography>
+                    <Typography variant="caption" color="text.secondary">&gt;0.50</Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip label={`>5%: ${testResult.proba_stats.above_05}`} size="small" variant="outlined" />
+                <Chip label={`>10%: ${testResult.proba_stats.above_10}`} size="small" variant="outlined" />
+                <Chip label={`>20%: ${testResult.proba_stats.above_20}`} size="small" variant="outlined" />
+                <Chip label={`>30%: ${testResult.proba_stats.above_30}`} size="small" variant="outlined" />
+                <Chip label={`>50%: ${testResult.proba_stats.above_50}`} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
+              </Box>
+              {testResult.proba_stats.max < 0.3 && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  Max Probability = {testResult.proba_stats.max.toFixed(4)} &mdash; Das Modell produziert keine einzige Probability &gt; 0.3.
+                  Die Predictions sind bei jedem Threshold wirkungslos.
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Feature Diagnostics */}
+        {testResult.feature_diagnostics && (
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', mt: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: testResult.feature_diagnostics.zero_features_pct > 30 ? '#f44336' : '#00d4ff' }}>
+                Feature Health
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 2 }}>
+                <Box>
+                  <Typography variant="h4" sx={{ fontFamily: 'monospace', color: testResult.feature_diagnostics.zero_features_pct > 30 ? '#f44336' : '#4caf50' }}>
+                    {testResult.feature_diagnostics.zero_features_count}/{testResult.feature_diagnostics.total_features}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">Features = 0</Typography>
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={testResult.feature_diagnostics.zero_features_pct}
+                    sx={{
+                      height: 10, borderRadius: 5, bgcolor: 'rgba(255,255,255,0.1)',
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 5,
+                        bgcolor: testResult.feature_diagnostics.zero_features_pct > 30 ? '#f44336' : testResult.feature_diagnostics.zero_features_pct > 10 ? '#ff9800' : '#4caf50',
+                      },
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {testResult.feature_diagnostics.zero_features_pct}% der Features sind komplett Null
+                  </Typography>
+                </Box>
+              </Box>
+              {testResult.feature_diagnostics.zero_features.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 200, overflow: 'auto' }}>
+                  {testResult.feature_diagnostics.zero_features.map((f) => (
+                    <Chip key={f} label={f} size="small" color="error" variant="outlined" />
+                  ))}
+                </Box>
+              )}
+              {testResult.feature_diagnostics.zero_features_pct > 30 && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  Mehr als 30% der Features sind Null. Das deutet auf fehlende Datenquellen hin
+                  (Graph-Features, Embedding-Similarities, Transaction-Features oder Metadata).
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </TabPanel>
 
       {/* Tab 2: Configuration */}

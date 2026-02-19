@@ -52,6 +52,49 @@ export interface ModelResponse {
   low_importance_features?: string[];
   shap_values?: Record<string, number>;
   early_stopping_rounds?: number;
+  threshold_sweep?: ThresholdSweepEntry[];
+}
+
+// ============================================================
+// Threshold Sweep
+// ============================================================
+export interface ThresholdSweepEntry {
+  threshold: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  tp: number;
+  fp: number;
+  tn: number;
+  fn: number;
+  simulated_profit_pct: number;
+}
+
+// ============================================================
+// Diagnostics
+// ============================================================
+export interface ProbaStats {
+  min: number;
+  max: number;
+  mean: number;
+  median: number;
+  p25: number;
+  p75: number;
+  p90: number;
+  p95: number;
+  p99: number;
+  above_05: number;
+  above_10: number;
+  above_20: number;
+  above_30: number;
+  above_50: number;
+}
+
+export interface FeatureDiagnostics {
+  total_features: number;
+  zero_features_count: number;
+  zero_features_pct: number;
+  zero_features: string[];
 }
 
 // ============================================================
@@ -93,6 +136,9 @@ export interface TestResultResponse {
   test_duration_days?: number;
   model_name?: string;
   total_predictions?: number;
+  threshold_sweep?: ThresholdSweepEntry[];
+  proba_stats?: ProbaStats;
+  feature_diagnostics?: FeatureDiagnostics;
 }
 
 // ============================================================
