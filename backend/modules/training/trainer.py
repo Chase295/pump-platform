@@ -78,6 +78,45 @@ DEFAULT_FEATURES = [
 
 
 # ============================================================================
+# THRESHOLD SWEEP
+# ============================================================================
+
+_SWEEP_THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+
+def _compute_threshold_sweep(
+    y_true: np.ndarray,
+    y_proba: np.ndarray,
+) -> List[Dict[str, Any]]:
+    """Compute classification metrics at multiple probability thresholds.
+
+    Returns a list of dicts, one per threshold, with precision, recall, f1,
+    tp/fp/tn/fn counts, and simulated_profit_pct.
+    """
+    sweep = []
+    n = len(y_true)
+    for t in _SWEEP_THRESHOLDS:
+        y_pred_t = (y_proba >= t).astype(int)
+        tp = int(((y_pred_t == 1) & (y_true == 1)).sum())
+        fp = int(((y_pred_t == 1) & (y_true == 0)).sum())
+        tn = int(((y_pred_t == 0) & (y_true == 0)).sum())
+        fn = int(((y_pred_t == 0) & (y_true == 1)).sum())
+        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+        sim_profit = ((tp * 0.01) + (fp * -0.005)) / n * 100 if n > 0 else 0.0
+        sweep.append({
+            "threshold": t,
+            "precision": round(prec, 4),
+            "recall": round(rec, 4),
+            "f1": round(f1, 4),
+            "tp": tp, "fp": fp, "tn": tn, "fn": fn,
+            "simulated_profit_pct": round(sim_profit, 4),
+        })
+    return sweep
+
+
+# ============================================================================
 # MODEL CACHE
 # ============================================================================
 
@@ -543,10 +582,13 @@ def train_model_sync(
     recall_val = recall_score(y_final_test, y_pred)
 
     roc_auc = None
+    threshold_sweep = None
+    y_proba = None
     if hasattr(model, "predict_proba"):
         try:
             y_proba = model.predict_proba(X_final_test)[:, 1]
             roc_auc = roc_auc_score(y_final_test, y_proba)
+            threshold_sweep = _compute_threshold_sweep(y_final_test, y_proba)
         except Exception:
             pass
 
@@ -627,6 +669,7 @@ def train_model_sync(
         "low_importance_features": low_importance,
         "shap_values": shap_summary,
         "early_stopping_rounds": early_stopping_rounds if early_stopping_rounds > 0 else None,
+        "threshold_sweep": threshold_sweep,
     }
 
     if cv_results is not None:
@@ -864,6 +907,7 @@ def _test_model_sync(
     y_test = labels.values
     y_pred = model_obj.predict(X_test)
     y_proba = model_obj.predict_proba(X_test)[:, 1] if hasattr(model_obj, "predict_proba") else None
+    threshold_sweep = _compute_threshold_sweep(y_test, y_proba) if y_proba is not None else None
 
     # Metrics
     acc = accuracy_score(y_test, y_pred)
@@ -926,6 +970,7 @@ def _test_model_sync(
         "f1_degradation": float(f1_deg) if f1_deg is not None else None,
         "is_overfitted": bool(is_overfitted) if is_overfitted is not None else None,
         "test_duration_days": float(test_duration_days),
+        "threshold_sweep": threshold_sweep,
     }
 
 

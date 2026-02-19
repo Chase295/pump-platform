@@ -193,6 +193,7 @@ class ModelResponse(BaseModel):
     low_importance_features: Optional[List[str]] = None
     shap_values: Optional[Dict[str, float]] = None
     early_stopping_rounds: Optional[int] = None
+    threshold_sweep: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         from_attributes = True
@@ -233,6 +234,7 @@ class TestResultResponse(BaseModel):
     f1_degradation: Optional[float] = None
     is_overfitted: Optional[bool] = None
     test_duration_days: Optional[float] = None
+    threshold_sweep: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         from_attributes = True

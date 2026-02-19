@@ -134,6 +134,7 @@ async def create_model(
     low_importance_features: Optional[List[str]] = None,
     shap_values: Optional[Dict[str, Any]] = None,
     early_stopping_rounds: Optional[int] = None,
+    threshold_sweep: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     """Insert a new model into ml_models. Returns the new model id."""
     pool = get_pool()
@@ -158,6 +159,7 @@ async def create_model(
     cm_jsonb = to_jsonb(confusion_matrix)
     low_imp_jsonb = to_jsonb(low_importance_features)
     shap_jsonb = to_jsonb(shap_values)
+    sweep_jsonb = to_jsonb(threshold_sweep)
 
     max_retries = 2
     retry_count = 0
@@ -178,7 +180,8 @@ async def create_model(
                     future_minutes, price_change_percent, target_direction,
                     use_flag_features, model_binary,
                     best_iteration, best_score, low_importance_features,
-                    shap_values, early_stopping_rounds
+                    shap_values, early_stopping_rounds,
+                    threshold_sweep
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8,
                     $9::jsonb, $10::jsonb, $11::jsonb,
@@ -188,7 +191,8 @@ async def create_model(
                     $27, $28, $29,
                     $30, $31::bytea,
                     $32, $33, $34::jsonb,
-                    $35::jsonb, $36
+                    $35::jsonb, $36,
+                    $37::jsonb
                 ) RETURNING id
                 """,
                 name, model_type, status,
@@ -203,6 +207,7 @@ async def create_model(
                 use_flag_features, model_binary,
                 best_iteration, best_score, low_imp_jsonb,
                 shap_jsonb, early_stopping_rounds,
+                sweep_jsonb,
             )
             logger.info("Model created: %s (ID: %d)", name, model_id)
             return model_id
@@ -263,6 +268,7 @@ async def get_model(model_id: int) -> Optional[Dict[str, Any]]:
         'features', 'phases', 'params', 'feature_importance',
         'cv_scores', 'confusion_matrix',
         'low_importance_features', 'shap_values',
+        'threshold_sweep',
     ]
     return convert_jsonb_fields(d, jsonb_fields, direction="from")
 
@@ -317,7 +323,7 @@ async def list_models(
         *params,
     )
     result = []
-    jsonb_fields = ['features', 'phases', 'params', 'feature_importance', 'cv_scores', 'confusion_matrix', 'low_importance_features', 'shap_values']
+    jsonb_fields = ['features', 'phases', 'params', 'feature_importance', 'cv_scores', 'confusion_matrix', 'low_importance_features', 'shap_values', 'threshold_sweep']
     for row in rows:
         d = dict(row)
         d.pop('model_binary', None)
@@ -373,6 +379,7 @@ async def get_or_create_test_result(
     f1_degradation: Optional[float] = None,
     is_overfitted: Optional[bool] = None,
     test_duration_days: Optional[float] = None,
+    threshold_sweep: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     """Create a test result or return existing id for same model/period."""
     pool = get_pool()
@@ -386,6 +393,7 @@ async def get_or_create_test_result(
 
     cm_jsonb = to_jsonb(confusion_matrix)
     fi_jsonb = to_jsonb(feature_importance)
+    sweep_jsonb = to_jsonb(threshold_sweep)
 
     test_id = await pool.fetchval(
         """
@@ -398,7 +406,7 @@ async def get_or_create_test_result(
             has_overlap, overlap_note, feature_importance,
             train_accuracy, train_f1, train_precision, train_recall,
             accuracy_degradation, f1_degradation, is_overfitted,
-            test_duration_days
+            test_duration_days, threshold_sweep
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8,
             $9, $10, $11, $12, $13::jsonb,
@@ -406,7 +414,7 @@ async def get_or_create_test_result(
             $18, $19, $20,
             $21, $22, $23::jsonb,
             $24, $25, $26, $27,
-            $28, $29, $30, $31
+            $28, $29, $30, $31, $32::jsonb
         ) RETURNING id
         """,
         model_id, test_start, test_end,
@@ -417,7 +425,7 @@ async def get_or_create_test_result(
         has_overlap, overlap_note, fi_jsonb,
         train_accuracy, train_f1, train_precision, train_recall,
         accuracy_degradation, f1_degradation, is_overfitted,
-        test_duration_days,
+        test_duration_days, sweep_jsonb,
     )
     logger.info("Test result created: ID %d for model %d", test_id, model_id)
     return test_id
@@ -434,7 +442,7 @@ async def get_test_result(test_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     d = dict(row)
-    return convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix'], direction="from")
+    return convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep'], direction="from")
 
 
 async def get_test_results(model_id: int) -> List[Dict[str, Any]]:
@@ -447,7 +455,7 @@ async def get_test_results(model_id: int) -> List[Dict[str, Any]]:
     result = []
     for row in rows:
         d = dict(row)
-        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix'], direction="from")
+        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep'], direction="from")
         result.append(d)
     return result
 
@@ -462,7 +470,7 @@ async def list_all_test_results(limit: int = 100, offset: int = 0) -> List[Dict[
     result = []
     for row in rows:
         d = dict(row)
-        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix'], direction="from")
+        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep'], direction="from")
         result.append(d)
     return result
 
