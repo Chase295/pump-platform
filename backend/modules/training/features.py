@@ -148,12 +148,18 @@ async def load_training_data(
             data = add_pump_detection_features(data, include_flags=include_flags)
             logger.info("%d columns after engineering", len(data.columns))
 
+        # Build per-mint cutoff timestamps (shared by graph, embedding, transaction, metadata)
+        # Uses the latest timestamp per mint in the training window to prevent data leakage.
+        _mint_cutoff_ts = None
+        if 'mint' in data.columns and 'timestamp' in data.columns and len(data) > 0:
+            _mint_cutoff_ts = data.groupby('mint')['timestamp'].max().to_dict()
+
         # --- Graph features (Neo4j) ---
         if use_graph_features and 'mint' in data.columns and len(data) > 0:
             try:
                 from backend.modules.training.graph_features import compute_graph_features, GRAPH_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                graph_feats = await compute_graph_features(unique_mints)
+                graph_feats = await compute_graph_features(unique_mints, timestamps=_mint_cutoff_ts)
                 for feat_name in GRAPH_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: graph_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Graph features added: %d features for %d mints", len(GRAPH_FEATURE_NAMES), len(unique_mints))
@@ -165,11 +171,7 @@ async def load_training_data(
             try:
                 from backend.modules.training.embedding_features import compute_embedding_features, EMBEDDING_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                # Pass per-mint timestamps for future time filtering support
-                mint_ts = None
-                if 'timestamp' in data.columns:
-                    mint_ts = data.groupby('mint')['timestamp'].max().to_dict()
-                emb_feats = await compute_embedding_features(unique_mints, timestamps=mint_ts)
+                emb_feats = await compute_embedding_features(unique_mints, timestamps=_mint_cutoff_ts)
                 for feat_name in EMBEDDING_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: emb_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Embedding features added: %d features for %d mints", len(EMBEDDING_FEATURE_NAMES), len(unique_mints))
@@ -181,12 +183,7 @@ async def load_training_data(
             try:
                 from backend.modules.training.transaction_features import compute_transaction_features, TRANSACTION_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                # Build per-mint cutoff timestamps to prevent data leakage:
-                # use the latest timestamp per mint in the training window
-                mint_timestamps = None
-                if 'timestamp' in data.columns:
-                    mint_timestamps = data.groupby('mint')['timestamp'].max().to_dict()
-                tx_feats = await compute_transaction_features(unique_mints, timestamps=mint_timestamps)
+                tx_feats = await compute_transaction_features(unique_mints, timestamps=_mint_cutoff_ts)
                 for feat_name in TRANSACTION_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: tx_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Transaction features added: %d features for %d mints", len(TRANSACTION_FEATURE_NAMES), len(unique_mints))
@@ -198,11 +195,7 @@ async def load_training_data(
             try:
                 from backend.modules.training.metadata_features import compute_metadata_features, METADATA_FEATURE_NAMES
                 unique_mints = data['mint'].unique().tolist()
-                # Pass per-mint timestamps for SOL price lookup
-                mint_timestamps = None
-                if 'timestamp' in data.columns:
-                    mint_timestamps = data.groupby('mint')['timestamp'].max().to_dict()
-                meta_feats = await compute_metadata_features(unique_mints, timestamps=mint_timestamps)
+                meta_feats = await compute_metadata_features(unique_mints, timestamps=_mint_cutoff_ts)
                 for feat_name in METADATA_FEATURE_NAMES:
                     data[feat_name] = data['mint'].map(lambda m: meta_feats.get(m, {}).get(feat_name, 0.0))
                 logger.info("Metadata features added: %d features for %d mints", len(METADATA_FEATURE_NAMES), len(unique_mints))
