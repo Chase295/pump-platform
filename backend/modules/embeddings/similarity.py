@@ -26,6 +26,7 @@ async def search_similar(
     min_similarity: float = 0.0,
     exclude_mint: Optional[str] = None,
     ef_search: int = 100,
+    created_before: Optional[datetime] = None,
 ) -> List[Dict]:
     """
     Find the k most similar embeddings to the query vector using pgvector HNSW.
@@ -39,6 +40,8 @@ async def search_similar(
         min_similarity: Minimum cosine similarity (0-1)
         exclude_mint: Exclude this mint from results
         ef_search: HNSW search accuracy (higher=more accurate, slower)
+        created_before: Only include embeddings created at or before this
+                        timestamp (for temporal filtering in backtests).
 
     Returns:
         List of dicts with id, mint, similarity, etc.
@@ -68,6 +71,10 @@ async def search_similar(
         idx += 1
         conditions.append(f"mint != ${idx}")
         params.append(exclude_mint)
+    if created_before is not None:
+        idx += 1
+        conditions.append(f"created_at <= ${idx}")
+        params.append(created_before)
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
     idx += 1
@@ -116,14 +123,25 @@ async def search_similar_to_mint(
     mint: str,
     window_start: Optional[datetime] = None,
     k: int = 20,
+    created_before: Optional[datetime] = None,
     **kwargs,
 ) -> List[Dict]:
-    """Find patterns similar to a specific coin's latest embedding."""
+    """Find patterns similar to a specific coin's latest embedding.
+
+    Args:
+        mint: Mint address to find similar patterns for.
+        window_start: Optional window start for the query embedding.
+        k: Number of similar results.
+        created_before: Only consider embeddings created at or before this
+                        timestamp (for temporal filtering in backtests).
+        **kwargs: Passed to search_similar().
+    """
     embedding = await db.get_embedding_vector(mint, window_start)
     if not embedding:
         return []
     return await search_similar(
-        embedding, k=k, exclude_mint=mint, **kwargs,
+        embedding, k=k, exclude_mint=mint,
+        created_before=created_before, **kwargs,
     )
 
 
@@ -282,6 +300,7 @@ async def sync_similarities_to_neo4j(
                 MATCH (t1:Token {address: $mint_a})
                 MATCH (t2:Token {address: $mint_b})
                 MERGE (t1)-[r:SIMILAR_TO {window_a: $window_a, window_b: $window_b}]->(t2)
+                ON CREATE SET r.created_at = datetime()
                 SET r.similarity = $similarity, r.updated_at = datetime()
                 """,
                 params,

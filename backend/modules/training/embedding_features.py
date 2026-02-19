@@ -3,6 +3,10 @@ Embedding Features for ML Training.
 
 Computes similarity-based features using pgvector embeddings for use
 in the training pipeline.
+
+Supports temporal filtering: when cutoff timestamps are provided,
+only embeddings created at or before the cutoff are considered to
+prevent data leakage during backtests.
 """
 
 import logging
@@ -33,23 +37,31 @@ async def compute_embedding_features(
     Args:
         mints: List of mint addresses.
         timestamps: Optional {mint: cutoff_timestamp} for time filtering.
-                    Note: similarity search currently uses all embeddings;
-                    this parameter is reserved for future filtering support.
+                    When provided, only embeddings created at or before the
+                    cutoff are used for similarity search and label lookup.
 
     Returns {mint: {feature_name: value}}.
     Falls back to zeros if embeddings are unavailable.
     """
-    if timestamps:
-        logger.debug("Embedding features: timestamp filtering not yet implemented in pgvector search")
     result: Dict[str, Dict[str, float]] = {}
     default_features = {name: 0.0 for name in EMBEDDING_FEATURE_NAMES}
 
-    try:
-        from backend.modules.embeddings.similarity import search_similar_to_mint, search_by_label
+    # Determine global cutoff: use the earliest cutoff across all mints
+    # so that reference pattern lookup (pump/rug labels) is also filtered.
+    global_cutoff: Optional[datetime] = None
+    if timestamps:
+        cutoff_values = [v for v in timestamps.values() if v is not None]
+        if cutoff_values:
+            global_cutoff = max(cutoff_values)
+            logger.debug("Embedding features: using temporal cutoff %s", global_cutoff)
 
-        # Get reference pump and rug patterns
-        pump_patterns = await search_by_label("pump", k=10)
-        rug_patterns = await search_by_label("rug", k=10)
+    try:
+        from backend.modules.embeddings.similarity import search_similar_to_mint, search_by_label, search_similar
+        from backend.modules.embeddings import db_queries as emb_db
+
+        # Get reference pump and rug patterns (filtered by cutoff if available)
+        pump_patterns = await _search_by_label_filtered("pump", global_cutoff, k=10)
+        rug_patterns = await _search_by_label_filtered("rug", global_cutoff, k=10)
 
         if not pump_patterns and not rug_patterns:
             logger.warning("No labeled patterns found -- embedding features will be zero")
@@ -58,7 +70,13 @@ async def compute_embedding_features(
         for mint in mints:
             feats = dict(default_features)
             try:
-                similar = await search_similar_to_mint(mint, k=20)
+                # Determine per-mint cutoff
+                mint_cutoff = timestamps.get(mint) if timestamps else None
+
+                # Get embedding for this mint, then search similar with cutoff
+                similar = await search_similar_to_mint(
+                    mint, k=20, created_before=mint_cutoff,
+                )
                 if not similar:
                     result[mint] = feats
                     continue
@@ -99,7 +117,7 @@ async def compute_embedding_features(
 
             result[mint] = feats
 
-        logger.info("Embedding features computed for %d mints", len(result))
+        logger.info("Embedding features computed for %d mints (temporal_filter=%s)", len(result), global_cutoff is not None)
         return result
 
     except ImportError:
@@ -108,3 +126,37 @@ async def compute_embedding_features(
     except Exception as e:
         logger.warning("Embedding features computation failed: %s", e)
         return {mint: dict(default_features) for mint in mints}
+
+
+async def _search_by_label_filtered(
+    label: str,
+    cutoff: Optional[datetime],
+    k: int = 10,
+) -> List[Dict]:
+    """Search for labeled embeddings, optionally filtered by created_at cutoff."""
+    from backend.database import fetch
+
+    conditions = ["label = $1"]
+    params: list = [label]
+    idx = 1
+
+    if cutoff is not None:
+        idx += 1
+        conditions.append(f"created_at <= ${idx}")
+        params.append(cutoff)
+
+    idx += 1
+    params.append(k)
+
+    rows = await fetch(
+        f"""
+        SELECT id, mint, window_start, window_end, phase_id_at_time, label,
+               strategy, created_at
+        FROM coin_pattern_embeddings
+        WHERE {" AND ".join(conditions)}
+        ORDER BY created_at DESC
+        LIMIT ${idx}
+        """,
+        *params,
+    )
+    return [dict(r) for r in rows]
