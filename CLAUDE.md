@@ -81,10 +81,10 @@ All API endpoints are automatically exposed as MCP tools for AI assistants (Clau
 
 ### How it works
 - **Library**: `fastapi-mcp 0.4.0` (auto-generates tools from OpenAPI spec)
-- **Transport**: SSE (Server-Sent Events)
-- **Backend endpoint**: `/mcp` (GET = SSE stream, POST `/mcp/messages/` = JSON-RPC)
-- **Nginx proxy**: `frontend/nginx.conf` proxies `/mcp` → `backend:8000` (with SSE support, buffering disabled, 1h timeout)
-- **Auth**: `/mcp` is NOT behind the Bearer token middleware (only `/api/*` routes are protected)
+- **Transport (primary)**: Streamable HTTP at `/mcp` (POST, recommended for claude.ai)
+- **Transport (legacy)**: SSE at `/sse` (GET + POST `/sse/messages/`, for Claude Code local)
+- **Nginx proxy**: `frontend/nginx.conf` proxies `/mcp` and `/sse` → `backend:8000` (buffering disabled, 1h timeout)
+- **Auth**: `/mcp` and `/sse` are NOT behind the Bearer token middleware (only `/api/*` routes are protected)
 
 ### Setup
 1. Copy `.mcp.json.example` to `.mcp.json` (or use the existing one in project root)
@@ -107,11 +107,13 @@ All `/api/*` routes become MCP tools automatically:
 
 ### Verify MCP is running
 ```bash
-curl -s -m 3 -N http://localhost:3000/mcp
-# Expected: event: endpoint\ndata: /mcp/messages/?session_id=...
-
-curl -s -X POST http://localhost:3000/mcp/messages/ \
+# Test Streamable HTTP transport (used by claude.ai)
+curl -s -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
-# Expected: {"detail":"session_id is required"} (correct — session comes from SSE)
+# Expected: JSON response with server capabilities
+
+# Test SSE transport (used by Claude Code local)
+curl -s -m 3 -N http://localhost:3000/sse
+# Expected: event: endpoint\ndata: /sse/messages/?session_id=...
 ```

@@ -284,7 +284,10 @@ else:
         description="Unified Crypto Trading Platform - Discovery, Training, Predictions, Trading",
     )
 
-mcp.mount()
+# Streamable HTTP at /mcp (recommended for claude.ai and modern MCP clients)
+mcp.mount_http()
+# SSE at /sse for backward compatibility (Claude Code local, older MCP clients)
+mcp.mount_sse()
 
 
 # Global endpoints
