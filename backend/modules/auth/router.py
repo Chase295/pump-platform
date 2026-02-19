@@ -71,7 +71,7 @@ class AuthCheckResponse(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse, operation_id="auth_login")
 async def login(body: LoginRequest):
     """Authenticate with username + password, receive a token."""
     if not _auth_enabled():
@@ -83,13 +83,13 @@ async def login(body: LoginRequest):
     return LoginResponse(token=_generate_token(), username=body.username)
 
 
-@router.get("/status", response_model=AuthStatusResponse)
+@router.get("/status", response_model=AuthStatusResponse, operation_id="auth_status")
 async def auth_status():
     """Check whether authentication is required."""
     return AuthStatusResponse(auth_required=_auth_enabled())
 
 
-@router.get("/check", response_model=AuthCheckResponse)
+@router.get("/check", response_model=AuthCheckResponse, operation_id="auth_check")
 async def auth_check(authorization: str | None = Header(None)):
     """Verify that the provided Bearer token is valid."""
     if not _auth_enabled():

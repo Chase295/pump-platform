@@ -221,7 +221,7 @@ class StatsResponse(BaseModel):
 # Models Endpoints
 # ============================================================
 
-@router.get("/models/available", response_model=AvailableModelsResponse)
+@router.get("/models/available", response_model=AvailableModelsResponse, operation_id="server_list_available_models")
 async def get_available_models_endpoint():
     """
     List all available models from training module (for import).
@@ -296,7 +296,7 @@ async def get_available_model_details_endpoint(model_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/models/import", response_model=ImportModelResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/models/import", response_model=ImportModelResponse, status_code=status.HTTP_201_CREATED, operation_id="server_import_model")
 async def import_model_endpoint(request: ModelImportRequest):
     """
     Import model from training module.
@@ -374,13 +374,13 @@ async def import_model_endpoint(request: ModelImportRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models", response_model=ModelsListResponse)
+@router.get("/models", response_model=ModelsListResponse, operation_id="server_list_models")
 async def get_models_endpoint(include_inactive: str = "false"):
     """List all models (alias for /models/active)"""
     return await get_active_models_endpoint(include_inactive)
 
 
-@router.get("/models/active", response_model=ModelsListResponse)
+@router.get("/models/active", response_model=ModelsListResponse, operation_id="server_list_active_models")
 async def get_active_models_endpoint(include_inactive: str = "false"):
     """
     List all active models (from prediction_active_models)
@@ -555,7 +555,7 @@ async def rename_model_endpoint(active_model_id: int, request: RenameModelReques
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/models/{active_model_id}", status_code=status.HTTP_200_OK)
+@router.delete("/models/{active_model_id}", status_code=status.HTTP_200_OK, operation_id="server_delete_model")
 async def delete_model_endpoint(active_model_id: int):
     """Delete model and all associated predictions"""
     try:
@@ -732,7 +732,7 @@ async def get_n8n_status_endpoint(active_model_id: int):
 # Predictions Endpoints
 # ============================================================
 
-@router.post("/predict", response_model=PredictionResponse)
+@router.post("/predict", response_model=PredictionResponse, operation_id="server_predict")
 async def predict_endpoint(request: PredictRequest):
     """Make predictions for a coin with specified models"""
     try:
@@ -781,7 +781,7 @@ async def predict_endpoint(request: PredictRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/predictions")
+@router.get("/predictions", operation_id="server_list_predictions")
 async def get_predictions_endpoint(
     active_model_id: Optional[int] = Query(None),
     coin_id: Optional[str] = Query(None),
@@ -955,7 +955,7 @@ async def get_coin_details_endpoint(active_model_id: int, coin_id: str):
 # Alert Statistics Endpoint
 # ============================================================
 
-@router.get("/alerts/statistics")
+@router.get("/alerts/statistics", operation_id="server_alert_statistics")
 async def get_alert_statistics_endpoint(
     model_id: Optional[int] = Query(None),
     date_from: Optional[str] = Query(None),
@@ -1044,7 +1044,7 @@ async def get_alert_statistics_endpoint(
 # Prediction Defaults Endpoints
 # ============================================================
 
-@router.get("/defaults")
+@router.get("/defaults", operation_id="server_get_defaults")
 async def get_defaults_endpoint():
     """Get prediction defaults applied to newly imported models."""
     try:
@@ -1055,7 +1055,7 @@ async def get_defaults_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/defaults")
+@router.patch("/defaults", operation_id="server_update_defaults")
 async def update_defaults_endpoint(updates: Dict[str, Any]):
     """Update prediction defaults. Returns the full updated dict."""
     try:
@@ -1070,7 +1070,7 @@ async def update_defaults_endpoint(updates: Dict[str, Any]):
 # System Endpoints
 # ============================================================
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, operation_id="server_health")
 async def health_check():
     """Health check endpoint"""
     from backend.database import check_health
@@ -1085,7 +1085,7 @@ async def health_check():
     )
 
 
-@router.get("/stats", response_model=StatsResponse)
+@router.get("/stats", response_model=StatsResponse, operation_id="server_get_stats")
 async def get_stats():
     """Get service statistics"""
     try:
@@ -1114,7 +1114,7 @@ async def get_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/system/preload-models")
+@router.post("/system/preload-models", operation_id="server_preload_models")
 async def preload_models_endpoint():
     """Preload all active models into memory"""
     try:

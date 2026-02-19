@@ -22,7 +22,7 @@ QUERY_TIMEOUT_SECONDS = 30
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 
 
-@router.get("/health")
+@router.get("/health", operation_id="graph_health")
 async def graph_health():
     """Neo4j connection status."""
     ok = await neo4j_health()
@@ -33,7 +33,7 @@ async def graph_health():
     }
 
 
-@router.get("/stats")
+@router.get("/stats", operation_id="graph_stats")
 async def graph_stats():
     """Node and relationship counts in Neo4j."""
     try:
@@ -102,7 +102,7 @@ async def graph_stats():
     }
 
 
-@router.get("/sync/status")
+@router.get("/sync/status", operation_id="graph_sync_status")
 async def sync_status():
     """Last sync timestamps and stats per entity."""
     sync = get_graph_sync()
@@ -111,7 +111,7 @@ async def sync_status():
     return sync.get_status()
 
 
-@router.post("/sync/trigger")
+@router.post("/sync/trigger", operation_id="graph_sync_trigger")
 async def sync_trigger():
     """Trigger a manual sync run."""
     sync = get_graph_sync()
@@ -121,7 +121,7 @@ async def sync_trigger():
     return {"status": "ok", "results": results}
 
 
-@router.get("/query")
+@router.get("/query", operation_id="graph_query")
 async def execute_query(
     q: str = Query(..., description="Read-only Cypher query"),
     limit: int = Query(100, ge=1, le=1000, description="Max rows"),

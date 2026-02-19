@@ -66,7 +66,7 @@ router = APIRouter(prefix="/api/buy", tags=["buy"])
 # HEALTH ENDPOINT
 # =================================================================
 
-@router.get("/health")
+@router.get("/health", operation_id="buy_health")
 async def health_check():
     """Health check for the buy module."""
     try:
@@ -86,7 +86,7 @@ async def health_check():
 # TRADING ENDPOINTS
 # =================================================================
 
-@router.post("/execute-buy", response_model=TradeResponse)
+@router.post("/execute-buy", response_model=TradeResponse, operation_id="buy_execute_buy")
 async def execute_buy(request: BuyRequest):
     """
     Execute a buy order.
@@ -105,7 +105,7 @@ async def execute_buy(request: BuyRequest):
     return result
 
 
-@router.post("/execute-sell", response_model=TradeResponse)
+@router.post("/execute-sell", response_model=TradeResponse, operation_id="buy_execute_sell")
 async def execute_sell(request: SellRequest):
     """
     Execute a sell order.
@@ -124,7 +124,7 @@ async def execute_sell(request: SellRequest):
     return result
 
 
-@router.post("/sell-all")
+@router.post("/sell-all", operation_id="buy_sell_all")
 async def sell_all_positions(request: SellAllRequest):
     """
     Sell 100% of ALL open positions for a wallet.
@@ -143,7 +143,7 @@ async def sell_all_positions(request: SellAllRequest):
     return result
 
 
-@router.post("/transfer", response_model=TransferResponse)
+@router.post("/transfer", response_model=TransferResponse, operation_id="buy_transfer")
 async def execute_transfer(request: TransferRequest):
     """
     Execute a SOL transfer.
@@ -164,7 +164,7 @@ async def execute_transfer(request: TransferRequest):
 # WALLET ENDPOINTS
 # =================================================================
 
-@router.get("/wallets", response_model=List[WalletResponse])
+@router.get("/wallets", response_model=List[WalletResponse], operation_id="buy_get_wallets")
 async def get_wallets(
     type: Optional[str] = Query(None, description="Filter by type (TEST/REAL)"),
     status: Optional[str] = Query(None, description="Filter by status")
@@ -174,7 +174,7 @@ async def get_wallets(
     return [_wallet_to_response(w) for w in wallets]
 
 
-@router.get("/wallets/{alias}", response_model=WalletResponse)
+@router.get("/wallets/{alias}", response_model=WalletResponse, operation_id="buy_get_wallet")
 async def get_wallet(alias: str):
     """Get a specific wallet by alias."""
     wallet = await wallet_ops.get_wallet(alias)
@@ -185,7 +185,7 @@ async def get_wallet(alias: str):
     return _wallet_to_response(wallet)
 
 
-@router.post("/wallets", response_model=WalletResponse)
+@router.post("/wallets", response_model=WalletResponse, operation_id="buy_create_wallet")
 async def create_wallet(request: WalletCreate):
     """Create a new wallet."""
     try:
@@ -204,7 +204,7 @@ async def create_wallet(request: WalletCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.delete("/wallets/{alias}")
+@router.delete("/wallets/{alias}", operation_id="buy_delete_wallet")
 async def delete_wallet(alias: str):
     """Delete a wallet and all associated data (positions, trades, transfers)."""
     try:
@@ -216,7 +216,7 @@ async def delete_wallet(alias: str):
         raise HTTPException(status_code=403, detail=str(e))
 
 
-@router.patch("/wallets/{alias}/toggle-trading")
+@router.patch("/wallets/{alias}/toggle-trading", operation_id="buy_toggle_trading")
 async def toggle_trading(alias: str, enabled: bool = Query(...)):
     """Enable or disable trading for a wallet."""
     try:
@@ -226,7 +226,7 @@ async def toggle_trading(alias: str, enabled: bool = Query(...)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.patch("/wallets/{alias}/toggle-transfer")
+@router.patch("/wallets/{alias}/toggle-transfer", operation_id="buy_toggle_transfer")
 async def toggle_transfer(alias: str, enabled: bool = Query(...)):
     """Enable or disable transfers for a wallet."""
     try:
@@ -236,7 +236,7 @@ async def toggle_transfer(alias: str, enabled: bool = Query(...)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.patch("/wallets/{alias}/add-balance")
+@router.patch("/wallets/{alias}/add-balance", operation_id="buy_add_balance")
 async def add_virtual_balance(alias: str, amount: float = Query(..., gt=0)):
     """Add virtual balance to a TEST wallet (for testing)."""
     try:
@@ -246,7 +246,7 @@ async def add_virtual_balance(alias: str, amount: float = Query(..., gt=0)):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/wallets/{alias}/analytics")
+@router.get("/wallets/{alias}/analytics", operation_id="buy_wallet_analytics")
 async def get_wallet_analytics(alias: str):
     """Get comprehensive analytics for a single wallet."""
     wallet = await wallet_ops.get_wallet(alias)
@@ -298,7 +298,7 @@ async def get_wallet_analytics(alias: str):
     }
 
 
-@router.get("/wallets/{alias}/pnl-history")
+@router.get("/wallets/{alias}/pnl-history", operation_id="buy_wallet_pnl_history")
 async def get_wallet_pnl_history(
     alias: str,
     period: str = Query("7d", description="24h, 7d, 30d, or all"),
@@ -335,7 +335,7 @@ async def get_wallet_pnl_history(
     }
 
 
-@router.get("/wallets/{alias}/positions-valued")
+@router.get("/wallets/{alias}/positions-valued", operation_id="buy_positions_valued")
 async def get_wallet_positions_valued(alias: str):
     """Get open positions with current Jupiter valuations."""
     from backend.modules.buy.jupiter_client import JupiterClient
@@ -371,7 +371,7 @@ async def get_wallet_positions_valued(alias: str):
     return result
 
 
-@router.patch("/wallets/{alias}", response_model=WalletResponse)
+@router.patch("/wallets/{alias}", response_model=WalletResponse, operation_id="buy_update_wallet")
 async def update_wallet(alias: str, request: WalletUpdate):
     """Update wallet settings."""
     try:
@@ -396,7 +396,7 @@ async def update_wallet(alias: str, request: WalletUpdate):
 # POSITION ENDPOINTS
 # =================================================================
 
-@router.get("/positions", response_model=List[PositionResponse])
+@router.get("/positions", response_model=List[PositionResponse], operation_id="buy_get_positions")
 async def get_positions(
     wallet_alias: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="OPEN or CLOSED")
@@ -406,7 +406,7 @@ async def get_positions(
     return [_position_to_response(p) for p in positions]
 
 
-@router.get("/positions/{wallet_alias}/{mint}", response_model=PositionResponse)
+@router.get("/positions/{wallet_alias}/{mint}", response_model=PositionResponse, operation_id="buy_get_position")
 async def get_position(wallet_alias: str, mint: str):
     """Get a specific open position."""
     position = await position_ops.get_position(wallet_alias, mint)
@@ -424,7 +424,7 @@ async def get_position(wallet_alias: str, mint: str):
 # TRADE LOG ENDPOINTS
 # =================================================================
 
-@router.get("/trades", response_model=List[TradeLogResponse])
+@router.get("/trades", response_model=List[TradeLogResponse], operation_id="buy_get_trades")
 async def get_trade_logs(
     wallet_alias: Optional[str] = Query(None),
     action: Optional[str] = Query(None, description="BUY or SELL"),
@@ -457,7 +457,7 @@ async def get_trade_logs(
 # TRANSFER LOG ENDPOINTS
 # =================================================================
 
-@router.get("/transfers")
+@router.get("/transfers", operation_id="buy_get_transfers")
 async def get_transfer_logs(
     wallet_alias: Optional[str] = Query(None),
     limit: int = Query(default=100, le=1000)
@@ -484,7 +484,7 @@ async def get_transfer_logs(
 # DASHBOARD ENDPOINTS
 # =================================================================
 
-@router.get("/dashboard/stats", response_model=DashboardStats)
+@router.get("/dashboard/stats", response_model=DashboardStats, operation_id="buy_dashboard_stats")
 async def get_dashboard_stats():
     """Get dashboard statistics."""
     # Total wallets
@@ -519,7 +519,7 @@ async def get_dashboard_stats():
     )
 
 
-@router.get("/dashboard/performance", response_model=List[WalletPerformanceResponse])
+@router.get("/dashboard/performance", response_model=List[WalletPerformanceResponse], operation_id="buy_dashboard_performance")
 async def get_wallet_performance():
     """Get wallet performance metrics including profit/loss."""
     performance = await fetch("""
@@ -559,7 +559,7 @@ async def get_wallet_performance():
     ]
 
 
-@router.get("/exchange-rate", response_model=ExchangeRateResponse)
+@router.get("/exchange-rate", response_model=ExchangeRateResponse, operation_id="buy_exchange_rate")
 async def get_exchange_rate():
     """Get current SOL/EUR exchange rate from exchange_rates table."""
     row = await fetchrow(
@@ -585,7 +585,7 @@ async def get_exchange_rate():
     )
 
 
-@router.get("/dashboard/pnl-history", response_model=PnlHistoryResponse)
+@router.get("/dashboard/pnl-history", response_model=PnlHistoryResponse, operation_id="buy_pnl_history")
 async def get_pnl_history(
     wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
     period: str = Query("24h", description="24h, 7d, 30d, or all"),
@@ -640,7 +640,7 @@ async def get_pnl_history(
     )
 
 
-@router.get("/dashboard/trade-activity", response_model=TradeActivityResponse)
+@router.get("/dashboard/trade-activity", response_model=TradeActivityResponse, operation_id="buy_trade_activity")
 async def get_trade_activity(
     wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
     period: str = Query("24h", description="24h, 7d, 30d, or all"),
@@ -686,7 +686,7 @@ async def get_trade_activity(
     )
 
 
-@router.get("/dashboard/trade-analytics", response_model=TradeAnalyticsResponse)
+@router.get("/dashboard/trade-analytics", response_model=TradeAnalyticsResponse, operation_id="buy_trade_analytics")
 async def get_trade_analytics(
     wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
     period: str = Query("24h", description="24h, 7d, 30d, or all"),

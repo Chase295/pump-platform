@@ -140,7 +140,7 @@ async def verify_oauth_dependency(authorization: str | None = Header(None)):
 router = APIRouter(tags=["oauth"])
 
 
-@router.get("/.well-known/oauth-authorization-server")
+@router.get("/.well-known/oauth-authorization-server", operation_id="oauth_metadata")
 async def oauth_metadata():
     """OAuth 2.0 Authorization Server Metadata (RFC 8414)."""
     base = settings.OAUTH_BASE_URL.rstrip("/")
@@ -161,7 +161,7 @@ async def oauth_metadata():
     }
 
 
-@router.get("/oauth/authorize")
+@router.get("/oauth/authorize", operation_id="oauth_authorize")
 async def oauth_authorize(
     client_id: str = Query(...),
     redirect_uri: str = Query(...),
@@ -206,7 +206,7 @@ class OAuthApproveResponse(BaseModel):
     redirect_url: str
 
 
-@router.post("/api/auth/oauth/approve", response_model=OAuthApproveResponse)
+@router.post("/api/auth/oauth/approve", response_model=OAuthApproveResponse, operation_id="oauth_approve")
 async def oauth_approve(body: OAuthApproveRequest):
     """Called by React consent page after user enters credentials.
 
@@ -246,7 +246,7 @@ async def oauth_approve(body: OAuthApproveRequest):
     return OAuthApproveResponse(redirect_url=redirect_url)
 
 
-@router.post("/oauth/token")
+@router.post("/oauth/token", operation_id="oauth_token")
 async def oauth_token(
     grant_type: str = Form(...),
     code: str = Form(""),
@@ -399,7 +399,7 @@ async def oauth_token(
         )
 
 
-@router.post("/oauth/register")
+@router.post("/oauth/register", operation_id="oauth_register")
 async def oauth_register(request: Request):
     """Dynamic Client Registration (DCR) - returns pre-configured credentials.
 

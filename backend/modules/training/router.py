@@ -153,7 +153,7 @@ async def create_model_job_advanced(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/models/create", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/models/create", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED, operation_id="training_create_model")
 async def create_model_job_body(request: TrainModelRequest):
     """Create a training job via JSON body (used by the frontend)."""
     return await _create_model_job(request)
@@ -283,7 +283,7 @@ async def _create_model_job(request: TrainModelRequest):
     )
 
 
-@router.get("/models", response_model=List[ModelResponse])
+@router.get("/models", response_model=List[ModelResponse], operation_id="training_list_models")
 async def list_models_endpoint(
     status_filter: Optional[str] = Query(None, alias="status"),
     is_deleted: bool = False,
@@ -311,7 +311,7 @@ async def list_models_endpoint(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/models/{model_id}", response_model=ModelResponse)
+@router.get("/models/{model_id}", response_model=ModelResponse, operation_id="training_get_model")
 async def get_model_endpoint(model_id: int):
     """Get model details."""
     model = await get_model(model_id)
@@ -328,7 +328,7 @@ async def get_model_endpoint(model_id: int):
     return ModelResponse(**d)
 
 
-@router.post("/models/{model_id}/test", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/models/{model_id}/test", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED, operation_id="training_test_model")
 async def test_model_job(model_id: int, test_start: str, test_end: str):
     """Create a TEST job for a model."""
     model = await get_model(model_id)
@@ -353,7 +353,7 @@ async def test_model_job(model_id: int, test_start: str, test_end: str):
     )
 
 
-@router.post("/models/compare", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/models/compare", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED, operation_id="training_compare_models")
 async def compare_models_job(
     model_ids: str = Query(..., description="Comma-separated model IDs (2-4)"),
     test_start: str = Query(..., description="Test period start (ISO format)"),
@@ -393,7 +393,7 @@ async def compare_models_job(
     )
 
 
-@router.post("/models/{model_id}/tune", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/models/{model_id}/tune", response_model=CreateJobResponse, status_code=status.HTTP_201_CREATED, operation_id="training_tune_model")
 async def tune_model(
     model_id: int,
     strategy: str = Query("random", description="Tuning strategy: 'random'"),
@@ -423,7 +423,7 @@ async def tune_model(
     )
 
 
-@router.patch("/models/{model_id}", response_model=ModelResponse)
+@router.patch("/models/{model_id}", response_model=ModelResponse, operation_id="training_update_model")
 async def update_model_endpoint(model_id: int, request: UpdateModelRequest):
     """Update model name or description."""
     model = await get_model(model_id)
@@ -446,7 +446,7 @@ async def update_model_endpoint(model_id: int, request: UpdateModelRequest):
     return ModelResponse(**dict(updated))
 
 
-@router.delete("/models/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/models/{model_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="training_delete_model")
 async def delete_model_endpoint(model_id: int):
     """Soft-delete a model."""
     model = await get_model(model_id)
@@ -456,7 +456,7 @@ async def delete_model_endpoint(model_id: int):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/models/{model_id}/download")
+@router.get("/models/{model_id}/download", operation_id="training_download_model")
 async def download_model(model_id: int):
     """Download a model as .pkl file (filesystem or DB binary)."""
     model = await get_model(model_id)
@@ -487,7 +487,7 @@ async def download_model(model_id: int):
 # Queue Endpoints
 # ============================================================
 
-@router.get("/queue", response_model=List[JobResponse])
+@router.get("/queue", response_model=List[JobResponse], operation_id="training_list_jobs")
 async def list_jobs_endpoint(
     status_filter: Optional[str] = Query(None, alias="status"),
     job_type: Optional[str] = None,
@@ -533,7 +533,7 @@ async def list_jobs_endpoint(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/queue/{job_id}", response_model=JobResponse)
+@router.get("/queue/{job_id}", response_model=JobResponse, operation_id="training_get_job")
 async def get_job_endpoint(job_id: int):
     """Get job details with results."""
     job = await get_job(job_id)
@@ -570,7 +570,7 @@ async def get_job_endpoint(job_id: int):
 # Features Endpoint
 # ============================================================
 
-@router.get("/features")
+@router.get("/features", operation_id="training_get_features")
 async def get_available_features(include_flags: bool = Query(True, description="Include flag features?")):
     """Return all available features (base, engineered, flags)."""
     base_features = [
@@ -675,7 +675,7 @@ async def get_available_features(include_flags: bool = Query(True, description="
 # System / Health Endpoints
 # ============================================================
 
-@router.get("/health")
+@router.get("/health", operation_id="training_health")
 async def health_check():
     """Health check for the training module."""
     try:
@@ -696,7 +696,7 @@ async def health_check():
 # Configuration Endpoints
 # ============================================================
 
-@router.get("/config")
+@router.get("/config", operation_id="training_get_config")
 async def get_config():
     """Return current training configuration."""
     return {
@@ -710,7 +710,7 @@ async def get_config():
 # Phases Endpoint
 # ============================================================
 
-@router.get("/phases")
+@router.get("/phases", operation_id="training_get_phases")
 async def get_phases_endpoint():
     """Load all coin phases from ref_coin_phases."""
     try:
@@ -725,7 +725,7 @@ async def get_phases_endpoint():
 # Comparison Endpoints
 # ============================================================
 
-@router.get("/comparisons", response_model=List[ComparisonResponse])
+@router.get("/comparisons", response_model=List[ComparisonResponse], operation_id="training_list_comparisons")
 async def list_comparisons_endpoint(limit: int = 100, offset: int = 0):
     """List all comparison results."""
     try:
@@ -767,7 +767,7 @@ async def delete_comparison_endpoint(comparison_id: int):
 # Test Results Endpoints
 # ============================================================
 
-@router.get("/test-results", response_model=List[TestResultResponse])
+@router.get("/test-results", response_model=List[TestResultResponse], operation_id="training_list_test_results")
 async def list_test_results_endpoint(limit: int = 100, offset: int = 0):
     """List all test results."""
     try:
@@ -809,14 +809,14 @@ async def delete_test_result_endpoint(test_id: int):
 # Training Settings Endpoints
 # ============================================================
 
-@router.get("/settings")
+@router.get("/settings", operation_id="training_get_settings")
 async def get_training_settings():
     """Get all training settings."""
     from backend.modules.training.auto_retrain import get_all_training_settings
     return await get_all_training_settings()
 
 
-@router.patch("/settings")
+@router.patch("/settings", operation_id="training_update_settings")
 async def update_training_settings_endpoint(updates: Dict[str, Any]):
     """Update training settings."""
     from backend.modules.training.auto_retrain import update_training_settings
@@ -828,7 +828,7 @@ async def update_training_settings_endpoint(updates: Dict[str, Any]):
 # Data Availability Endpoint
 # ============================================================
 
-@router.get("/data-availability")
+@router.get("/data-availability", operation_id="training_data_availability")
 async def get_data_availability():
     """Return min/max timestamps from coin_metrics."""
     try:

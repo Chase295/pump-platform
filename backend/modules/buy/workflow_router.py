@@ -77,7 +77,7 @@ def _row_to_execution(row: dict) -> dict:
 # RECENT EXECUTIONS  (MUST be before /{workflow_id} routes)
 # =================================================================
 
-@router.get("/executions/recent", response_model=List[WorkflowExecutionResponse])
+@router.get("/executions/recent", response_model=List[WorkflowExecutionResponse], operation_id="buy_recent_executions")
 async def get_recent_executions(
     limit: int = Query(20, ge=1, le=500),
     result: Optional[str] = Query(None, description="Filter by result: EXECUTED, REJECTED, ERROR"),
@@ -106,7 +106,7 @@ async def get_recent_executions(
 # LIST / CREATE
 # =================================================================
 
-@router.get("", response_model=List[WorkflowResponse])
+@router.get("", response_model=List[WorkflowResponse], operation_id="buy_list_workflows")
 async def list_workflows(
     wallet_alias: Optional[str] = Query(None, description="Filter by wallet alias"),
     type: Optional[str] = Query(None, description="Filter by type: BUY or SELL"),
@@ -134,7 +134,7 @@ async def list_workflows(
     return [_row_to_workflow(r) for r in rows]
 
 
-@router.post("", response_model=WorkflowResponse, status_code=201)
+@router.post("", response_model=WorkflowResponse, status_code=201, operation_id="buy_create_workflow")
 async def create_workflow(request: WorkflowCreate):
     """Create a new trading workflow."""
     # Resolve wallet alias to ID
@@ -180,7 +180,7 @@ async def create_workflow(request: WorkflowCreate):
 # SINGLE WORKFLOW
 # =================================================================
 
-@router.get("/{workflow_id}", response_model=WorkflowResponse)
+@router.get("/{workflow_id}", response_model=WorkflowResponse, operation_id="buy_get_workflow")
 async def get_workflow(workflow_id: str):
     """Get a single workflow by ID."""
     row = await fetchrow(
@@ -198,7 +198,7 @@ async def get_workflow(workflow_id: str):
     return _row_to_workflow(row)
 
 
-@router.patch("/{workflow_id}", response_model=WorkflowResponse)
+@router.patch("/{workflow_id}", response_model=WorkflowResponse, operation_id="buy_update_workflow")
 async def update_workflow(workflow_id: str, request: WorkflowUpdate):
     """Update a workflow's configuration."""
     # Build dynamic SET clause
@@ -271,7 +271,7 @@ async def update_workflow(workflow_id: str, request: WorkflowUpdate):
     return _row_to_workflow(full_row)
 
 
-@router.delete("/{workflow_id}")
+@router.delete("/{workflow_id}", operation_id="buy_delete_workflow")
 async def delete_workflow(workflow_id: str):
     """Delete a workflow and all its executions."""
     result = await execute(
@@ -288,7 +288,7 @@ async def delete_workflow(workflow_id: str):
 # TOGGLE ACTIVE
 # =================================================================
 
-@router.patch("/{workflow_id}/toggle", response_model=WorkflowResponse)
+@router.patch("/{workflow_id}/toggle", response_model=WorkflowResponse, operation_id="buy_toggle_workflow")
 async def toggle_workflow(
     workflow_id: str,
     active: bool = Query(..., description="Set active state"),
@@ -323,7 +323,7 @@ async def toggle_workflow(
 # WORKFLOW EXECUTIONS
 # =================================================================
 
-@router.get("/{workflow_id}/executions", response_model=List[WorkflowExecutionResponse])
+@router.get("/{workflow_id}/executions", response_model=List[WorkflowExecutionResponse], operation_id="buy_workflow_executions")
 async def get_workflow_executions(
     workflow_id: str,
     limit: int = Query(50, ge=1, le=500),

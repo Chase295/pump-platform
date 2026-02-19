@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api/embeddings", tags=["embeddings"])
 # Health & Status
 # ---------------------------------------------------------------------------
 
-@router.get("/health")
+@router.get("/health", operation_id="embeddings_health")
 async def health():
     """Service status, active configs, stats."""
     from backend.modules.embeddings.service import get_embedding_service
@@ -55,7 +55,7 @@ async def health():
     }
 
 
-@router.get("/stats")
+@router.get("/stats", operation_id="embeddings_stats")
 async def stats():
     """Comprehensive embedding statistics."""
     return await db.get_stats()
@@ -65,13 +65,13 @@ async def stats():
 # Configs
 # ---------------------------------------------------------------------------
 
-@router.get("/configs")
+@router.get("/configs", operation_id="embeddings_list_configs")
 async def list_configs():
     """List all embedding configurations."""
     return await db.get_all_configs()
 
 
-@router.post("/configs")
+@router.post("/configs", operation_id="embeddings_create_config")
 async def create_config(req: CreateConfigRequest):
     """Create a new embedding configuration."""
     try:
@@ -90,7 +90,7 @@ async def create_config(req: CreateConfigRequest):
         raise
 
 
-@router.get("/configs/{config_id}")
+@router.get("/configs/{config_id}", operation_id="embeddings_get_config")
 async def get_config(config_id: int):
     """Get config details."""
     cfg = await db.get_config(config_id)
@@ -99,7 +99,7 @@ async def get_config(config_id: int):
     return cfg
 
 
-@router.patch("/configs/{config_id}")
+@router.patch("/configs/{config_id}", operation_id="embeddings_update_config")
 async def update_config(config_id: int, req: UpdateConfigRequest):
     """Update a config."""
     updates = req.model_dump(exclude_none=True)
@@ -111,7 +111,7 @@ async def update_config(config_id: int, req: UpdateConfigRequest):
     return result
 
 
-@router.delete("/configs/{config_id}")
+@router.delete("/configs/{config_id}", operation_id="embeddings_delete_config")
 async def delete_config(config_id: int):
     """Delete a config and all its embeddings."""
     deleted = await db.delete_config(config_id)
@@ -124,7 +124,7 @@ async def delete_config(config_id: int):
 # Generation
 # ---------------------------------------------------------------------------
 
-@router.post("/generate")
+@router.post("/generate", operation_id="embeddings_generate")
 async def trigger_generation(req: GenerateRequest):
     """Trigger manual embedding generation for a time range."""
     if req.config_id:
@@ -150,7 +150,7 @@ async def trigger_generation(req: GenerateRequest):
     return {"status": "queued", "jobs_created": len(jobs), "jobs": jobs}
 
 
-@router.get("/jobs")
+@router.get("/jobs", operation_id="embeddings_list_jobs")
 async def list_jobs(
     config_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -160,7 +160,7 @@ async def list_jobs(
     return await db.get_jobs(config_id=config_id, status=status, limit=limit)
 
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}", operation_id="embeddings_get_job")
 async def get_job(job_id: int):
     """Get job details."""
     job = await db.get_job(job_id)
@@ -173,7 +173,7 @@ async def get_job(job_id: int):
 # Browsing
 # ---------------------------------------------------------------------------
 
-@router.get("/browse")
+@router.get("/browse", operation_id="embeddings_browse")
 async def browse_embeddings(
     config_id: Optional[int] = Query(None),
     mint: Optional[str] = Query(None),
@@ -191,7 +191,7 @@ async def browse_embeddings(
     )
 
 
-@router.get("/browse/by-mint/{mint}")
+@router.get("/browse/by-mint/{mint}", operation_id="embeddings_browse_by_mint")
 async def get_embeddings_by_mint(
     mint: str,
     limit: int = Query(50, ge=1, le=500),
@@ -200,7 +200,7 @@ async def get_embeddings_by_mint(
     return await db.get_embeddings(mint=mint, limit=limit)
 
 
-@router.get("/browse/{embedding_id}")
+@router.get("/browse/{embedding_id}", operation_id="embeddings_get_embedding")
 async def get_embedding(embedding_id: int):
     """Get single embedding details."""
     emb = await db.get_embedding_by_id(embedding_id)
@@ -213,7 +213,7 @@ async def get_embedding(embedding_id: int):
 # Similarity Search
 # ---------------------------------------------------------------------------
 
-@router.post("/search/similar")
+@router.post("/search/similar", operation_id="embeddings_search_similar")
 async def search_similar_endpoint(req: SimilaritySearchRequest):
     """Find similar patterns by embedding vector or mint."""
     start_time = time.monotonic()
@@ -255,7 +255,7 @@ async def search_similar_endpoint(req: SimilaritySearchRequest):
     }
 
 
-@router.get("/search/by-mint/{mint}")
+@router.get("/search/by-mint/{mint}", operation_id="embeddings_search_by_mint")
 async def search_by_mint(
     mint: str,
     k: int = Query(20, ge=1, le=200),
@@ -292,7 +292,7 @@ async def search_by_label_endpoint(
 # Labels
 # ---------------------------------------------------------------------------
 
-@router.post("/labels")
+@router.post("/labels", operation_id="embeddings_add_label")
 async def add_label(req: AddLabelRequest):
     """Add a label to an embedding."""
     emb = await db.get_embedding_by_id(req.embedding_id)
@@ -307,7 +307,7 @@ async def add_label(req: AddLabelRequest):
     )
 
 
-@router.get("/labels")
+@router.get("/labels", operation_id="embeddings_list_labels")
 async def get_labels():
     """Get all labels with counts."""
     raw = await db.get_label_stats()
@@ -322,7 +322,7 @@ async def get_labels():
     return list(labels.values())
 
 
-@router.delete("/labels/{label_id}")
+@router.delete("/labels/{label_id}", operation_id="embeddings_delete_label")
 async def delete_label(label_id: int):
     """Delete a label."""
     deleted = await db.delete_label(label_id)
@@ -331,7 +331,7 @@ async def delete_label(label_id: int):
     return {"status": "deleted"}
 
 
-@router.post("/labels/propagate")
+@router.post("/labels/propagate", operation_id="embeddings_propagate_labels")
 async def propagate_labels(req: PropagateLabelRequest):
     """Propagate labels to similar unlabeled patterns."""
     # Find all embeddings with the source label
@@ -372,7 +372,7 @@ async def propagate_labels(req: PropagateLabelRequest):
 # Analysis
 # ---------------------------------------------------------------------------
 
-@router.get("/analysis/distribution")
+@router.get("/analysis/distribution", operation_id="embeddings_label_distribution")
 async def label_distribution():
     """Label distribution statistics."""
     stats = await db.get_stats()
@@ -386,7 +386,7 @@ async def label_distribution():
     }
 
 
-@router.get("/analysis/clusters")
+@router.get("/analysis/clusters", operation_id="embeddings_cluster_analysis")
 async def cluster_analysis(
     k: int = Query(5, ge=2, le=20, description="Number of clusters"),
     strategy: Optional[str] = Query(None),
@@ -467,7 +467,7 @@ async def cluster_analysis(
     }
 
 
-@router.get("/analysis/outliers")
+@router.get("/analysis/outliers", operation_id="embeddings_find_outliers")
 async def find_outliers(
     strategy: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
@@ -525,14 +525,14 @@ async def find_outliers(
 # Neo4j Sync
 # ---------------------------------------------------------------------------
 
-@router.post("/neo4j/sync")
+@router.post("/neo4j/sync", operation_id="embeddings_neo4j_sync")
 async def trigger_neo4j_sync():
     """Trigger manual SIMILAR_TO sync to Neo4j."""
     synced = await sync_similarities_to_neo4j()
     return {"status": "done", "synced": synced}
 
 
-@router.get("/neo4j/status")
+@router.get("/neo4j/status", operation_id="embeddings_neo4j_status")
 async def neo4j_sync_status():
     """Neo4j sync status."""
     from backend.database import fetchval
