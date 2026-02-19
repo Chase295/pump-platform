@@ -594,6 +594,9 @@ CREATE TABLE IF NOT EXISTS ml_models (
     low_importance_features JSONB,
     early_stopping_rounds INTEGER,
 
+    -- Threshold sweep: metrics at multiple probability thresholds
+    threshold_sweep JSONB,
+
     CONSTRAINT chk_ml_model_type CHECK (model_type IN ('xgboost', 'lightgbm')),
     CONSTRAINT chk_ml_status CHECK (status IN ('TRAINING', 'READY', 'FAILED')),
     CONSTRAINT chk_ml_operator CHECK (target_operator IS NULL OR target_operator IN ('>', '<', '>=', '<=', '=')),
@@ -668,6 +671,9 @@ CREATE TABLE IF NOT EXISTS ml_test_results (
 
     -- Rug detection metrics
     rug_detection_metrics JSONB,
+
+    -- Threshold sweep: metrics at multiple probability thresholds
+    threshold_sweep JSONB,
 
     CONSTRAINT chk_test_dates CHECK (test_start < test_end),
     CONSTRAINT chk_test_duration CHECK (test_duration_days IS NULL OR test_duration_days >= 0)

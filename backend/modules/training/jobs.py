@@ -225,6 +225,7 @@ async def process_train_job(job: Dict[str, Any]) -> None:
         low_importance_features=training_result.get("low_importance_features"),
         shap_values=training_result.get("shap_values"),
         early_stopping_rounds=training_result.get("early_stopping_rounds"),
+        threshold_sweep=training_result.get("threshold_sweep"),
     )
 
     # Put deserialized model into cache
@@ -341,6 +342,7 @@ async def process_test_job(job: Dict[str, Any]) -> None:
         f1_degradation=test_result.get("f1_degradation"),
         is_overfitted=test_result.get("is_overfitted"),
         test_duration_days=test_result.get("test_duration_days"),
+        threshold_sweep=test_result.get("threshold_sweep"),
     )
 
     await update_job_status(
@@ -423,6 +425,7 @@ async def process_compare_job(job: Dict[str, Any]) -> None:
             f1_degradation=result.get("f1_degradation"),
             is_overfitted=result.get("is_overfitted"),
             test_duration_days=result.get("test_duration_days"),
+            threshold_sweep=result.get("threshold_sweep"),
         )
 
         test_result_ids.append(test_id)
@@ -626,6 +629,7 @@ async def process_tune_job(job: Dict[str, Any]) -> None:
         low_importance_features=training_result.get("low_importance_features"),
         shap_values=training_result.get("shap_values"),
         early_stopping_rounds=training_result.get("early_stopping_rounds"),
+        threshold_sweep=training_result.get("threshold_sweep"),
         description=f"Tuned from model {tune_model_id} ({strategy}, {n_iterations} iterations)",
     )
 
