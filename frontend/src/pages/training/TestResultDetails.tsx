@@ -27,6 +27,7 @@ import {
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
+import ThresholdSweepTable from '../../components/training/ThresholdSweepTable';
 import type { TestResultResponse } from '../../types/training';
 
 interface TabPanelProps {
@@ -426,6 +427,16 @@ const TestResultDetails: React.FC = () => {
             </TableContainer>
           </CardContent>
         </Card>
+
+        {/* Threshold Sweep */}
+        {testResult.threshold_sweep && testResult.threshold_sweep.length > 0 && (
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', mt: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Threshold Sweep</Typography>
+              <ThresholdSweepTable data={testResult.threshold_sweep} />
+            </CardContent>
+          </Card>
+        )}
       </TabPanel>
 
       {/* Tab 2: Configuration */}

@@ -45,6 +45,7 @@ import {
 } from '@mui/icons-material';
 import { trainingApi } from '../../services/api';
 import StatusChip from '../../components/training/StatusChip';
+import ThresholdSweepTable from '../../components/training/ThresholdSweepTable';
 import type { ModelResponse } from '../../types/training';
 
 interface TabPanelProps {
@@ -578,6 +579,18 @@ const ModelDetails: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
+
+          {/* Threshold Sweep */}
+          {model.threshold_sweep && model.threshold_sweep.length > 0 && (
+            <Grid size={12}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ color: '#00d4ff' }}>Threshold Sweep</Typography>
+                  <ThresholdSweepTable data={model.threshold_sweep} />
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
 
           {/* F1 progress bar */}
           {model.training_f1 !== undefined && model.training_f1 !== null && (

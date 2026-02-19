@@ -52,6 +52,22 @@ export interface ModelResponse {
   low_importance_features?: string[];
   shap_values?: Record<string, number>;
   early_stopping_rounds?: number;
+  threshold_sweep?: ThresholdSweepEntry[];
+}
+
+// ============================================================
+// Threshold Sweep
+// ============================================================
+export interface ThresholdSweepEntry {
+  threshold: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  tp: number;
+  fp: number;
+  tn: number;
+  fn: number;
+  simulated_profit_pct: number;
 }
 
 // ============================================================
@@ -93,6 +109,7 @@ export interface TestResultResponse {
   test_duration_days?: number;
   model_name?: string;
   total_predictions?: number;
+  threshold_sweep?: ThresholdSweepEntry[];
 }
 
 // ============================================================
