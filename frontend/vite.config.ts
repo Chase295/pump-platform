@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:8000', changeOrigin: true },
       '/mcp': { target: 'http://localhost:8000', changeOrigin: true },
+      '/sse': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 })
