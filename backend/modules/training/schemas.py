@@ -235,6 +235,8 @@ class TestResultResponse(BaseModel):
     is_overfitted: Optional[bool] = None
     test_duration_days: Optional[float] = None
     threshold_sweep: Optional[List[Dict[str, Any]]] = None
+    proba_stats: Optional[Dict[str, Any]] = None
+    feature_diagnostics: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
