@@ -16,14 +16,6 @@ import {
   FormControl,
   InputLabel,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TablePagination,
-  Paper,
   ToggleButton,
   ToggleButtonGroup,
   Alert,
@@ -131,7 +123,7 @@ export default function WalletDetail() {
   });
   const [pnlPeriod, setPnlPeriod] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const perPage = 25;
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -178,6 +170,7 @@ export default function WalletDetail() {
   // -------------------------------------------------------------------------
   const solEur = exchangeRate?.sol_price_eur ?? 0;
   const solToEur = (sol: number) => sol * solEur;
+  const totalPages = Math.ceil(trades.length / perPage);
 
   const formatBucket = (bucket: unknown) => {
     try {
@@ -722,111 +715,111 @@ export default function WalletDetail() {
       </Box>
 
       {/* ================================================================= */}
-      {/* 6. Trade History (paginated table)                                */}
+      {/* 6. Trade History (card list)                                      */}
       {/* ================================================================= */}
       <Box>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          Trade History
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Trade History
+          </Typography>
+          <Chip
+            label={trades.length}
+            size="small"
+            sx={{ bgcolor: `rgba(${ctx.accentColor}, 0.15)`, color: `rgb(${ctx.accentColor})`, fontWeight: 700, minWidth: 28 }}
+          />
+        </Box>
 
-        <TableContainer
-          component={Paper}
-          sx={{ bgcolor: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)' }}
-        >
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                {['Time', 'Action', 'Mint', 'Amount EUR', 'Amount SOL', 'Status'].map((h) => (
-                  <TableCell key={h} sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)', fontWeight: 600 }}>
-                    {h}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {trades.length > 0 ? (
-                trades
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((trade) => (
-                    <TableRow key={trade.id}>
-                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                          {format(new Date(trade.created_at), 'dd.MM.yy HH:mm:ss')}
-                        </Typography>
-                      </TableCell>
-                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <Chip
-                          label={trade.action}
-                          size="small"
-                          sx={{
-                            bgcolor: ACTION_COLORS[trade.action]?.bg ?? 'rgba(255,255,255,0.1)',
-                            color: ACTION_COLORS[trade.action]?.color ?? '#fff',
-                            fontWeight: 600,
-                            fontSize: '0.7rem',
-                            minWidth: 44,
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: `rgb(${ctx.accentColor})` }}>
-                          {truncateMint(trade.mint)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+        {trades.length === 0 ? (
+          <Card sx={{ ...CARD_SX }}>
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                No trades found
+              </Typography>
+            </Box>
+          </Card>
+        ) : (
+          <>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {trades
+                .slice(page * perPage, (page + 1) * perPage)
+                .map((trade) => (
+                  <Card key={trade.id} sx={{ ...CARD_SX }}>
+                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                      {/* Row 1: Action + Status + Amount */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Chip
+                            label={trade.action}
+                            size="small"
+                            sx={{
+                              bgcolor: ACTION_COLORS[trade.action]?.bg ?? 'rgba(255,255,255,0.1)',
+                              color: ACTION_COLORS[trade.action]?.color ?? '#fff',
+                              fontWeight: 600,
+                              fontSize: '0.7rem',
+                              minWidth: 44,
+                            }}
+                          />
+                          <Chip
+                            label={trade.status}
+                            size="small"
+                            sx={{
+                              bgcolor: trade.status === 'SUCCESS' ? 'rgba(76,175,80,0.2)' : 'rgba(255,152,0,0.2)',
+                              color: trade.status === 'SUCCESS' ? '#4caf50' : '#ff9800',
+                              fontSize: '0.65rem',
+                              height: 20,
+                            }}
+                          />
+                        </Box>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
                           {fmtEur(solToEur(trade.amount_sol))}
                         </Typography>
-                      </TableCell>
-                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                      </Box>
+
+                      {/* Row 2: Mint + SOL amount */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: `rgb(${ctx.accentColor})`, fontSize: '0.75rem' }}>
+                          {truncateMint(trade.mint)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.4)' }}>
                           {fmtSol(trade.amount_sol)}
                         </Typography>
-                      </TableCell>
-                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                        <Chip
-                          label={trade.status}
-                          size="small"
-                          sx={{
-                            bgcolor: trade.status === 'SUCCESS' ? 'rgba(76,175,80,0.2)' : 'rgba(255,152,0,0.2)',
-                            color: trade.status === 'SUCCESS' ? '#4caf50' : '#ff9800',
-                            fontSize: '0.65rem',
-                            height: 20,
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', borderColor: 'rgba(255,255,255,0.05)', py: 4 }}>
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                      No trades found
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          {trades.length > 0 && (
-            <TablePagination
-              component="div"
-              count={trades.length}
-              page={page}
-              onPageChange={(_, p) => setPage(p)}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={(e) => {
-                setRowsPerPage(parseInt(e.target.value, 10));
-                setPage(0);
-              }}
-              rowsPerPageOptions={[10, 25, 50, 100]}
-              sx={{
-                color: '#b8c5d6',
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-                '.MuiTablePagination-selectIcon': { color: '#b8c5d6' },
-              }}
-            />
-          )}
-        </TableContainer>
+                      </Box>
+
+                      {/* Row 3: Time */}
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem', mt: 0.5, display: 'block' }}>
+                        {format(new Date(trade.created_at), 'dd.MM.yy HH:mm:ss')}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+            </Box>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 2 }}>
+                <Button
+                  size="small"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                  sx={{ color: '#b8c5d6', minWidth: 0 }}
+                >
+                  Prev
+                </Button>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {page + 1} / {totalPages}
+                </Typography>
+                <Button
+                  size="small"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => p + 1)}
+                  sx={{ color: '#b8c5d6', minWidth: 0 }}
+                >
+                  Next
+                </Button>
+              </Box>
+            )}
+          </>
+        )}
       </Box>
     </Box>
   );

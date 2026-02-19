@@ -19,13 +19,6 @@ import {
   FormControl,
   InputLabel,
   CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
   Breadcrumbs,
   Link as MuiLink,
   Tooltip,
@@ -47,7 +40,6 @@ import {
   ArrowBack as BackIcon,
   Refresh as RefreshIcon,
   List as ListIcon,
-  OpenInNew as OpenIcon,
   ContentCopy as CopyIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
@@ -142,15 +134,11 @@ const iconBox = (bg: string) => ({
   flexShrink: 0,
 });
 
-const thCell = {
-  fontWeight: 700,
-  fontSize: '0.7rem',
-  color: 'text.secondary',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.3px',
-  whiteSpace: 'nowrap' as const,
-  borderBottom: '2px solid rgba(0, 212, 255, 0.15)',
-  py: 1.5,
+const cardSx = {
+  bgcolor: 'rgba(255,255,255,0.02)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  backdropFilter: 'blur(20px)',
+  borderRadius: 3,
 };
 
 // ---------------------------------------------------------------------------
@@ -645,7 +633,7 @@ const ModelLogs: React.FC = () => {
       {/* TABLE                                                            */}
       {/* ================================================================ */}
       {rows.length === 0 ? (
-        <Card sx={{ textAlign: 'center', py: 6, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <Card sx={{ ...cardSx, textAlign: 'center', py: 6 }}>
           <CardContent>
             <ListIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1.5, opacity: 0.5 }} />
             <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 600 }}>
@@ -657,148 +645,105 @@ const ModelLogs: React.FC = () => {
           </CardContent>
         </Card>
       ) : (
-        <TableContainer
-          component={Paper}
-          sx={{
-            bgcolor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 2,
-            '& .MuiTableRow-root:last-child .MuiTableCell-root': { borderBottom: 'none' },
-          }}
-        >
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={thCell}>Coin</TableCell>
-                <TableCell sx={thCell} align="right">Prob</TableCell>
-                <TableCell sx={thCell}>Tag</TableCell>
-                <TableCell sx={thCell}>Eval</TableCell>
-                <TableCell sx={thCell} align="right">ATH Hi</TableCell>
-                <TableCell sx={thCell} align="right">ATH Lo</TableCell>
-                <TableCell sx={thCell} align="right">Actual</TableCell>
-                <TableCell sx={thCell}>Target</TableCell>
-                <TableCell sx={thCell}>Alert Time</TableCell>
-                <TableCell sx={thCell}>Eval Time</TableCell>
-                <TableCell sx={thCell} />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((pred, idx) => (
-                <TableRow
-                  key={pred.id}
-                  sx={{
-                    bgcolor: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-                    '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.06)' },
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {/* Coin */}
-                  <TableCell sx={{ py: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {rows.map((pred) => {
+            const targetPct = pred.price_change_percent ?? model?.price_change_percent;
+            const targetDir = pred.target_direction || model?.target_direction;
+            return (
+              <Card key={pred.id} sx={cardSx}>
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  {/* Row 1: Coin ID + Chips + Probability */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                       <Tooltip title={pred.coin_id} placement="top">
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#00d4ff' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#00d4ff', cursor: 'pointer' }}
+                          onClick={() => navigate(`/predictions/coin/${modelId}/${encodeURIComponent(pred.coin_id)}`)}
+                        >
                           {pred.coin_id.slice(0, 6)}..{pred.coin_id.slice(-4)}
                         </Typography>
                       </Tooltip>
                       <IconButton size="small" onClick={() => navigator.clipboard.writeText(pred.coin_id)} sx={{ p: 0.25, opacity: 0.5, '&:hover': { opacity: 1 } }}>
                         <CopyIcon sx={{ fontSize: 13 }} />
                       </IconButton>
+                      <Chip label={pred.tag} size="small" color={tagColor(pred.tag)}
+                        sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600, textTransform: 'capitalize' }} />
+                      {evalChip(pred.evaluation_result)}
                     </Box>
-                  </TableCell>
-
-                  {/* Probability */}
-                  <TableCell align="right" sx={{ py: 1 }}>
                     <Typography variant="body2" sx={{
-                      fontWeight: 700, fontSize: '0.82rem', fontFamily: 'monospace',
+                      fontWeight: 700, fontSize: '0.85rem', fontFamily: 'monospace',
                       color: pred.probability >= 0.7 ? '#4caf50' : pred.probability >= 0.5 ? '#ffb300' : '#f44336',
                     }}>
                       {(pred.probability * 100).toFixed(1)}%
                     </Typography>
-                  </TableCell>
+                  </Box>
 
-                  {/* Tag */}
-                  <TableCell sx={{ py: 1 }}>
-                    <Chip label={pred.tag} size="small" color={tagColor(pred.tag)}
-                      sx={{ height: 22, fontSize: '0.68rem', fontWeight: 600, textTransform: 'capitalize' }} />
-                  </TableCell>
-
-                  {/* Eval */}
-                  <TableCell sx={{ py: 1 }}>{evalChip(pred.evaluation_result)}</TableCell>
-
-                  {/* ATH Hi */}
-                  <TableCell align="right" sx={{ py: 1 }}>
-                    {pred.ath_highest_pct != null ? (
-                      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>
-                        <TrendingUpIcon sx={{ fontSize: 13, color: pctCol(pred.ath_highest_pct) }} />
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 500, color: pctCol(pred.ath_highest_pct) }}>
-                          {fmtPct(pred.ath_highest_pct)}
-                        </Typography>
-                      </Box>
-                    ) : <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.78rem' }}>-</Typography>}
-                  </TableCell>
-
-                  {/* ATH Lo */}
-                  <TableCell align="right" sx={{ py: 1 }}>
-                    {pred.ath_lowest_pct != null ? (
-                      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>
-                        <TrendingDownIcon sx={{ fontSize: 13, color: pctCol(pred.ath_lowest_pct) }} />
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 500, color: pctCol(pred.ath_lowest_pct) }}>
-                          {fmtPct(pred.ath_lowest_pct)}
-                        </Typography>
-                      </Box>
-                    ) : <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.78rem' }}>-</Typography>}
-                  </TableCell>
-
-                  {/* Actual Change */}
-                  <TableCell align="right" sx={{ py: 1 }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 700, color: pctCol(pred.actual_price_change_pct) }}>
-                      {fmtPct(pred.actual_price_change_pct)}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Target */}
-                  <TableCell sx={{ py: 1 }}>
-                    {(pred.price_change_percent ?? model?.price_change_percent) != null ? (
+                  {/* Row 2: ATH Hi / ATH Lo / Actual / Target */}
+                  <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 3 }, flexWrap: 'wrap', mb: 0.75 }}>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>ATH Hi</Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                        <Typography variant="body2" sx={{ fontSize: '0.78rem', fontFamily: 'monospace' }}>
-                          {pred.price_change_percent ?? model?.price_change_percent}%
-                        </Typography>
-                        {(pred.target_direction || model?.target_direction) === 'up'
-                          ? <TrendingUpIcon sx={{ fontSize: 13, color: '#4caf50' }} />
-                          : (pred.target_direction || model?.target_direction) === 'down'
-                            ? <TrendingDownIcon sx={{ fontSize: 13, color: '#f44336' }} />
-                            : null}
+                        {pred.ath_highest_pct != null ? (
+                          <>
+                            <TrendingUpIcon sx={{ fontSize: 12, color: pctCol(pred.ath_highest_pct) }} />
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 500, color: pctCol(pred.ath_highest_pct) }}>
+                              {fmtPct(pred.ath_highest_pct)}
+                            </Typography>
+                          </>
+                        ) : <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>-</Typography>}
                       </Box>
-                    ) : <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.78rem' }}>-</Typography>}
-                  </TableCell>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>ATH Lo</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                        {pred.ath_lowest_pct != null ? (
+                          <>
+                            <TrendingDownIcon sx={{ fontSize: 12, color: pctCol(pred.ath_lowest_pct) }} />
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 500, color: pctCol(pred.ath_lowest_pct) }}>
+                              {fmtPct(pred.ath_lowest_pct)}
+                            </Typography>
+                          </>
+                        ) : <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>-</Typography>}
+                      </Box>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>Actual</Typography>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700, color: pctCol(pred.actual_price_change_pct) }}>
+                        {fmtPct(pred.actual_price_change_pct)}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>Target</Typography>
+                      {targetPct != null ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                            {targetPct}%
+                          </Typography>
+                          {targetDir === 'up'
+                            ? <TrendingUpIcon sx={{ fontSize: 12, color: '#4caf50' }} />
+                            : targetDir === 'down'
+                              ? <TrendingDownIcon sx={{ fontSize: 12, color: '#f44336' }} />
+                              : null}
+                        </Box>
+                      ) : <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>-</Typography>}
+                    </Box>
+                  </Box>
 
-                  {/* Alert Time */}
-                  <TableCell sx={{ py: 1 }}>
-                    <Typography variant="caption" sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>
+                  {/* Row 3: Alert Time + Eval Time */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
                       {fmtDate(pred.prediction_timestamp || pred.created_at)}
                     </Typography>
-                  </TableCell>
-
-                  {/* Eval Time */}
-                  <TableCell sx={{ py: 1 }}>
-                    <Typography variant="caption" sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>
-                      {fmtDate(pred.evaluated_at)}
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                      {pred.evaluated_at ? `Eval: ${fmtDate(pred.evaluated_at)}` : ''}
                     </Typography>
-                  </TableCell>
-
-                  {/* Action */}
-                  <TableCell sx={{ py: 1 }}>
-                    <Tooltip title="View coin">
-                      <IconButton size="small" onClick={() => navigate(`/predictions/coin/${modelId}/${encodeURIComponent(pred.coin_id)}`)}>
-                        <OpenIcon sx={{ fontSize: 15 }} />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                  </Box>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </Box>
       )}
 
       {/* Bottom pagination */}

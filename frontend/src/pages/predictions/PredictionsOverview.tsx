@@ -128,7 +128,7 @@ const PredictionsOverview: React.FC = () => {
     toggleActiveMutation.mutate({ modelId, active });
   };
 
-  const handleDetailsClick = (modelId: number) => navigate(`/predictions/logs/${modelId}`);
+  const handleDetailsClick = (modelId: number) => navigate(`/predictions/models/${modelId}`);
   const handleAlertConfigClick = (modelId: number) => navigate(`/predictions/alerts/config/${modelId}`);
   const handleLogsClick = (modelId: number) => navigate(`/predictions/logs/${modelId}`);
 

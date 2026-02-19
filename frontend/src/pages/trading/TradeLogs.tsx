@@ -10,16 +10,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
   Tabs,
   Tab,
-  TablePagination,
+  Button,
 } from '@mui/material';
 import {
   SwapHoriz as TradeIcon,
@@ -50,7 +43,7 @@ export default function TradeLogs() {
   const [filterAction, setFilterAction] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const perPage = 25;
 
   // ---- Data fetching via useQuery ----
   const { data: wallets = [] } = useQuery<Wallet[]>({
@@ -80,6 +73,11 @@ export default function TradeLogs() {
   // Compute stats
   const totalVolumeSol = tradeLogs.reduce((sum, l) => sum + parseFloat(String(l.amount_sol)), 0);
   const totalFeesSol = tradeLogs.reduce((sum, l) => sum + parseFloat(String(l.network_fee_sol)), 0);
+
+  // Pagination
+  const currentList = activeTab === 0 ? tradeLogs : transferLogs;
+  const totalPages = Math.ceil(currentList.length / perPage);
+  const pagedItems = currentList.slice(page * perPage, (page + 1) * perPage);
 
   // ---------------------------------------------------------------------------
   // Stat Card
@@ -216,74 +214,37 @@ export default function TradeLogs() {
       </Tabs>
 
       {/* ----------------------------------------------------------------- */}
-      {/* Trades Tab                                                         */}
+      {/* Trades Tab - Card List                                             */}
       {/* ----------------------------------------------------------------- */}
       {activeTab === 0 && (
         <>
-          <TableContainer component={Paper} sx={CARD_SX}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Time</TableCell>
-                  <TableCell>Action</TableCell>
-                  <TableCell>Mint</TableCell>
-                  <TableCell align="right">Amount (EUR)</TableCell>
-                  <TableCell align="right">Amount (SOL)</TableCell>
-                  <TableCell align="right">Tokens</TableCell>
-                  <TableCell>Signature</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Sim</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {tradeLogs
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((log) => {
-                    const amountSol = parseFloat(String(log.amount_sol));
-                    const actionStyle = ACTION_COLORS[log.action] ?? ACTION_COLORS.BUY;
-                    return (
-                      <TableRow key={log.id}>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                            {new Date(log.created_at).toLocaleString()}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
+          {tradeLogs.length === 0 ? (
+            <Card sx={CARD_SX}>
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                  No trade logs found
+                </Typography>
+              </Box>
+            </Card>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {(pagedItems as TradeLog[]).map((log) => {
+                const amountSol = parseFloat(String(log.amount_sol));
+                const actionStyle = ACTION_COLORS[log.action] ?? ACTION_COLORS.BUY;
+                return (
+                  <Card key={log.id} sx={CARD_SX}>
+                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                      {/* Row 1: Action chip + Amount + Time */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Chip
                             label={log.action}
                             size="small"
-                            sx={{ bgcolor: actionStyle.bg, color: actionStyle.color, fontWeight: 600 }}
+                            sx={{ bgcolor: actionStyle.bg, color: actionStyle.color, fontWeight: 600, fontSize: '0.7rem', minWidth: 44 }}
                           />
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            variant="body2"
-                            sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: `rgb(${ctx.accentColor})` }}
-                          >
-                            {log.mint ? truncateMint(log.mint) : '-'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                            {fmtEur(solToEur(amountSol))}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>
-                            {fmtSol(amountSol)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {parseFloat(String(log.amount_tokens)).toFixed(2)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                            {log.tx_signature ? truncateAddress(log.tx_signature) : '-'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
+                          {log.is_simulation && (
+                            <Chip label="SIM" size="small" sx={{ bgcolor: 'rgba(0, 212, 255, 0.2)', color: '#00d4ff', fontSize: '0.65rem', height: 20 }} />
+                          )}
                           <Chip
                             label={log.status}
                             size="small"
@@ -291,91 +252,91 @@ export default function TradeLogs() {
                               bgcolor: log.status === 'SUCCESS' ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)',
                               color: log.status === 'SUCCESS' ? '#4caf50' : '#f44336',
                               fontWeight: 600,
+                              fontSize: '0.65rem',
+                              height: 20,
                             }}
                           />
-                        </TableCell>
-                        <TableCell>
-                          {log.is_simulation ? (
-                            <Chip label="SIM" size="small" sx={{ bgcolor: 'rgba(0, 212, 255, 0.2)', color: '#00d4ff' }} />
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                {tradeLogs.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={9} sx={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', py: 4 }}>
-                      No trade logs found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <TablePagination
-            component="div"
-            count={tradeLogs.length}
-            page={page}
-            onPageChange={(_, p) => setPage(p)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-            rowsPerPageOptions={[25, 50, 100]}
-            sx={{ color: 'rgba(255,255,255,0.6)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
-          />
+                        </Box>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                          {fmtEur(solToEur(amountSol))}
+                        </Typography>
+                      </Box>
+
+                      {/* Row 2: Mint + details */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: `rgb(${ctx.accentColor})` }}
+                        >
+                          {log.mint ? truncateMint(log.mint) : '-'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.4)' }}>
+                            {fmtSol(amountSol)}
+                          </Typography>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.4)' }}>
+                            {parseFloat(String(log.amount_tokens)).toFixed(0)} tok
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      {/* Row 3: Wallet + Signature + Time */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                          {log.wallet_alias ?? ''} {log.tx_signature ? `· ${truncateAddress(log.tx_signature)}` : ''}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+          )}
         </>
       )}
 
       {/* ----------------------------------------------------------------- */}
-      {/* Transfers Tab                                                      */}
+      {/* Transfers Tab - Card List                                          */}
       {/* ----------------------------------------------------------------- */}
       {activeTab === 1 && (
         <>
-          <TableContainer component={Paper} sx={CARD_SX}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>From</TableCell>
-                  <TableCell>To</TableCell>
-                  <TableCell align="right">Amount (EUR)</TableCell>
-                  <TableCell align="right">Amount (SOL)</TableCell>
-                  <TableCell>Signature</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Time</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {transferLogs
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((log) => {
-                    const amountSol = parseFloat(String(log.amount_sol));
-                    return (
-                      <TableRow key={log.id}>
-                        <TableCell>
+          {transferLogs.length === 0 ? (
+            <Card sx={CARD_SX}>
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                  No transfer logs found
+                </Typography>
+              </Box>
+            </Card>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {(pagedItems as TransferLog[]).map((log) => {
+                const amountSol = parseFloat(String(log.amount_sol));
+                return (
+                  <Card key={log.id} sx={CARD_SX}>
+                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                      {/* Row 1: From → To + Amount */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {log.from_alias || 'Unknown'}
                           </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)' }}>→</Typography>
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: `rgb(${ctx.accentColor})` }}>
                             {truncateAddress(log.to_address)}
                           </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                            {fmtEur(solToEur(amountSol))}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)' }}>
-                            {fmtSol(amountSol)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                            {log.tx_signature ? truncateAddress(log.tx_signature) : '-'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
+                        </Box>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                          {fmtEur(solToEur(amountSol))}
+                        </Typography>
+                      </Box>
+
+                      {/* Row 2: Status + Signature + Time */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Chip
                             label={log.status}
                             size="small"
@@ -383,38 +344,50 @@ export default function TradeLogs() {
                               bgcolor: log.status === 'SUCCESS' ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)',
                               color: log.status === 'SUCCESS' ? '#4caf50' : '#f44336',
                               fontWeight: 600,
+                              fontSize: '0.65rem',
+                              height: 20,
                             }}
                           />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                            {new Date(log.created_at).toLocaleString()}
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                            {fmtSol(amountSol)}
                           </Typography>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                {transferLogs.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', py: 4 }}>
-                      No transfer logs found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <TablePagination
-            component="div"
-            count={transferLogs.length}
-            page={page}
-            onPageChange={(_, p) => setPage(p)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-            rowsPerPageOptions={[25, 50, 100]}
-            sx={{ color: 'rgba(255,255,255,0.6)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
-          />
+                        </Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+          )}
         </>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 2 }}>
+          <Button
+            size="small"
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+            sx={{ color: '#b8c5d6', minWidth: 0 }}
+          >
+            Prev
+          </Button>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+            {page + 1} / {totalPages}
+          </Typography>
+          <Button
+            size="small"
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage((p) => p + 1)}
+            sx={{ color: '#b8c5d6', minWidth: 0 }}
+          >
+            Next
+          </Button>
+        </Box>
       )}
     </Box>
   );

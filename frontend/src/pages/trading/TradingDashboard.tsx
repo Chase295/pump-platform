@@ -7,13 +7,6 @@ import {
   Typography,
   CircularProgress,
   Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -519,81 +512,40 @@ export default function TradingDashboard() {
         </Grid>
       </Grid>
 
-      {/* Row 4: Wallet Performance Table */}
+      {/* Row 4: Wallet Performance Cards */}
       {performance.length > 0 && (
         <Box sx={{ mb: 4 }}>
           <Typography variant="subtitle2" sx={{ color: '#b8c5d6', mb: 2 }}>
             Wallet Performance
           </Typography>
-          <TableContainer
-            component={Paper}
-            sx={{ bgcolor: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)' }}
-          >
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)' }}>
-                    Wallet
-                  </TableCell>
-                  <TableCell
-                    align="right"
-                    sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)' }}
-                  >
-                    Balance
-                  </TableCell>
-                  <TableCell
-                    align="right"
-                    sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)' }}
-                  >
-                    Net P&L
-                  </TableCell>
-                  <TableCell
-                    align="right"
-                    sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)' }}
-                  >
-                    24h P&L
-                  </TableCell>
-                  <TableCell
-                    align="right"
-                    sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)' }}
-                  >
-                    Trades
-                  </TableCell>
-                  <TableCell
-                    align="center"
-                    sx={{ color: '#b8c5d6', borderColor: 'rgba(255,255,255,0.08)' }}
-                  >
-                    Losses
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {performance.map((p) => (
-                  <TableRow key={p.alias}>
-                    <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {p.alias}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {fmtEur(solToEur(p.current_balance))}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {performance.map((p) => (
+              <Card key={p.alias} sx={{ ...CARD_SX }}>
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                      {p.alias}
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                      {fmtEur(solToEur(p.current_balance))}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 3 } }}>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>NET P&L</Typography>
                       <Typography
                         variant="body2"
                         sx={{
                           fontFamily: 'monospace',
-                          color: p.net_profit_sol >= 0 ? '#4caf50' : '#f44336',
                           fontWeight: 600,
+                          color: p.net_profit_sol >= 0 ? '#4caf50' : '#f44336',
                         }}
                       >
-                        {p.net_profit_sol >= 0 ? '+' : ''}
-                        {fmtEur(solToEur(p.net_profit_sol))}
+                        {p.net_profit_sol >= 0 ? '+' : ''}{fmtEur(solToEur(p.net_profit_sol))}
                       </Typography>
-                    </TableCell>
-                    <TableCell align="right" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>24H P&L</Typography>
                       <Typography
                         variant="body2"
                         sx={{
@@ -601,26 +553,29 @@ export default function TradingDashboard() {
                           color: p.profit_24h >= 0 ? '#4caf50' : '#f44336',
                         }}
                       >
-                        {p.profit_24h >= 0 ? '+' : ''}
-                        {fmtEur(solToEur(p.profit_24h))}
+                        {p.profit_24h >= 0 ? '+' : ''}{fmtEur(solToEur(p.profit_24h))}
                       </Typography>
-                    </TableCell>
-                    <TableCell align="right" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                      {p.trade_count}
-                    </TableCell>
-                    <TableCell align="center" sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>TRADES</Typography>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        {p.trade_count}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>LOSSES</Typography>
                       <Typography
                         variant="body2"
-                        sx={{ color: p.consecutive_losses > 0 ? '#ff9800' : '#4caf50' }}
+                        sx={{ fontFamily: 'monospace', color: p.consecutive_losses > 0 ? '#ff9800' : '#4caf50' }}
                       >
                         {p.consecutive_losses}
                       </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
         </Box>
       )}
 

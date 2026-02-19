@@ -18,13 +18,6 @@ import {
   Breadcrumbs,
   Link as MuiLink,
   CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
   Checkbox,
   Grid,
 } from '@mui/material';
@@ -833,113 +826,82 @@ const CoinDetails: React.FC = () => {
       )}
 
       {/* ================================================================ */}
-      {/* TABLES                                                           */}
+      {/* PREDICTIONS & EVALUATIONS (card lists)                           */}
       {/* ================================================================ */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' }, gap: 3 }}>
-        {/* Predictions Table */}
+        {/* Predictions List */}
         <Card sx={{ border: '1px solid rgba(255,255,255,0.08)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, fontSize: '1rem' }}>
               Predictions ({coinData.predictions?.length || 0})
             </Typography>
             {coinData.predictions && coinData.predictions.length > 0 ? (
-              <TableContainer component={Paper} sx={{ bgcolor: 'transparent', maxHeight: 400, overflow: 'auto' }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Time</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Tag</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Prob</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Result</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Actual</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {coinData.predictions.map((pred: PredictionMarker) => (
-                      <TableRow key={pred.id}>
-                        <TableCell>
-                          <Typography variant="caption" sx={{ fontSize: '0.72rem' }}>
-                            {formatDate(pred.timestamp || pred.prediction_timestamp)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          {pred.is_alert ? (
-                            <Chip label="Alert" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }} />
-                          ) : pred.prediction === 1 ? (
-                            <Chip
-                              icon={<UpIcon sx={{ fontSize: 12 }} />}
-                              label="Pos"
-                              size="small"
-                              color="success"
-                              variant="outlined"
-                              sx={{ height: 20, fontSize: '0.65rem' }}
-                            />
-                          ) : (
-                            <Chip
-                              icon={<DownIcon sx={{ fontSize: 12 }} />}
-                              label="Neg"
-                              size="small"
-                              color="error"
-                              variant="outlined"
-                              sx={{ height: 20, fontSize: '0.65rem' }}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontWeight: 600,
-                              fontSize: '0.8rem',
-                              fontFamily: 'monospace',
-                              color: pred.probability >= 0.7 ? '#4caf50' : pred.probability >= 0.5 ? '#ffb300' : '#f44336',
-                            }}
-                          >
-                            {(pred.probability * 100).toFixed(1)}%
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          {pred.evaluation_result === 'success' && (
-                            <Chip icon={<SuccessIcon sx={{ fontSize: 12 }} />} label="OK" size="small" color="success" sx={{ height: 20, fontSize: '0.65rem' }} />
-                          )}
-                          {pred.evaluation_result === 'failed' && (
-                            <Chip icon={<FailedIcon sx={{ fontSize: 12 }} />} label="Fail" size="small" color="error" sx={{ height: 20, fontSize: '0.65rem' }} />
-                          )}
-                          {pred.evaluation_result === 'not_applicable' && (
-                            <Chip label="Exp" size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)' }} />
-                          )}
-                          {!pred.evaluation_result && (
-                            <Chip
-                              icon={<PendingIcon sx={{ fontSize: 12 }} />}
-                              label="Wait"
-                              size="small"
-                              sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(255, 193, 7, 0.12)', color: '#ffb300' }}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.8rem',
-                              fontWeight: 600,
-                              color:
-                                pred.actual_price_change_pct == null
-                                  ? 'text.secondary'
-                                  : pred.actual_price_change_pct >= 0
-                                    ? '#4caf50'
-                                    : '#f44336',
-                            }}
-                          >
-                            {fmtPct(pred.actual_price_change_pct)}
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              <Box sx={{ maxHeight: 400, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                {coinData.predictions.map((pred: PredictionMarker) => (
+                  <Box
+                    key={pred.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      bgcolor: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                  >
+                    {/* Row 1: Tag + Prob + Result */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        {pred.is_alert ? (
+                          <Chip label="Alert" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }} />
+                        ) : pred.prediction === 1 ? (
+                          <Chip icon={<UpIcon sx={{ fontSize: 12 }} />} label="Pos" size="small" color="success" variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
+                        ) : (
+                          <Chip icon={<DownIcon sx={{ fontSize: 12 }} />} label="Neg" size="small" color="error" variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
+                        )}
+                        {pred.evaluation_result === 'success' && (
+                          <Chip icon={<SuccessIcon sx={{ fontSize: 12 }} />} label="OK" size="small" color="success" sx={{ height: 20, fontSize: '0.65rem' }} />
+                        )}
+                        {pred.evaluation_result === 'failed' && (
+                          <Chip icon={<FailedIcon sx={{ fontSize: 12 }} />} label="Fail" size="small" color="error" sx={{ height: 20, fontSize: '0.65rem' }} />
+                        )}
+                        {pred.evaluation_result === 'not_applicable' && (
+                          <Chip label="Exp" size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)' }} />
+                        )}
+                        {!pred.evaluation_result && (
+                          <Chip icon={<PendingIcon sx={{ fontSize: 12 }} />} label="Wait" size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: 'rgba(255, 193, 7, 0.12)', color: '#ffb300' }} />
+                        )}
+                      </Box>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          fontFamily: 'monospace',
+                          color: pred.probability >= 0.7 ? '#4caf50' : pred.probability >= 0.5 ? '#ffb300' : '#f44336',
+                        }}
+                      >
+                        {(pred.probability * 100).toFixed(1)}%
+                      </Typography>
+                    </Box>
+                    {/* Row 2: Time + Actual */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
+                        {formatDate(pred.timestamp || pred.prediction_timestamp)}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontFamily: 'monospace',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          color: pred.actual_price_change_pct == null ? 'text.secondary' : pred.actual_price_change_pct >= 0 ? '#4caf50' : '#f44336',
+                        }}
+                      >
+                        {fmtPct(pred.actual_price_change_pct)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
             ) : (
               <Typography variant="body2" color="text.secondary">
                 No predictions for this coin.
@@ -948,71 +910,64 @@ const CoinDetails: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Evaluations Table */}
+        {/* Evaluations List */}
         <Card sx={{ border: '1px solid rgba(255,255,255,0.08)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, fontSize: '1rem' }}>
               Evaluations ({coinData.evaluations?.length || 0})
             </Typography>
             {coinData.evaluations && coinData.evaluations.length > 0 ? (
-              <TableContainer component={Paper} sx={{ bgcolor: 'transparent', maxHeight: 400, overflow: 'auto' }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Time</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Status</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Actual</TableCell>
-                      <TableCell sx={{ bgcolor: 'rgba(0,0,0,0.3)', fontWeight: 700, fontSize: '0.7rem' }}>Prob</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {coinData.evaluations.map((ev: EvaluationMarker) => (
-                      <TableRow key={ev.id}>
-                        <TableCell>
-                          <Typography variant="caption" sx={{ fontSize: '0.72rem' }}>
-                            {formatDate(ev.prediction_timestamp)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            {getStatusIcon(ev.status)}
-                            <Chip
-                              label={ev.status}
-                              size="small"
-                              color={ev.status === 'success' ? 'success' : ev.status === 'failed' ? 'error' : 'warning'}
-                              variant="outlined"
-                              sx={{ height: 22, fontSize: '0.7rem' }}
-                            />
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          {ev.actual_price_change != null ? (
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: 600,
-                                fontFamily: 'monospace',
-                                color: (ev.actual_price_change || 0) >= 0 ? 'success.main' : 'error.main',
-                              }}
-                            >
-                              {fmtPct(ev.actual_price_change)}
-                            </Typography>
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">
-                              -
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                            {ev.probability !== undefined ? `${(ev.probability * 100).toFixed(1)}%` : '-'}
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              <Box sx={{ maxHeight: 400, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                {coinData.evaluations.map((ev: EvaluationMarker) => (
+                  <Box
+                    key={ev.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      bgcolor: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                  >
+                    {/* Row 1: Status + Prob */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {getStatusIcon(ev.status)}
+                        <Chip
+                          label={ev.status}
+                          size="small"
+                          color={ev.status === 'success' ? 'success' : ev.status === 'failed' ? 'error' : 'warning'}
+                          variant="outlined"
+                          sx={{ height: 22, fontSize: '0.7rem' }}
+                        />
+                      </Box>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {ev.probability !== undefined ? `${(ev.probability * 100).toFixed(1)}%` : '-'}
+                      </Typography>
+                    </Box>
+                    {/* Row 2: Time + Actual */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
+                        {formatDate(ev.prediction_timestamp)}
+                      </Typography>
+                      {ev.actual_price_change != null ? (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontFamily: 'monospace',
+                            fontSize: '0.78rem',
+                            color: (ev.actual_price_change || 0) >= 0 ? 'success.main' : 'error.main',
+                          }}
+                        >
+                          {fmtPct(ev.actual_price_change)}
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">-</Typography>
+                      )}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
             ) : (
               <Typography variant="body2" color="text.secondary">
                 No evaluations yet.
