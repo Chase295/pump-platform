@@ -1,0 +1,33 @@
+-- Migration: Backfill created_at on existing SIMILAR_TO relationships in Neo4j
+--
+-- Problem: SIMILAR_TO relationships created before the temporal filtering fix
+-- don't have a created_at property. This causes them to be excluded from
+-- backtest queries (conservative approach to prevent data leakage), making
+-- all graph features collapse to 0.0 in backtests.
+--
+-- Solution: Set created_at = updated_at for all existing relationships.
+-- updated_at reflects the last sync time, which may be later than actual
+-- creation, but is a reasonable approximation and far better than ignoring
+-- all historical relationships.
+--
+-- This is a Neo4j Cypher script, NOT a PostgreSQL migration.
+-- Run it once via Neo4j Browser, cypher-shell, or the /api/graph/query endpoint:
+--
+--   MATCH ()-[r:SIMILAR_TO]->()
+--   WHERE r.created_at IS NULL AND r.updated_at IS NOT NULL
+--   SET r.created_at = r.updated_at
+--   RETURN count(r) AS backfilled
+--
+-- If updated_at is also NULL (very old relationships), fall back to window_b:
+--
+--   MATCH ()-[r:SIMILAR_TO]->()
+--   WHERE r.created_at IS NULL AND r.updated_at IS NULL AND r.window_b IS NOT NULL AND r.window_b <> ''
+--   SET r.created_at = datetime(r.window_b)
+--   RETURN count(r) AS backfilled_from_window
+--
+-- After running both queries, verify:
+--
+--   MATCH ()-[r:SIMILAR_TO]->()
+--   RETURN count(r) AS total,
+--          count(r.created_at) AS with_created_at,
+--          count(r) - count(r.created_at) AS without_created_at
