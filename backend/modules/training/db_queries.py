@@ -380,6 +380,8 @@ async def get_or_create_test_result(
     is_overfitted: Optional[bool] = None,
     test_duration_days: Optional[float] = None,
     threshold_sweep: Optional[List[Dict[str, Any]]] = None,
+    proba_stats: Optional[Dict[str, Any]] = None,
+    feature_diagnostics: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Create a test result or return existing id for same model/period."""
     pool = get_pool()
@@ -394,6 +396,8 @@ async def get_or_create_test_result(
     cm_jsonb = to_jsonb(confusion_matrix)
     fi_jsonb = to_jsonb(feature_importance)
     sweep_jsonb = to_jsonb(threshold_sweep)
+    proba_jsonb = to_jsonb(proba_stats)
+    diag_jsonb = to_jsonb(feature_diagnostics)
 
     test_id = await pool.fetchval(
         """
@@ -406,7 +410,8 @@ async def get_or_create_test_result(
             has_overlap, overlap_note, feature_importance,
             train_accuracy, train_f1, train_precision, train_recall,
             accuracy_degradation, f1_degradation, is_overfitted,
-            test_duration_days, threshold_sweep
+            test_duration_days, threshold_sweep,
+            proba_stats, feature_diagnostics
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8,
             $9, $10, $11, $12, $13::jsonb,
@@ -414,7 +419,8 @@ async def get_or_create_test_result(
             $18, $19, $20,
             $21, $22, $23::jsonb,
             $24, $25, $26, $27,
-            $28, $29, $30, $31, $32::jsonb
+            $28, $29, $30, $31, $32::jsonb,
+            $33::jsonb, $34::jsonb
         ) RETURNING id
         """,
         model_id, test_start, test_end,
@@ -426,6 +432,7 @@ async def get_or_create_test_result(
         train_accuracy, train_f1, train_precision, train_recall,
         accuracy_degradation, f1_degradation, is_overfitted,
         test_duration_days, sweep_jsonb,
+        proba_jsonb, diag_jsonb,
     )
     logger.info("Test result created: ID %d for model %d", test_id, model_id)
     return test_id
@@ -442,7 +449,7 @@ async def get_test_result(test_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     d = dict(row)
-    return convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep'], direction="from")
+    return convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep', 'proba_stats', 'feature_diagnostics'], direction="from")
 
 
 async def get_test_results(model_id: int) -> List[Dict[str, Any]]:
@@ -455,7 +462,7 @@ async def get_test_results(model_id: int) -> List[Dict[str, Any]]:
     result = []
     for row in rows:
         d = dict(row)
-        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep'], direction="from")
+        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep', 'proba_stats', 'feature_diagnostics'], direction="from")
         result.append(d)
     return result
 
@@ -470,7 +477,7 @@ async def list_all_test_results(limit: int = 100, offset: int = 0) -> List[Dict[
     result = []
     for row in rows:
         d = dict(row)
-        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep'], direction="from")
+        d = convert_jsonb_fields(d, ['feature_importance', 'confusion_matrix', 'threshold_sweep', 'proba_stats', 'feature_diagnostics'], direction="from")
         result.append(d)
     return result
 

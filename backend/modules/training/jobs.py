@@ -343,6 +343,8 @@ async def process_test_job(job: Dict[str, Any]) -> None:
         is_overfitted=test_result.get("is_overfitted"),
         test_duration_days=test_result.get("test_duration_days"),
         threshold_sweep=test_result.get("threshold_sweep"),
+        proba_stats=test_result.get("proba_stats"),
+        feature_diagnostics=test_result.get("feature_diagnostics"),
     )
 
     await update_job_status(
@@ -426,6 +428,8 @@ async def process_compare_job(job: Dict[str, Any]) -> None:
             is_overfitted=result.get("is_overfitted"),
             test_duration_days=result.get("test_duration_days"),
             threshold_sweep=result.get("threshold_sweep"),
+            proba_stats=result.get("proba_stats"),
+            feature_diagnostics=result.get("feature_diagnostics"),
         )
 
         test_result_ids.append(test_id)

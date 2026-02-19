@@ -675,6 +675,10 @@ CREATE TABLE IF NOT EXISTS ml_test_results (
     -- Threshold sweep: metrics at multiple probability thresholds
     threshold_sweep JSONB,
 
+    -- Diagnostics: probability distribution and feature health
+    proba_stats JSONB,
+    feature_diagnostics JSONB,
+
     CONSTRAINT chk_test_dates CHECK (test_start < test_end),
     CONSTRAINT chk_test_duration CHECK (test_duration_days IS NULL OR test_duration_days >= 0)
 );
@@ -683,7 +687,7 @@ CREATE INDEX IF NOT EXISTS idx_test_results_model ON ml_test_results(model_id);
 CREATE INDEX IF NOT EXISTS idx_test_results_created ON ml_test_results(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_test_results_model_created ON ml_test_results(model_id, created_at DESC);
 
-COMMENT ON TABLE ml_test_results IS 'Test results with metrics, feature importance, and train vs. test comparison';
+COMMENT ON TABLE ml_test_results IS 'Test results with metrics, feature importance, train vs. test comparison, and diagnostics';
 
 
 -- ============================================================================

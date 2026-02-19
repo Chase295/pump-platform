@@ -39,6 +39,11 @@ const formatPct = (val: number): string => `${(val * 100).toFixed(1)}%`;
 const ThresholdSweepTable: React.FC<ThresholdSweepTableProps> = ({ data }) => {
   if (!data || data.length === 0) return null;
 
+  // Find best F1 threshold (only rows with TP > 0)
+  const bestF1Row = data.filter((r) => r.tp > 0).reduce<ThresholdSweepEntry | null>(
+    (best, row) => (!best || row.f1 > best.f1 ? row : best), null,
+  );
+
   return (
     <Box>
       <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
@@ -64,23 +69,31 @@ const ThresholdSweepTable: React.FC<ThresholdSweepTableProps> = ({ data }) => {
           <TableBody>
             {data.map((row) => {
               const isDeadZone = row.tp === 0 && row.fp === 0;
+              const isBestF1 = bestF1Row && row.threshold === bestF1Row.threshold;
               return (
                 <TableRow
                   key={row.threshold}
                   sx={{
-                    bgcolor: row.threshold === 0.5
-                      ? 'rgba(0, 212, 255, 0.06)'
-                      : isDeadZone
-                        ? 'rgba(244, 67, 54, 0.04)'
-                        : 'transparent',
+                    bgcolor: isBestF1
+                      ? 'rgba(76, 175, 80, 0.08)'
+                      : row.threshold === 0.5
+                        ? 'rgba(0, 212, 255, 0.06)'
+                        : isDeadZone
+                          ? 'rgba(244, 67, 54, 0.04)'
+                          : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
                   }}
                 >
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
-                    {row.threshold.toFixed(1)}
+                    {row.threshold < 0.1 ? row.threshold.toFixed(2) : row.threshold.toFixed(1)}
                     {row.threshold === 0.5 && (
                       <Typography component="span" variant="caption" sx={{ ml: 1, color: '#00d4ff' }}>
                         default
+                      </Typography>
+                    )}
+                    {isBestF1 && (
+                      <Typography component="span" variant="caption" sx={{ ml: 1, color: '#4caf50' }}>
+                        best F1
                       </Typography>
                     )}
                   </TableCell>

@@ -71,6 +71,33 @@ export interface ThresholdSweepEntry {
 }
 
 // ============================================================
+// Diagnostics
+// ============================================================
+export interface ProbaStats {
+  min: number;
+  max: number;
+  mean: number;
+  median: number;
+  p25: number;
+  p75: number;
+  p90: number;
+  p95: number;
+  p99: number;
+  above_05: number;
+  above_10: number;
+  above_20: number;
+  above_30: number;
+  above_50: number;
+}
+
+export interface FeatureDiagnostics {
+  total_features: number;
+  zero_features_count: number;
+  zero_features_pct: number;
+  zero_features: string[];
+}
+
+// ============================================================
 // Test Result
 // ============================================================
 export interface TestResultResponse {
@@ -110,6 +137,8 @@ export interface TestResultResponse {
   model_name?: string;
   total_predictions?: number;
   threshold_sweep?: ThresholdSweepEntry[];
+  proba_stats?: ProbaStats;
+  feature_diagnostics?: FeatureDiagnostics;
 }
 
 // ============================================================
