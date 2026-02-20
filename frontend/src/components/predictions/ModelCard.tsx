@@ -107,7 +107,11 @@ const ModelCard: React.FC<ModelCardProps> = React.memo(
 
     const handleCardClick = (event: React.MouseEvent) => {
       if ((event.target as HTMLElement).closest('button')) return;
-      onDetailsClick(model.id);
+      if (model.is_active) {
+        onLogsClick(model.id);
+      } else {
+        onDetailsClick(model.id);
+      }
     };
 
     return (
