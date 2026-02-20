@@ -115,10 +115,10 @@ class SellPositionMonitor:
         )
 
         if not rows:
-            logger.debug("SellPositionMonitor: no positions to check")
+            logger.debug("SellPositionMonitor: no open positions with active SELL workflows")
             return
 
-        logger.debug("SellPositionMonitor: checking %d position-workflow pairs", len(rows))
+        logger.info("SellPositionMonitor: checking %d position-workflow pair(s)", len(rows))
 
         for row in rows:
             try:
@@ -260,6 +260,12 @@ class SellPositionMonitor:
                     break
 
         if triggered_rule is None:
+            logger.debug(
+                "SellPositionMonitor: no rule triggered for mint=%s wallet=%s "
+                "(entry=%.6f, current=%.6f, change=%.2f%%, peak_change=%.2f%%, min_open=%.1f)",
+                mint[:12], wallet_alias, entry_price, current_price,
+                change_from_entry_pct, change_from_peak_pct, minutes_since_open,
+            )
             return
 
         # ----- Execute sell -----
