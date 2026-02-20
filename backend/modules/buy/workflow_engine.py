@@ -49,7 +49,17 @@ class BuyWorkflowEngine:
         try:
             workflows = await self._get_active_buy_workflows()
             if not workflows:
+                logger.info(
+                    "No active BUY workflows found - skipping prediction for "
+                    "%s model=%s tag=%s prob=%.3f",
+                    coin_id[:8], active_model_id, tag, probability,
+                )
                 return
+
+            logger.info(
+                "Evaluating %d active BUY workflow(s) for %s model=%s tag=%s prob=%.3f",
+                len(workflows), coin_id[:8], active_model_id, tag, probability,
+            )
 
             for wf in workflows:
                 try:
@@ -133,6 +143,11 @@ class BuyWorkflowEngine:
         wf_id = str(wf["id"])
         wallet_alias = wf["wallet_alias"]
 
+        logger.info(
+            "Workflow '%s' (%s) evaluating coin %s model=%s tag=%s prob=%.3f",
+            wf.get("name"), wf_id[:8], coin_id[:8], active_model_id, tag, probability,
+        )
+
         # --- Parse chain --------------------------------------------------
         chain = wf["chain"]
         if isinstance(chain, str):
@@ -169,6 +184,11 @@ class BuyWorkflowEngine:
                 "pass": match,
             })
             if not match:
+                logger.info(
+                    "Workflow '%s' REJECTED for %s: trigger_model_match failed "
+                    "(expected=%s, got model_id=%s active_model_id=%s)",
+                    wf.get("name"), coin_id[:8], trigger_model_id, model_id, active_model_id,
+                )
                 await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
                 return
 
@@ -183,6 +203,10 @@ class BuyWorkflowEngine:
                 "pass": passed,
             })
             if not passed:
+                logger.info(
+                    "Workflow '%s' REJECTED for %s: min_probability not met (required=%.3f, actual=%.3f)",
+                    wf.get("name"), coin_id[:8], min_prob, probability,
+                )
                 await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
                 return
 
@@ -199,12 +223,20 @@ class BuyWorkflowEngine:
                 "pass": passed,
             })
             if not passed:
+                logger.info(
+                    "Workflow '%s' REJECTED for %s: cooldown active (%.0fs of %ds)",
+                    wf.get("name"), coin_id[:8], elapsed, cooldown_secs,
+                )
                 await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
                 return
 
         # --- 4. Trading enabled -------------------------------------------
         if not wf.get("trading_enabled", True):
             steps_log.append({"step": "trading_enabled", "pass": False})
+            logger.info(
+                "Workflow '%s' REJECTED for %s: trading_enabled=False on wallet '%s'",
+                wf.get("name"), coin_id[:8], wallet_alias,
+            )
             await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
             return
 
@@ -226,6 +258,10 @@ class BuyWorkflowEngine:
             "pass": passed,
         })
         if not passed:
+            logger.info(
+                "Workflow '%s' REJECTED for %s: max_open_positions reached (%d/%d)",
+                wf.get("name"), coin_id[:8], open_count, max_positions,
+            )
             await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
             return
 
@@ -246,6 +282,10 @@ class BuyWorkflowEngine:
             "pass": passed,
         })
         if not passed:
+            logger.info(
+                "Workflow '%s' REJECTED for %s: already holding this coin",
+                wf.get("name"), coin_id[:8],
+            )
             await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
             return
 
@@ -265,6 +305,10 @@ class BuyWorkflowEngine:
                 cond, coin_id, timestamp, idx, steps_log,
             )
             if not cond_passed:
+                logger.info(
+                    "Workflow '%s' REJECTED for %s: on_demand condition_%d failed",
+                    wf.get("name"), coin_id[:8], idx,
+                )
                 await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
                 return
 
@@ -278,6 +322,10 @@ class BuyWorkflowEngine:
                 "pass": False,
                 "note": "could not determine buy amount",
             })
+            logger.info(
+                "Workflow '%s' REJECTED for %s: could not determine buy amount (mode=%s, value=%s)",
+                wf.get("name"), coin_id[:8], wf.get("buy_amount_mode"), wf.get("buy_amount_value"),
+            )
             await self._log_execution(wf_id, coin_id, trigger_data, steps_log, "REJECTED")
             return
 
