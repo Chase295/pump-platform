@@ -153,21 +153,33 @@ class SellPositionMonitor:
         if isinstance(chain, str):
             chain = json.loads(chain)
 
-        rules: List[dict] = chain.get("rules", [])
+        # Accept both "rules" (current frontend) and "steps" (legacy) keys
+        rules: List[dict] = chain.get("rules") or chain.get("steps") or []
         if not rules:
+            logger.warning(
+                "SellPositionMonitor: workflow '%s' has empty rules for position %s (mint=%s) "
+                "- chain keys: %s. Position will never be sold!",
+                row["workflow_name"], row["position_id"], mint[:12], list(chain.keys()),
+            )
             return
 
         # ----- Get current price via Jupiter -----
         # token_amount_raw: assume 6 decimals for SPL tokens
         token_amount_raw = int(tokens_held * 1e6)
         if token_amount_raw <= 0:
+            logger.warning(
+                "SellPositionMonitor: position %s (mint=%s) has zero tokens_held=%.6f - skipping",
+                row["position_id"], mint[:12], tokens_held,
+            )
             return
 
         try:
             quote = await self._jupiter.get_sell_quote(mint, token_amount_raw)
         except Exception as e:
-            logger.debug(
-                "SellPositionMonitor: Jupiter quote failed for %s: %s", mint[:12], e
+            logger.warning(
+                "SellPositionMonitor: Jupiter quote failed for %s (position=%s, wallet=%s): %s "
+                "- sell rules cannot be evaluated this cycle!",
+                mint[:12], row["position_id"], wallet_alias, e,
             )
             return
 
@@ -214,25 +226,30 @@ class SellPositionMonitor:
 
         for rule in rules:
             rule_type = rule.get("type")
+            # Accept both "percent" (current frontend) and "target_pct" (legacy)
+            rule_pct = rule.get("percent") if rule.get("percent") is not None else rule.get("target_pct")
 
             if rule_type == "stop_loss":
                 # Triggers when price drops below threshold from entry
-                # rule.percent is negative (e.g. -5.0)
-                if change_from_entry_pct <= rule.get("percent", -999):
+                # rule_pct is negative (e.g. -5.0)
+                threshold = rule_pct if rule_pct is not None else -999
+                if change_from_entry_pct <= threshold:
                     triggered_rule = rule
                     break
 
             elif rule_type == "trailing_stop":
                 # Triggers when price drops below threshold from peak
-                # rule.percent is negative (e.g. -3.0)
-                if change_from_peak_pct <= rule.get("percent", -999):
+                # rule_pct is negative (e.g. -3.0)
+                threshold = rule_pct if rule_pct is not None else -999
+                if change_from_peak_pct <= threshold:
                     triggered_rule = rule
                     break
 
             elif rule_type == "take_profit":
                 # Triggers when price rises above threshold from entry
-                # rule.percent is positive (e.g. 20.0)
-                if change_from_entry_pct >= rule.get("percent", 999):
+                # rule_pct is positive (e.g. 20.0)
+                threshold = rule_pct if rule_pct is not None else 999
+                if change_from_entry_pct >= threshold:
                     triggered_rule = rule
                     break
 
