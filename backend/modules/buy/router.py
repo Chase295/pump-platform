@@ -685,7 +685,9 @@ async def get_pnl_history(
             SELECT
                 time_bucket('{bucket_interval}', t.created_at) AS bucket,
                 COALESCE(SUM(CASE WHEN t.action = 'SELL' THEN t.amount_sol ELSE 0 END), 0) -
-                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) AS pnl_sol,
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN COALESCE(t.jito_tip_lamports, 0) / 1000000000.0 ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN COALESCE(t.network_fee_sol, 0) ELSE 0 END), 0) AS pnl_sol,
                 COALESCE(SUM(COALESCE(t.jito_tip_lamports, 0) / 1000000000.0), 0) +
                 COALESCE(SUM(COALESCE(t.network_fee_sol, 0)), 0) AS fees_sol
             FROM trade_logs t
@@ -788,7 +790,9 @@ async def get_trade_analytics(
                 p.id,
                 p.mint,
                 COALESCE(SUM(CASE WHEN t.action = 'SELL' THEN t.amount_sol ELSE 0 END), 0) -
-                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) AS pnl_sol
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN t.amount_sol ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN COALESCE(t.jito_tip_lamports, 0) / 1000000000.0 ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN COALESCE(t.network_fee_sol, 0) ELSE 0 END), 0) AS pnl_sol
             FROM positions p
             JOIN wallets w ON p.wallet_id = w.id
             LEFT JOIN trade_logs t ON t.position_id = p.id AND t.status = 'SUCCESS'
@@ -816,7 +820,9 @@ async def get_trade_analytics(
     fees_row = await fetchrow(f"""
         SELECT
             COALESCE(SUM(COALESCE(t.network_fee_sol, 0)), 0) AS total_network_fees_sol,
-            COALESCE(SUM(COALESCE(t.jito_tip_lamports, 0) / 1000000000.0), 0) AS total_jito_tips_sol
+            COALESCE(SUM(COALESCE(t.jito_tip_lamports, 0) / 1000000000.0), 0) AS total_jito_tips_sol,
+            COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN COALESCE(t.network_fee_sol, 0) ELSE 0 END), 0) AS buy_network_fees_sol,
+            COALESCE(SUM(CASE WHEN t.action = 'BUY' THEN COALESCE(t.jito_tip_lamports, 0) / 1000000000.0 ELSE 0 END), 0) AS buy_jito_tips_sol
         FROM trade_logs t
         JOIN wallets w2 ON t.wallet_id = w2.id
         WHERE t.status = 'SUCCESS'
@@ -833,6 +839,9 @@ async def get_trade_analytics(
     jito_tips = float(fees_row['total_jito_tips_sol'] or 0) if fees_row else 0
     total_fees = network_fees + jito_tips
     gross_pnl = float(positions_row['gross_pnl_sol'] or 0) if positions_row else 0
+    # gross_pnl already includes buy-side fees (subtracted in CTE) and
+    # sell-side fees (implicit in SELL amount_sol = sol_received_net).
+    # So gross_pnl IS the true net P&L matching actual wallet balance changes.
 
     return TradeAnalyticsResponse(
         winning_trades=winning,
@@ -845,7 +854,7 @@ async def get_trade_analytics(
         total_jito_tips_sol=jito_tips,
         total_fees_sol=total_fees,
         gross_pnl_sol=gross_pnl,
-        net_pnl_sol=gross_pnl - total_fees,
+        net_pnl_sol=gross_pnl,
         best_trade_sol=float(positions_row['best_trade_sol'] or 0) if positions_row else 0,
         worst_trade_sol=float(positions_row['worst_trade_sol'] or 0) if positions_row else 0,
         best_trade_mint=positions_row['best_trade_mint'] if positions_row else None,
