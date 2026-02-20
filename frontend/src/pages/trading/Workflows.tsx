@@ -45,11 +45,13 @@ import type {
 // Chain summary helpers
 // ---------------------------------------------------------------------------
 function summarizeBuyChain(chain: BuyChain, mode?: string, value?: number): string {
+  if (!chain?.trigger) return 'Invalid chain config';
   const parts: string[] = [];
   parts.push(
-    `Model #${chain.trigger.model_id} \u2265 ${(chain.trigger.min_probability * 100).toFixed(0)}%`,
+    `Model #${chain.trigger.model_id ?? '?'} \u2265 ${((chain.trigger.min_probability ?? 0) * 100).toFixed(0)}%`,
   );
-  for (const c of chain.conditions) {
+  for (const c of chain.conditions ?? []) {
+    if (!c) continue;
     const op =
       c.operator === 'gte'
         ? '\u2265'
@@ -58,7 +60,7 @@ function summarizeBuyChain(chain: BuyChain, mode?: string, value?: number): stri
           : c.operator === 'gt'
             ? '>'
             : '<';
-    parts.push(`Model #${c.model_id} ${op} ${(c.threshold * 100).toFixed(0)}%`);
+    parts.push(`Model #${c.model_id ?? '?'} ${op} ${((c.threshold ?? 0) * 100).toFixed(0)}%`);
   }
   const amount = mode === 'percent' ? `${value}%` : `${value} SOL`;
   parts.push(`Buy ${amount}`);
@@ -66,7 +68,9 @@ function summarizeBuyChain(chain: BuyChain, mode?: string, value?: number): stri
 }
 
 function summarizeSellChain(chain: SellChain): string {
+  if (!chain?.rules?.length) return 'No sell rules';
   return chain.rules
+    .filter(Boolean)
     .map((r) => {
       if (r.type === 'stop_loss') return `SL ${r.percent}%`;
       if (r.type === 'trailing_stop') return `TS ${r.percent}%`;
@@ -906,9 +910,11 @@ export default function Workflows() {
                           wordBreak: 'break-word',
                         }}
                       >
-                        {wf.type === 'BUY'
-                          ? summarizeBuyChain(wf.chain as BuyChain, wf.buy_amount_mode, wf.buy_amount_value)
-                          : summarizeSellChain(wf.chain as SellChain)}
+                        {wf.chain
+                          ? wf.type === 'BUY'
+                            ? summarizeBuyChain(wf.chain as BuyChain, wf.buy_amount_mode, wf.buy_amount_value)
+                            : summarizeSellChain(wf.chain as SellChain)
+                          : 'No chain configured'}
                       </Typography>
 
                       {/* Settings chips */}
