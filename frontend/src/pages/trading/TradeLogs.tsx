@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -35,6 +36,7 @@ import type { Wallet, TradeLog, TransferLog } from '../../types/buy';
 
 export default function TradeLogs() {
   const ctx = useTradingContext();
+  const navigate = useNavigate();
   const { data: exchangeRate } = useExchangeRate();
   const solEur = exchangeRate?.sol_price_eur ?? 0;
   const solToEur = (sol: number) => sol * solEur;
@@ -232,7 +234,11 @@ export default function TradeLogs() {
                 const amountSol = parseFloat(String(log.amount_sol));
                 const actionStyle = ACTION_COLORS[log.action] ?? ACTION_COLORS.BUY;
                 return (
-                  <Card key={log.id} sx={CARD_SX}>
+                  <Card
+                    key={log.id}
+                    sx={{ ...CARD_SX, cursor: log.mint ? 'pointer' : 'default', transition: 'background 0.15s', '&:hover': log.mint ? { bgcolor: 'rgba(255,255,255,0.05)' } : {} }}
+                    onClick={() => log.mint && navigate(`/discovery/coin/${encodeURIComponent(log.mint)}`)}
+                  >
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       {/* Row 1: Action chip + Amount + Time */}
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
