@@ -412,6 +412,10 @@ class PredictionScanner:
         # Trigger BUY workflow engine
         engine = get_buy_workflow_engine()
         if engine:
+            logger.info(
+                f"Dispatching to BuyWorkflowEngine: {coin_id[:8]}... "
+                f"model={active_model_id} tag={tag} prob={probability:.3f}"
+            )
             asyncio.create_task(engine.on_prediction(
                 coin_id=coin_id,
                 model_id=result.get('model_id'),
@@ -421,6 +425,11 @@ class PredictionScanner:
                 tag=tag,
                 timestamp=timestamp,
             ))
+        else:
+            logger.warning(
+                f"BuyWorkflowEngine not available! Prediction for {coin_id[:8]}... "
+                f"model={active_model_id} tag={tag} will NOT trigger any workflow"
+            )
 
     async def _update_scan_cache(
         self, pool, coin_id: str, active_model_id: int,
