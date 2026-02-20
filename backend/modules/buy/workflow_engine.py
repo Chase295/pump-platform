@@ -27,6 +27,10 @@ class BuyWorkflowEngine:
     def __init__(self):
         # cooldown tracking:  workflow_id -> last execution UTC timestamp
         self._last_execution: Dict[str, float] = {}
+        # Per-mint locks to prevent duplicate buys when multiple predictions
+        # arrive simultaneously (e.g. 3 models predict the same coin at once).
+        # Key = "wallet_id:mint" -> asyncio.Lock
+        self._mint_locks: Dict[str, asyncio.Lock] = {}
 
     # ------------------------------------------------------------------
     # Public entry-point (called from PredictionScanner)
@@ -61,37 +65,42 @@ class BuyWorkflowEngine:
                 len(workflows), coin_id[:8], active_model_id, tag, probability,
             )
 
-            for wf in workflows:
-                try:
-                    await self._evaluate_workflow(
-                        wf,
-                        coin_id=coin_id,
-                        model_id=model_id,
-                        active_model_id=active_model_id,
-                        probability=probability,
-                        prediction=prediction,
-                        tag=tag,
-                        timestamp=timestamp,
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Error evaluating workflow %s for coin %s: %s",
-                        wf.get("id"), coin_id[:8], e,
-                        exc_info=True,
-                    )
-                    # Log the crash so it shows up in workflow_executions
+            # Acquire per-coin lock to prevent duplicate buys when multiple
+            # predictions (from different models) arrive for the same coin
+            # simultaneously via asyncio.create_task().
+            lock = self._mint_locks.setdefault(coin_id, asyncio.Lock())
+            async with lock:
+                for wf in workflows:
                     try:
-                        await self._log_execution(
-                            str(wf["id"]), coin_id,
-                            {"coin_id": coin_id, "model_id": model_id,
-                             "active_model_id": active_model_id,
-                             "probability": probability, "tag": tag},
-                            [{"step": "evaluation_crash", "pass": False,
-                              "error": str(e)}],
-                            "ERROR", error_message=str(e),
+                        await self._evaluate_workflow(
+                            wf,
+                            coin_id=coin_id,
+                            model_id=model_id,
+                            active_model_id=active_model_id,
+                            probability=probability,
+                            prediction=prediction,
+                            tag=tag,
+                            timestamp=timestamp,
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(
+                            "Error evaluating workflow %s for coin %s: %s",
+                            wf.get("id"), coin_id[:8], e,
+                            exc_info=True,
+                        )
+                        # Log the crash so it shows up in workflow_executions
+                        try:
+                            await self._log_execution(
+                                str(wf["id"]), coin_id,
+                                {"coin_id": coin_id, "model_id": model_id,
+                                 "active_model_id": active_model_id,
+                                 "probability": probability, "tag": tag},
+                                [{"step": "evaluation_crash", "pass": False,
+                                  "error": str(e)}],
+                                "ERROR", error_message=str(e),
+                            )
+                        except Exception:
+                            pass
         except Exception as e:
             logger.error("BuyWorkflowEngine.on_prediction error: %s", e, exc_info=True)
 

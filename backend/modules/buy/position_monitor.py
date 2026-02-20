@@ -163,8 +163,22 @@ class SellPositionMonitor:
             )
             return
 
-        # ----- Get current price via Jupiter -----
-        # tokens_held is already in the token's smallest unit (from Jupiter buy quote)
+        # ----- Calculate time-based metrics (no Jupiter needed) -----
+        now = datetime.now(timezone.utc)
+        # Ensure position_created_at is timezone-aware
+        if position_created_at.tzinfo is None:
+            position_created_at = position_created_at.replace(tzinfo=timezone.utc)
+        minutes_since_open = (now - position_created_at).total_seconds() / 60.0
+
+        # ----- Check timeout rules FIRST (don't depend on price data) -----
+        triggered_rule = None
+        for rule in rules:
+            if rule.get("type") == "timeout":
+                if minutes_since_open >= rule.get("minutes", 999999):
+                    triggered_rule = rule
+                    break
+
+        # ----- Get current price via Jupiter (only needed for price rules) -----
         token_amount_raw = int(tokens_held)
         if token_amount_raw <= 0:
             logger.warning(
@@ -173,42 +187,70 @@ class SellPositionMonitor:
             )
             return
 
-        try:
-            quote = await self._jupiter.get_sell_quote(mint, token_amount_raw)
-        except Exception as e:
-            logger.warning(
-                "SellPositionMonitor: Jupiter quote failed for %s (position=%s, wallet=%s): %s "
-                "- sell rules cannot be evaluated this cycle!",
-                mint[:12], row["position_id"], wallet_alias, e,
-            )
-            return
+        current_price = 0.0
+        current_value_sol = 0.0
+        change_from_entry_pct = 0.0
+        change_from_peak_pct = 0.0
+        quote_failed = False
 
-        # quote.out_amount is in lamports -> divide by 1e9 for SOL
-        current_value_sol = quote.out_amount / 1e9
-        if tokens_held <= 0:
-            return
+        if triggered_rule is None:
+            # Only fetch Jupiter quote if timeout didn't already trigger
+            try:
+                quote = await self._jupiter.get_sell_quote(mint, token_amount_raw)
+                current_value_sol = quote.out_amount / 1e9
+                current_price = current_value_sol / tokens_held if tokens_held > 0 else 0
 
-        current_price = current_value_sol / tokens_held
+                # Update peak_price_sol if new high
+                if current_price > peak_price:
+                    await execute(
+                        "UPDATE positions SET peak_price_sol = $1 WHERE id = $2",
+                        current_price,
+                        row["position_id"],
+                    )
+                    peak_price = current_price
 
-        # ----- Update peak_price_sol if new high -----
-        if current_price > peak_price:
-            await execute(
-                "UPDATE positions SET peak_price_sol = $1 WHERE id = $2",
-                current_price,
-                row["position_id"],
-            )
-            peak_price = current_price
+                change_from_entry_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0.0
+                change_from_peak_pct = ((current_price - peak_price) / peak_price) * 100 if peak_price > 0 else 0.0
 
-        # ----- Calculate metrics -----
-        change_from_entry_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0.0
+                # ----- Evaluate price-based rules -----
+                for rule in rules:
+                    rule_type = rule.get("type")
+                    if rule_type == "timeout":
+                        continue  # already checked above
+                    # Accept both "percent" (current frontend) and "target_pct" (legacy)
+                    rule_pct = rule.get("percent") if rule.get("percent") is not None else rule.get("target_pct")
 
-        change_from_peak_pct = ((current_price - peak_price) / peak_price) * 100 if peak_price > 0 else 0.0
+                    if rule_type == "stop_loss":
+                        threshold = rule_pct if rule_pct is not None else -999
+                        if change_from_entry_pct <= threshold:
+                            triggered_rule = rule
+                            break
+                    elif rule_type == "trailing_stop":
+                        threshold = rule_pct if rule_pct is not None else -999
+                        if change_from_peak_pct <= threshold:
+                            triggered_rule = rule
+                            break
+                    elif rule_type == "take_profit":
+                        threshold = rule_pct if rule_pct is not None else 999
+                        if change_from_entry_pct >= threshold:
+                            triggered_rule = rule
+                            break
 
-        now = datetime.now(timezone.utc)
-        # Ensure position_created_at is timezone-aware
-        if position_created_at.tzinfo is None:
-            position_created_at = position_created_at.replace(tzinfo=timezone.utc)
-        minutes_since_open = (now - position_created_at).total_seconds() / 60.0
+            except Exception as e:
+                quote_failed = True
+                # Check if timeout should fire even when quote fails
+                for rule in rules:
+                    if rule.get("type") == "timeout":
+                        if minutes_since_open >= rule.get("minutes", 999999):
+                            triggered_rule = rule
+                            break
+                if triggered_rule is None:
+                    logger.warning(
+                        "SellPositionMonitor: Jupiter quote failed for %s (position=%s, wallet=%s): %s "
+                        "- price rules cannot be evaluated this cycle (timeout not triggered, %.1f min open)",
+                        mint[:12], row["position_id"], wallet_alias, e, minutes_since_open,
+                    )
+                    return
 
         metrics = {
             "current_price": current_price,
@@ -219,45 +261,8 @@ class SellPositionMonitor:
             "change_from_peak_pct": round(change_from_peak_pct, 4),
             "minutes_since_open": round(minutes_since_open, 2),
             "tokens_held": tokens_held,
+            "quote_failed": quote_failed,
         }
-
-        # ----- Evaluate rules (OR-logic, first match triggers) -----
-        triggered_rule = None
-
-        for rule in rules:
-            rule_type = rule.get("type")
-            # Accept both "percent" (current frontend) and "target_pct" (legacy)
-            rule_pct = rule.get("percent") if rule.get("percent") is not None else rule.get("target_pct")
-
-            if rule_type == "stop_loss":
-                # Triggers when price drops below threshold from entry
-                # rule_pct is negative (e.g. -5.0)
-                threshold = rule_pct if rule_pct is not None else -999
-                if change_from_entry_pct <= threshold:
-                    triggered_rule = rule
-                    break
-
-            elif rule_type == "trailing_stop":
-                # Triggers when price drops below threshold from peak
-                # rule_pct is negative (e.g. -3.0)
-                threshold = rule_pct if rule_pct is not None else -999
-                if change_from_peak_pct <= threshold:
-                    triggered_rule = rule
-                    break
-
-            elif rule_type == "take_profit":
-                # Triggers when price rises above threshold from entry
-                # rule_pct is positive (e.g. 20.0)
-                threshold = rule_pct if rule_pct is not None else 999
-                if change_from_entry_pct >= threshold:
-                    triggered_rule = rule
-                    break
-
-            elif rule_type == "timeout":
-                # Triggers when position has been open longer than X minutes
-                if minutes_since_open >= rule.get("minutes", 999999):
-                    triggered_rule = rule
-                    break
 
         if triggered_rule is None:
             logger.debug(
