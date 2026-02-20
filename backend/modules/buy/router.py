@@ -869,6 +869,15 @@ async def get_trade_analytics(
 @router.get("/coin/{mint}", operation_id="buy_get_coin_details")
 async def get_coin_trade_detail(mint: str):
     """Get price history and all trades for a specific coin (for the trade detail page)."""
+    # Get token decimals to convert price_at_trade (per smallest unit) to
+    # match price_close scale (per whole token) from coin_metrics.
+    token_decimals = await fetchval(
+        "SELECT token_decimals FROM discovered_coins WHERE token_address = $1",
+        mint,
+    )
+    # pump.fun tokens default to 6 decimals
+    decimal_factor = 10 ** (token_decimals if token_decimals is not None else 6)
+
     # Price history from coin_metrics
     price_history = await fetch(
         """
@@ -928,6 +937,9 @@ async def get_coin_trade_detail(mint: str):
             price_at_trade = entry_price if entry_price > 0 else (
                 amount_sol / amount_tokens if amount_tokens > 0 else 0
             )
+
+        # Convert from SOL/smallest_unit to SOL/token to match price_close scale
+        price_at_trade *= decimal_factor
 
         trade_list.append({
             "id": str(t["id"]),
