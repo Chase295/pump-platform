@@ -60,6 +60,22 @@ export const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   REAL: { bg: 'rgba(76, 175, 80, 0.2)', color: '#4caf50' },
 };
 
+// ---------------------------------------------------------------------------
+// Relative time formatter (German)
+// ---------------------------------------------------------------------------
+export function fmtRelativeTime(date: string): string {
+  const now = Date.now();
+  const then = new Date(date).getTime();
+  const diffSec = Math.floor((now - then) / 1000);
+  if (diffSec < 60) return 'gerade eben';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `vor ${diffMin} Min.`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `vor ${diffH} Std.`;
+  const diffD = Math.floor(diffH / 24);
+  return `vor ${diffD} T.`;
+}
+
 // Card style constants
 export const CARD_SX = {
   bgcolor: 'rgba(255,255,255,0.03)',

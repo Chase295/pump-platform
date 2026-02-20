@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from backend.database import fetch, execute
 from backend.modules.buy.trading import TradingService
-from backend.modules.buy.jupiter_client import JupiterClient
+from backend.modules.buy.jupiter_client import init_jupiter_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class SellPositionMonitor:
         self._interval = interval_seconds
         self._running = False
         self._task: Optional[asyncio.Task] = None
-        self._jupiter = JupiterClient()
+        self._jupiter = init_jupiter_client()
         self._stats = {
             "polls": 0,
             "positions_checked": 0,

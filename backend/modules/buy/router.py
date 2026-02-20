@@ -460,6 +460,76 @@ async def get_trade_logs(
     return [_trade_log_to_response(t) for t in trades]
 
 
+@router.get("/dashboard/recent-sells", operation_id="buy_recent_sells")
+async def get_recent_sells(
+    wallet_type: Optional[str] = Query(None, description="TEST or REAL"),
+    limit: int = Query(default=20, le=100),
+):
+    """Get recent sell trades with P&L computed from position entry_price."""
+    query = """
+        SELECT
+            t.id,
+            t.mint,
+            t.amount_sol,
+            t.amount_tokens,
+            t.network_fee_sol,
+            t.jito_tip_lamports,
+            t.is_simulation,
+            t.created_at,
+            t.tx_signature,
+            w.alias   AS wallet_alias,
+            w.type    AS wallet_type,
+            p.entry_price,
+            p.initial_sol_spent,
+            p.status  AS position_status,
+            CASE
+                WHEN p.entry_price > 0 AND t.amount_tokens > 0
+                THEN t.amount_sol - (t.amount_tokens * p.entry_price)
+                ELSE 0
+            END AS pnl_sol,
+            CASE
+                WHEN p.entry_price > 0 AND t.amount_tokens > 0
+                THEN ((t.amount_sol / NULLIF(t.amount_tokens * p.entry_price, 0)) - 1) * 100
+                ELSE 0
+            END AS pnl_percent
+        FROM trade_logs t
+        JOIN wallets w  ON t.wallet_id  = w.id
+        LEFT JOIN positions p ON t.position_id = p.id
+        WHERE t.action = 'SELL'
+          AND t.status = 'SUCCESS'
+    """
+    params: list = []
+
+    if wallet_type:
+        params.append(wallet_type)
+        query += f" AND w.type = ${len(params)}"
+
+    params.append(limit)
+    query += f" ORDER BY t.created_at DESC LIMIT ${len(params)}"
+
+    rows = await fetch(query, *params)
+    return [
+        {
+            "id": str(r["id"]),
+            "mint": r["mint"],
+            "amount_sol": float(r["amount_sol"] or 0),
+            "amount_tokens": float(r["amount_tokens"] or 0),
+            "network_fee_sol": float(r["network_fee_sol"] or 0),
+            "jito_tip_lamports": r["jito_tip_lamports"],
+            "is_simulation": r["is_simulation"],
+            "created_at": r["created_at"].isoformat(),
+            "tx_signature": r["tx_signature"],
+            "wallet_alias": r["wallet_alias"],
+            "wallet_type": r["wallet_type"],
+            "entry_price": float(r["entry_price"] or 0),
+            "pnl_sol": float(r["pnl_sol"] or 0),
+            "pnl_percent": float(r["pnl_percent"] or 0),
+            "position_closed": r["position_status"] == "CLOSED",
+        }
+        for r in rows
+    ]
+
+
 # =================================================================
 # TRANSFER LOG ENDPOINTS
 # =================================================================
@@ -781,6 +851,104 @@ async def get_trade_analytics(
         best_trade_mint=positions_row['best_trade_mint'] if positions_row else None,
         worst_trade_mint=positions_row['worst_trade_mint'] if positions_row else None,
     )
+
+
+# =================================================================
+# COIN TRADE DETAIL ENDPOINT
+# =================================================================
+
+@router.get("/coin/{mint}", operation_id="buy_get_coin_details")
+async def get_coin_trade_detail(mint: str):
+    """Get price history and all trades for a specific coin (for the trade detail page)."""
+    # Price history from coin_metrics
+    price_history = await fetch(
+        """
+        SELECT timestamp, price_close
+        FROM coin_metrics
+        WHERE mint = $1
+        ORDER BY timestamp ASC
+        LIMIT 500
+        """,
+        mint,
+    )
+
+    # All successful trades for this coin with wallet alias and position info
+    trades = await fetch(
+        """
+        SELECT
+            t.id,
+            t.action,
+            t.mint,
+            t.amount_sol,
+            t.amount_tokens,
+            t.network_fee_sol,
+            t.jito_tip_lamports,
+            t.is_simulation,
+            t.created_at,
+            t.tx_signature,
+            w.alias AS wallet_alias,
+            p.entry_price,
+            p.initial_sol_spent,
+            p.status AS position_status
+        FROM trade_logs t
+        JOIN wallets w ON t.wallet_id = w.id
+        LEFT JOIN positions p ON t.position_id = p.id
+        WHERE t.mint = $1
+          AND t.status = 'SUCCESS'
+        ORDER BY t.created_at ASC
+        """,
+        mint,
+    )
+
+    trade_list = []
+    for t in trades:
+        entry_price = float(t["entry_price"] or 0)
+        amount_sol = float(t["amount_sol"] or 0)
+        amount_tokens = float(t["amount_tokens"] or 0)
+
+        pnl_sol = 0.0
+        pnl_percent = 0.0
+        price_at_trade = 0.0
+
+        if t["action"] == "SELL" and entry_price > 0 and amount_tokens > 0:
+            cost_basis = amount_tokens * entry_price
+            pnl_sol = amount_sol - cost_basis
+            pnl_percent = ((amount_sol / cost_basis) - 1) * 100 if cost_basis > 0 else 0
+            price_at_trade = amount_sol / amount_tokens if amount_tokens > 0 else 0
+        elif t["action"] == "BUY":
+            price_at_trade = entry_price if entry_price > 0 else (
+                amount_sol / amount_tokens if amount_tokens > 0 else 0
+            )
+
+        trade_list.append({
+            "id": str(t["id"]),
+            "action": t["action"],
+            "mint": t["mint"],
+            "amount_sol": amount_sol,
+            "amount_tokens": amount_tokens,
+            "network_fee_sol": float(t["network_fee_sol"] or 0),
+            "jito_tip_lamports": t["jito_tip_lamports"],
+            "is_simulation": t["is_simulation"],
+            "created_at": t["created_at"].isoformat(),
+            "tx_signature": t["tx_signature"],
+            "wallet_alias": t["wallet_alias"],
+            "entry_price": entry_price,
+            "price_at_trade": price_at_trade,
+            "pnl_sol": pnl_sol,
+            "pnl_percent": pnl_percent,
+        })
+
+    return {
+        "mint": mint,
+        "price_history": [
+            {
+                "timestamp": row["timestamp"].isoformat(),
+                "price_close": float(row["price_close"]) if row["price_close"] else None,
+            }
+            for row in price_history
+        ],
+        "trades": trade_list,
+    }
 
 
 # =================================================================

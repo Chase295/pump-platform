@@ -22,6 +22,7 @@ import Positions from './Positions';
 import TradeLogs from './TradeLogs';
 import TradingInfo from './TradingInfo';
 import Workflows from './Workflows';
+import CoinTradeDetail from './CoinTradeDetail';
 
 interface TradingShellProps {
   walletType: WalletType;
@@ -44,8 +45,9 @@ export default function TradingShell({ walletType, basePath, accentColor, label 
     { path: `${basePath}/info`, label: 'Info', icon: <InfoIcon /> },
   ];
 
-  const getActiveTab = () => {
+  const getActiveTab = (): number | false => {
     const path = location.pathname;
+    if (path.startsWith(`${basePath}/coin/`)) return false;
     if (path === basePath) return 0;
     if (path.startsWith(`${basePath}/wallets`)) return 1;
     if (path.startsWith(`${basePath}/execute`)) return 2;
@@ -102,6 +104,7 @@ export default function TradingShell({ walletType, basePath, accentColor, label 
 
         <Routes>
           <Route index element={<TradingDashboard />} />
+          <Route path="coin/:mint" element={<CoinTradeDetail />} />
           <Route path="wallets/:alias" element={<WalletDetail />} />
           <Route path="wallets" element={<Wallets />} />
           <Route path="execute" element={<ExecuteTrade />} />

@@ -85,6 +85,27 @@ export interface TradeLog {
 }
 
 // ============================================================
+// Recent Sell (with P&L)
+// ============================================================
+export interface RecentSell {
+  id: string;
+  mint: string;
+  amount_sol: number;
+  amount_tokens: number;
+  network_fee_sol: number;
+  jito_tip_lamports: number | null;
+  is_simulation: boolean;
+  created_at: string;
+  tx_signature: string | null;
+  wallet_alias: string;
+  wallet_type: WalletType;
+  entry_price: number;
+  pnl_sol: number;
+  pnl_percent: number;
+  position_closed: boolean;
+}
+
+// ============================================================
 // Transfer Log
 // ============================================================
 export interface TransferLog {
@@ -240,6 +261,33 @@ export interface WalletAnalytics {
 export interface ValuedPosition extends Position {
   current_value_sol: number | null;
   unrealized_pnl_sol: number | null;
+}
+
+// ============================================================
+// Coin Trade Detail
+// ============================================================
+export interface CoinTradeDetailTrade {
+  id: string;
+  action: TradeAction;
+  mint: string;
+  amount_sol: number;
+  amount_tokens: number;
+  network_fee_sol: number;
+  jito_tip_lamports: number | null;
+  is_simulation: boolean;
+  created_at: string;
+  tx_signature: string | null;
+  wallet_alias: string;
+  entry_price: number;
+  price_at_trade: number;
+  pnl_sol: number;
+  pnl_percent: number;
+}
+
+export interface CoinTradeDetailResponse {
+  mint: string;
+  price_history: Array<{ timestamp: string; price_close: number | null }>;
+  trades: CoinTradeDetailTrade[];
 }
 
 // ============================================================

@@ -254,6 +254,11 @@ export const buyApi = {
     api.get('/buy/dashboard/trade-activity', { params: { wallet_type: walletType, period } }),
   getTradeAnalytics: (walletType?: string, period = '24h') =>
     api.get('/buy/dashboard/trade-analytics', { params: { wallet_type: walletType, period } }),
+  getRecentSells: (walletType?: string, limit = 20) =>
+    api.get('/buy/dashboard/recent-sells', { params: { wallet_type: walletType, limit } }),
+
+  // Coin trade detail
+  getCoinTradeDetail: (mint: string) => api.get(`/buy/coin/${encodeURIComponent(mint)}`),
 
   // Workflows
   getWorkflows: (walletAlias?: string, type?: string) =>
