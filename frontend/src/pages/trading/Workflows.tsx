@@ -224,11 +224,11 @@ export default function Workflows() {
     setMaxOpenPositions(wf.max_open_positions);
 
     if (wf.type === 'BUY') {
-      const chain = wf.chain as BuyChain;
-      setTriggerModelId(chain.trigger.model_id);
-      setTriggerMinProb(chain.trigger.min_probability * 100);
+      const chain = wf.chain as BuyChain | undefined;
+      setTriggerModelId(chain?.trigger?.model_id ?? '');
+      setTriggerMinProb((chain?.trigger?.min_probability ?? 0.7) * 100);
       setConditions(
-        chain.conditions.map((c) => ({
+        (chain?.conditions ?? []).map((c) => ({
           model_id: c.model_id,
           operator: c.operator,
           threshold: c.threshold * 100,
@@ -237,13 +237,13 @@ export default function Workflows() {
       setBuyAmountMode(wf.buy_amount_mode ?? 'fixed');
       setBuyAmountValue(wf.buy_amount_value ?? 0.05);
     } else {
-      const chain = wf.chain as SellChain;
+      const chain = wf.chain as SellChain | undefined;
       setSellAmountPct(wf.sell_amount_pct ?? 100);
       setStopLossEnabled(false);
       setTrailingStopEnabled(false);
       setTakeProfitEnabled(false);
       setTimeoutEnabled(false);
-      for (const r of chain.rules) {
+      for (const r of chain?.rules ?? []) {
         if (r.type === 'stop_loss') {
           setStopLossEnabled(true);
           setStopLossPercent(r.percent ?? -5);
