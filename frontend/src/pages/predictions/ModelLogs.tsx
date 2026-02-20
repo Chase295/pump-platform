@@ -650,7 +650,11 @@ const ModelLogs: React.FC = () => {
             const targetPct = pred.price_change_percent ?? model?.price_change_percent;
             const targetDir = pred.target_direction || model?.target_direction;
             return (
-              <Card key={pred.id} sx={cardSx}>
+              <Card
+                key={pred.id}
+                sx={{ ...cardSx, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.06)' }, transition: 'background 0.15s' }}
+                onClick={() => navigate(`/predictions/coin/${modelId}/${encodeURIComponent(pred.coin_id)}`)}
+              >
                 <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                   {/* Row 1: Coin ID + Chips + Probability */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
@@ -658,13 +662,12 @@ const ModelLogs: React.FC = () => {
                       <Tooltip title={pred.coin_id} placement="top">
                         <Typography
                           variant="body2"
-                          sx={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#00d4ff', cursor: 'pointer' }}
-                          onClick={() => navigate(`/predictions/coin/${modelId}/${encodeURIComponent(pred.coin_id)}`)}
+                          sx={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#00d4ff' }}
                         >
                           {pred.coin_id.slice(0, 6)}..{pred.coin_id.slice(-4)}
                         </Typography>
                       </Tooltip>
-                      <IconButton size="small" onClick={() => navigator.clipboard.writeText(pred.coin_id)} sx={{ p: 0.25, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(pred.coin_id); }} sx={{ p: 0.25, opacity: 0.5, '&:hover': { opacity: 1 } }}>
                         <CopyIcon sx={{ fontSize: 13 }} />
                       </IconButton>
                       <Chip label={pred.tag} size="small" color={tagColor(pred.tag)}
