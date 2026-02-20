@@ -164,8 +164,8 @@ class SellPositionMonitor:
             return
 
         # ----- Get current price via Jupiter -----
-        # token_amount_raw: assume 6 decimals for SPL tokens
-        token_amount_raw = int(tokens_held * 1e6)
+        # tokens_held is already in the token's smallest unit (from Jupiter buy quote)
+        token_amount_raw = int(tokens_held)
         if token_amount_raw <= 0:
             logger.warning(
                 "SellPositionMonitor: position %s (mint=%s) has zero tokens_held=%.6f - skipping",
