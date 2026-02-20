@@ -237,7 +237,7 @@ export default function TradeLogs() {
                   <Card
                     key={log.id}
                     sx={{ ...CARD_SX, cursor: log.mint ? 'pointer' : 'default', transition: 'background 0.15s', '&:hover': log.mint ? { bgcolor: 'rgba(255,255,255,0.05)' } : {} }}
-                    onClick={() => log.mint && navigate(`/discovery/coin/${encodeURIComponent(log.mint)}`)}
+                    onClick={() => log.mint && navigate(`${ctx.basePath}/coin/${encodeURIComponent(log.mint)}`)}
                   >
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       {/* Row 1: Action chip + Amount + Time */}
