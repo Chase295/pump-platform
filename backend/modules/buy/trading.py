@@ -180,12 +180,14 @@ class TradingService:
                 wallet['id']
             )
 
-            # 3. Create or update position
+            # 3. Create or update position (FOR UPDATE prevents concurrent
+            #    reads returning stale tokens_held when duplicate buys slip through)
             existing_position = await conn.fetchrow(
                 """
                 SELECT id, tokens_held, initial_sol_spent
                 FROM positions
                 WHERE wallet_id = $1 AND mint = $2 AND status = 'OPEN'
+                FOR UPDATE
                 """,
                 wallet['id'],
                 mint
