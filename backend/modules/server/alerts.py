@@ -327,17 +327,17 @@ async def send_n8n_webhook(
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
             async with session.post(webhook_url, json=payload) as response:
                 if response.status == 200:
-                    logger.debug(f"n8n webhook sent successfully: {webhook_url}")
+                    logger.info(f"n8n webhook sent successfully: {webhook_url}")
                     return True
                 else:
                     error_text = await response.text()
-                    logger.warning(f"n8n webhook failed ({response.status}): {error_text}")
+                    logger.warning(f"n8n webhook failed ({response.status}): {error_text[:200]}")
                     return False
     except aiohttp.ClientError as e:
-        logger.warning(f"n8n webhook network error: {e}")
+        logger.warning(f"n8n webhook network error for {webhook_url}: {e}")
         return False
     except Exception as e:
-        logger.error(f"n8n webhook error: {e}", exc_info=True)
+        logger.error(f"n8n webhook error for {webhook_url}: {e}", exc_info=True)
         return False
 
 

@@ -474,12 +474,22 @@ class PredictionScanner:
         result: Dict, model_config: Dict, tag: str,
     ):
         """Send n8n webhook if enabled for this model/tag."""
+        active_model_id = result.get('active_model_id')
         n8n_enabled = model_config.get('n8n_enabled', False)
         if not n8n_enabled:
+            logger.info(
+                f"n8n webhook skipped for {coin_id[:8]}... model {active_model_id} tag={tag}: "
+                f"n8n_enabled=False"
+            )
             return
 
         webhook_url = model_config.get('n8n_webhook_url') or settings.N8N_SERVER_WEBHOOK_URL
         if not webhook_url:
+            logger.warning(
+                f"n8n webhook skipped for {coin_id[:8]}... model {active_model_id} tag={tag}: "
+                f"no webhook URL configured (model URL: {model_config.get('n8n_webhook_url')!r}, "
+                f"global URL: {settings.N8N_SERVER_WEBHOOK_URL!r})"
+            )
             return
 
         # Check send mode
@@ -499,6 +509,10 @@ class PredictionScanner:
                 should_send = True
 
         if not should_send:
+            logger.info(
+                f"n8n webhook skipped for {coin_id[:8]}... model {active_model_id} tag={tag}: "
+                f"send_mode={send_modes} does not include tag={tag}"
+            )
             return
 
         payload = {
@@ -522,7 +536,15 @@ class PredictionScanner:
             },
         }
 
-        await send_n8n_webhook(webhook_url, payload)
+        logger.info(
+            f"n8n webhook sending for {coin_id[:8]}... model {active_model_id} tag={tag} "
+            f"prob={result['probability']:.3f} → {webhook_url[:50]}..."
+        )
+        success = await send_n8n_webhook(webhook_url, payload)
+        if not success:
+            logger.warning(
+                f"n8n webhook FAILED for {coin_id[:8]}... model {active_model_id} tag={tag}"
+            )
 
     # ------------------------------------------------------------------
     # Helpers
