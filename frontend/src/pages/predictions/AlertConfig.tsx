@@ -1,7 +1,7 @@
 /**
  * AlertConfig Page
  * Per-model alert configuration: threshold, n8n webhook, send mode, ignore settings, max log entries.
- * Redesigned with modern section boxes, sliders, chips, and a single Save All button.
+ * Redesigned with modern section boxes, number inputs, chips, and a single Save All button.
  */
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -13,7 +13,6 @@ import {
   Button,
   TextField,
   Switch,
-  Slider,
   Chip,
   Collapse,
   CircularProgress,
@@ -44,22 +43,6 @@ const formatSeconds = (s: number) => {
 };
 
 const formatLogEntries = (n: number) => (n === 0 ? '\u221e' : String(n));
-
-const cooldownMarks = [
-  { value: 0, label: 'Off' },
-  { value: 300, label: '5m' },
-  { value: 600, label: '10m' },
-  { value: 1800, label: '30m' },
-  { value: 3600, label: '1h' },
-];
-
-const logMarks = [
-  { value: 0, label: '\u221e' },
-  { value: 50, label: '50' },
-  { value: 100, label: '100' },
-  { value: 250, label: '250' },
-  { value: 500, label: '500' },
-];
 
 const sendModes = [
   { value: 'all', label: 'All' },
@@ -108,7 +91,7 @@ const SectionBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </Box>
 );
 
-// ── Setting Row (Slider + Badge) ─────────────────────────────
+// ── Setting Row (Number Input + Badge) ───────────────────────
 
 const SettingRow: React.FC<{
   icon: React.ReactNode;
@@ -118,11 +101,10 @@ const SettingRow: React.FC<{
   onChange: (v: number) => void;
   min: number;
   max: number;
-  step: number;
-  marks: { value: number; label: string }[];
   formatValue: (v: number) => string;
   color: string;
-}> = ({ icon, label, desc, value, onChange, min, max, step, marks, formatValue, color }) => (
+  suffix?: string;
+}> = ({ icon, label, desc, value, onChange, min, max, formatValue, color, suffix }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2.5 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 160 }}>
       {icon}
@@ -135,17 +117,24 @@ const SettingRow: React.FC<{
         </Typography>
       </Box>
     </Box>
-    <Slider
+    <Box sx={{ flex: 1 }} />
+    <TextField
+      type="number"
       value={value}
-      onChange={(_e, v) => onChange(v as number)}
-      min={min}
-      max={max}
-      step={step}
-      marks={marks}
+      onChange={(e) => {
+        const v = Number(e.target.value);
+        if (!isNaN(v) && v >= min && v <= max) onChange(v);
+      }}
+      size="small"
+      inputProps={{ min, max, style: { textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 } }}
       sx={{
-        flex: 1,
-        color,
-        '& .MuiSlider-markLabel': { fontSize: '0.65rem', color: 'text.secondary' },
+        width: 110,
+        '& .MuiOutlinedInput-root': {
+          '& fieldset': { borderColor: `${color}40` },
+          '&:hover fieldset': { borderColor: `${color}80` },
+          '&.Mui-focused fieldset': { borderColor: color },
+        },
+        '& input': { color },
       }}
     />
     <Box
@@ -160,7 +149,7 @@ const SettingRow: React.FC<{
       }}
     >
       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 700, color }}>
-        {formatValue(value)}
+        {suffix ? `${formatValue(value)} ${suffix}` : formatValue(value)}
       </Typography>
     </Box>
   </Box>
@@ -429,21 +418,24 @@ const AlertConfig: React.FC = () => {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 1 }}>
-          <Slider
-            value={currentThreshold * 100}
-            onChange={(_e, v) => setAlertThreshold((v as number) / 100)}
-            min={1}
-            max={99}
-            step={1}
-            marks={[
-              { value: 50, label: '50%' },
-              { value: 70, label: '70%' },
-              { value: 90, label: '90%' },
-            ]}
+          <Box sx={{ flex: 1 }} />
+          <TextField
+            type="number"
+            value={Math.round(currentThreshold * 100)}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!isNaN(v) && v >= 1 && v <= 99) setAlertThreshold(v / 100);
+            }}
+            size="small"
+            inputProps={{ min: 1, max: 99, style: { textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 } }}
             sx={{
-              flex: 1,
-              color: '#ff9800',
-              '& .MuiSlider-markLabel': { fontSize: '0.7rem', color: 'text.secondary' },
+              width: 110,
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: '#ff980040' },
+                '&:hover fieldset': { borderColor: '#ff980080' },
+                '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+              },
+              '& input': { color: '#ff9800' },
             }}
           />
           <Box
@@ -550,11 +542,10 @@ const AlertConfig: React.FC = () => {
           value={currentIgnoreBad}
           onChange={setIgnoreBadSeconds}
           min={0}
-          max={3600}
-          step={60}
-          marks={cooldownMarks}
+          max={86400}
           formatValue={formatSeconds}
           color="#00d4ff"
+          suffix="sec"
         />
         <SettingRow
           icon={<PositiveIcon sx={{ color: '#66bb6a', fontSize: 18 }} />}
@@ -563,11 +554,10 @@ const AlertConfig: React.FC = () => {
           value={currentIgnorePositive}
           onChange={setIgnorePositiveSeconds}
           min={0}
-          max={3600}
-          step={60}
-          marks={cooldownMarks}
+          max={86400}
           formatValue={formatSeconds}
           color="#00d4ff"
+          suffix="sec"
         />
         <SettingRow
           icon={<AlertCoinIcon sx={{ color: '#ffa726', fontSize: 18 }} />}
@@ -576,11 +566,10 @@ const AlertConfig: React.FC = () => {
           value={currentIgnoreAlert}
           onChange={setIgnoreAlertSeconds}
           min={0}
-          max={3600}
-          step={60}
-          marks={cooldownMarks}
+          max={86400}
           formatValue={formatSeconds}
           color="#00d4ff"
+          suffix="sec"
         />
       </SectionBox>
 
@@ -606,9 +595,7 @@ const AlertConfig: React.FC = () => {
           value={currentMaxLogNegative}
           onChange={setMaxLogNegative}
           min={0}
-          max={500}
-          step={10}
-          marks={logMarks}
+          max={10000}
           formatValue={formatLogEntries}
           color="#2196f3"
         />
@@ -619,9 +606,7 @@ const AlertConfig: React.FC = () => {
           value={currentMaxLogPositive}
           onChange={setMaxLogPositive}
           min={0}
-          max={500}
-          step={10}
-          marks={logMarks}
+          max={10000}
           formatValue={formatLogEntries}
           color="#2196f3"
         />
@@ -632,9 +617,7 @@ const AlertConfig: React.FC = () => {
           value={currentMaxLogAlert}
           onChange={setMaxLogAlert}
           min={0}
-          max={500}
-          step={10}
-          marks={logMarks}
+          max={10000}
           formatValue={formatLogEntries}
           color="#2196f3"
         />
