@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -102,6 +103,7 @@ const sellColor = '#f44336';
 export default function Workflows() {
   const ctx = useTradingContext();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const formRef = useRef<HTMLDivElement>(null);
 
   // Tab & form state
@@ -1003,14 +1005,23 @@ export default function Workflows() {
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {pagedExecs.map((exec) => {
                       const rc = RESULT_COLORS[exec.result] ?? RESULT_COLORS.ERROR;
+                      const triggerData = exec.trigger_data as Record<string, unknown> | undefined;
+                      const activeModelId = triggerData?.active_model_id;
+                      const coinPath = activeModelId
+                        ? `/predictions/coin/${activeModelId}/${encodeURIComponent(exec.mint)}`
+                        : `/discovery/coin/${encodeURIComponent(exec.mint)}`;
                       return (
                         <Box
                           key={exec.id}
+                          onClick={() => navigate(coinPath)}
                           sx={{
                             p: 1.5,
                             borderRadius: 2,
                             bgcolor: 'rgba(255,255,255,0.02)',
                             border: '1px solid rgba(255,255,255,0.05)',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s',
+                            '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                           }}
                         >
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
