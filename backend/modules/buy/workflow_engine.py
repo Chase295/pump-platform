@@ -69,6 +69,19 @@ class BuyWorkflowEngine:
                         wf.get("id"), coin_id[:8], e,
                         exc_info=True,
                     )
+                    # Log the crash so it shows up in workflow_executions
+                    try:
+                        await self._log_execution(
+                            str(wf["id"]), coin_id,
+                            {"coin_id": coin_id, "model_id": model_id,
+                             "active_model_id": active_model_id,
+                             "probability": probability, "tag": tag},
+                            [{"step": "evaluation_crash", "pass": False,
+                              "error": str(e)}],
+                            "ERROR", error_message=str(e),
+                        )
+                    except Exception:
+                        pass
         except Exception as e:
             logger.error("BuyWorkflowEngine.on_prediction error: %s", e, exc_info=True)
 
@@ -125,8 +138,11 @@ class BuyWorkflowEngine:
         if isinstance(chain, str):
             chain = json.loads(chain)
 
-        trigger = chain.get("trigger", {})
-        conditions: List[Dict[str, Any]] = chain.get("conditions", [])
+        if not isinstance(chain, dict):
+            chain = {}
+
+        trigger = chain.get("trigger") or {}
+        conditions: List[Dict[str, Any]] = chain.get("conditions") or []
 
         trigger_data = {
             "coin_id": coin_id,
